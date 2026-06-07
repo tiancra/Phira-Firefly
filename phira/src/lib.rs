@@ -135,6 +135,7 @@ fn init_current_dir() -> Result<()> {
         
         // 复制 assets 目录的所有文件到 current
         let mut assets_path = None;
+<<<<<<< HEAD
         
         // Android: assets在APK内部，无法直接访问，跳过复制
         #[cfg(target_os = "android")]
@@ -167,6 +168,9 @@ fn init_current_dir() -> Result<()> {
         
         // 桌面系统: 从可执行文件目录查找
         #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
+=======
+        #[cfg(not(target_env = "ohos"))]
+>>>>>>> 663e9780b4904a68f23ab7f1b2776d671e58dcb5
         if let Ok(mut exe) = std::env::current_exe() {
             while exe.pop() {
                 let candidate = exe.join("assets");
@@ -176,6 +180,16 @@ fn init_current_dir() -> Result<()> {
                 }
             }
         }
+<<<<<<< HEAD
+=======
+        #[cfg(target_env = "ohos")]
+        {
+            let candidate = std::path::Path::new("/data/storage/el1/bundle/entry/resources/resfile/assets");
+            if candidate.exists() {
+                assets_path = Some(candidate.to_path_buf());
+            }
+        }
+>>>>>>> 663e9780b4904a68f23ab7f1b2776d671e58dcb5
         
         if let Some(assets) = assets_path {
             copy_dir_all(&assets, current_path)?;
@@ -200,6 +214,7 @@ pub fn apply_theme(theme_id: &str) -> Result<()> {
     
     // 复制 assets 目录的所有文件到 current
     let mut assets_path = None;
+<<<<<<< HEAD
     
     // Android: assets在APK内部，无法直接访问，跳过复制
     #[cfg(target_os = "android")]
@@ -232,6 +247,9 @@ pub fn apply_theme(theme_id: &str) -> Result<()> {
     
     // 桌面系统: 从可执行文件目录查找
     #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
+=======
+    #[cfg(not(target_env = "ohos"))]
+>>>>>>> 663e9780b4904a68f23ab7f1b2776d671e58dcb5
     if let Ok(mut exe) = std::env::current_exe() {
         while exe.pop() {
             let candidate = exe.join("assets");
@@ -241,6 +259,16 @@ pub fn apply_theme(theme_id: &str) -> Result<()> {
             }
         }
     }
+<<<<<<< HEAD
+=======
+    #[cfg(target_env = "ohos")]
+    {
+        let candidate = std::path::Path::new("/data/storage/el1/bundle/entry/resources/resfile/assets");
+        if candidate.exists() {
+            assets_path = Some(candidate.to_path_buf());
+        }
+    }
+>>>>>>> 663e9780b4904a68f23ab7f1b2776d671e58dcb5
     
     if let Some(assets) = assets_path {
         copy_dir_all(&assets, current_path)?;
@@ -280,14 +308,20 @@ pub async fn load_asset(name: &str) -> Vec<u8> {
     load_file(name).await.unwrap_or_default()
 }
 
+<<<<<<< HEAD
 // 加载纹理（优先从 current 目录加载，失败则回退到 assets）
 pub async fn load_theme_texture(name: &str) -> Result<prpr::ext::SafeTexture> {
     // 首先尝试从主题目录加载
+=======
+// 加载纹理（只从 current 目录加载）
+pub async fn load_theme_texture(name: &str) -> Result<prpr::ext::SafeTexture> {
+>>>>>>> 663e9780b4904a68f23ab7f1b2776d671e58dcb5
     if let Some(theme_path) = get_theme_path() {
         let full_path = format!("{}/{}", theme_path, name);
         info!("Loading texture from: {}", full_path);
         
         // 直接读取文件字节
+<<<<<<< HEAD
         if let Ok(bytes) = tokio::fs::read(&full_path).await {
             // 从字节加载图片
             if let Ok(image) = image::load_from_memory(&bytes) {
@@ -311,6 +345,21 @@ pub async fn load_theme_texture(name: &str) -> Result<prpr::ext::SafeTexture> {
     let texture: prpr::ext::SafeTexture = image.into();
     
     Ok(texture)
+=======
+        let bytes = tokio::fs::read(&full_path).await
+            .map_err(|e| anyhow::anyhow!("Failed to read file {}: {}", full_path, e))?;
+        
+        // 从字节加载图片
+        let image = image::load_from_memory(&bytes)
+            .map_err(|e| anyhow::anyhow!("Failed to load image from {}: {}", full_path, e))?;
+        
+        // 转换为纹理
+        let texture: prpr::ext::SafeTexture = image.into();
+        
+        return Ok(texture);
+    }
+    Err(anyhow::anyhow!("Theme path not set"))
+>>>>>>> 663e9780b4904a68f23ab7f1b2776d671e58dcb5
 }
 
 #[allow(static_mut_refs)]

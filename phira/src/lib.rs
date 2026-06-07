@@ -135,42 +135,7 @@ fn init_current_dir() -> Result<()> {
         
         // 复制 assets 目录的所有文件到 current
         let mut assets_path = None;
-<<<<<<< HEAD
-        
-        // Android: assets在APK内部，无法直接访问，跳过复制
-        #[cfg(target_os = "android")]
-        {
-            // Android上不复制assets，让macroquad的load_file处理
-            info!("Android platform: skipping assets copy to current directory");
-        }
-        
-        // iOS: assets在应用包内
-        #[cfg(target_os = "ios")]
-        {
-            use objc2_foundation::{NSBundle, NSBundleMainBundle};
-            let bundle = NSBundle::mainBundle();
-            if let Some(bundle_path) = bundle.resourcePath() {
-                let candidate = std::path::Path::new(bundle_path.to_string()).join("assets");
-                if candidate.exists() {
-                    assets_path = Some(candidate);
-                }
-            }
-        }
-        
-        // HarmonyOS: assets在固定路径
-        #[cfg(target_env = "ohos")]
-        {
-            let candidate = std::path::Path::new("/data/storage/el1/bundle/entry/resources/resfile/assets");
-            if candidate.exists() {
-                assets_path = Some(candidate.to_path_buf());
-            }
-        }
-        
-        // 桌面系统: 从可执行文件目录查找
-        #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
-=======
         #[cfg(not(target_env = "ohos"))]
->>>>>>> 663e9780b4904a68f23ab7f1b2776d671e58dcb5
         if let Ok(mut exe) = std::env::current_exe() {
             while exe.pop() {
                 let candidate = exe.join("assets");
@@ -180,8 +145,6 @@ fn init_current_dir() -> Result<()> {
                 }
             }
         }
-<<<<<<< HEAD
-=======
         #[cfg(target_env = "ohos")]
         {
             let candidate = std::path::Path::new("/data/storage/el1/bundle/entry/resources/resfile/assets");
@@ -189,7 +152,6 @@ fn init_current_dir() -> Result<()> {
                 assets_path = Some(candidate.to_path_buf());
             }
         }
->>>>>>> 663e9780b4904a68f23ab7f1b2776d671e58dcb5
         
         if let Some(assets) = assets_path {
             copy_dir_all(&assets, current_path)?;
@@ -214,42 +176,7 @@ pub fn apply_theme(theme_id: &str) -> Result<()> {
     
     // 复制 assets 目录的所有文件到 current
     let mut assets_path = None;
-<<<<<<< HEAD
-    
-    // Android: assets在APK内部，无法直接访问，跳过复制
-    #[cfg(target_os = "android")]
-    {
-        // Android上不复制assets，让macroquad的load_file处理
-        info!("Android platform: skipping assets copy in apply_theme");
-    }
-    
-    // iOS: assets在应用包内
-    #[cfg(target_os = "ios")]
-    {
-        use objc2_foundation::{NSBundle, NSBundleMainBundle};
-        let bundle = NSBundle::mainBundle();
-        if let Some(bundle_path) = bundle.resourcePath() {
-            let candidate = std::path::Path::new(bundle_path.to_string()).join("assets");
-            if candidate.exists() {
-                assets_path = Some(candidate);
-            }
-        }
-    }
-    
-    // HarmonyOS: assets在固定路径
-    #[cfg(target_env = "ohos")]
-    {
-        let candidate = std::path::Path::new("/data/storage/el1/bundle/entry/resources/resfile/assets");
-        if candidate.exists() {
-            assets_path = Some(candidate.to_path_buf());
-        }
-    }
-    
-    // 桌面系统: 从可执行文件目录查找
-    #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
-=======
     #[cfg(not(target_env = "ohos"))]
->>>>>>> 663e9780b4904a68f23ab7f1b2776d671e58dcb5
     if let Ok(mut exe) = std::env::current_exe() {
         while exe.pop() {
             let candidate = exe.join("assets");
@@ -259,8 +186,6 @@ pub fn apply_theme(theme_id: &str) -> Result<()> {
             }
         }
     }
-<<<<<<< HEAD
-=======
     #[cfg(target_env = "ohos")]
     {
         let candidate = std::path::Path::new("/data/storage/el1/bundle/entry/resources/resfile/assets");
@@ -268,7 +193,6 @@ pub fn apply_theme(theme_id: &str) -> Result<()> {
             assets_path = Some(candidate.to_path_buf());
         }
     }
->>>>>>> 663e9780b4904a68f23ab7f1b2776d671e58dcb5
     
     if let Some(assets) = assets_path {
         copy_dir_all(&assets, current_path)?;
@@ -308,44 +232,13 @@ pub async fn load_asset(name: &str) -> Vec<u8> {
     load_file(name).await.unwrap_or_default()
 }
 
-<<<<<<< HEAD
-// 加载纹理（优先从 current 目录加载，失败则回退到 assets）
-pub async fn load_theme_texture(name: &str) -> Result<prpr::ext::SafeTexture> {
-    // 首先尝试从主题目录加载
-=======
 // 加载纹理（只从 current 目录加载）
 pub async fn load_theme_texture(name: &str) -> Result<prpr::ext::SafeTexture> {
->>>>>>> 663e9780b4904a68f23ab7f1b2776d671e58dcb5
     if let Some(theme_path) = get_theme_path() {
         let full_path = format!("{}/{}", theme_path, name);
         info!("Loading texture from: {}", full_path);
         
         // 直接读取文件字节
-<<<<<<< HEAD
-        if let Ok(bytes) = tokio::fs::read(&full_path).await {
-            // 从字节加载图片
-            if let Ok(image) = image::load_from_memory(&bytes) {
-                // 转换为纹理
-                let texture: prpr::ext::SafeTexture = image.into();
-                return Ok(texture);
-            }
-        }
-    }
-    
-    // 如果从主题目录加载失败，回退到 assets（通过 macroquad 的 load_file）
-    info!("Falling back to assets for: {}", name);
-    let bytes = load_file(name).await
-        .map_err(|e| anyhow::anyhow!("Failed to load texture {} from assets: {}", name, e))?;
-    
-    // 从字节加载图片
-    let image = image::load_from_memory(&bytes)
-        .map_err(|e| anyhow::anyhow!("Failed to load image from assets {}: {}", name, e))?;
-    
-    // 转换为纹理
-    let texture: prpr::ext::SafeTexture = image.into();
-    
-    Ok(texture)
-=======
         let bytes = tokio::fs::read(&full_path).await
             .map_err(|e| anyhow::anyhow!("Failed to read file {}: {}", full_path, e))?;
         
@@ -359,7 +252,6 @@ pub async fn load_theme_texture(name: &str) -> Result<prpr::ext::SafeTexture> {
         return Ok(texture);
     }
     Err(anyhow::anyhow!("Theme path not set"))
->>>>>>> 663e9780b4904a68f23ab7f1b2776d671e58dcb5
 }
 
 #[allow(static_mut_refs)]
@@ -641,12 +533,12 @@ async fn the_main() -> Result<()> {
                 }
                 // period restrict
                 1030 => {
-                    show_and_exit("你当前为未成年账号，已被纳入防沉迷系统。根据国家相关规定，周五、周六、周日及法定节假日 20 点 - 21 点之外为健康保护时段。当前时间段无法游玩，请合理安排时间。");
+                    show_and_exit("你当前为未成年账号，已被纳入防沉迷系统。根据国家相关规定，周五、周六、周日及法定节假日 20 点 - 21 点之外为健康保护时段，此段时间内无法进行游戏。");
                     exit_time = frame_start;
                 }
                 // duration limit
                 1050 => {
-                    show_and_exit("你当前为未成年账号，已被纳入防沉迷系统。根据国家相关规定，周五、周六、周日及法定节假日 20 点 - 21 点之外为健康保护时段。你已达时间限制，无法继续游戏。");
+                    show_and_exit("你当前为未成年账号，已被纳入防沉迷系统。根据国家相关规定，周五、周六、周日及法定节假日 20 点 - 21 点之外为健康保护时段，此段时间内无法进行游戏。");
                     exit_time = frame_start;
                 }
                 // stopped

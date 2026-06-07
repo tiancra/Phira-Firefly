@@ -1,4 +1,4 @@
-- name: Build Android Phira
+name: Build Android Phira
 
 on:
   workflow_dispatch:

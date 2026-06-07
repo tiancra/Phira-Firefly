@@ -1,6 +1,5 @@
-use crate::scene::TEX_ICON_BACK;
+use crate::{load_theme_texture, scene::TEX_ICON_BACK};
 use anyhow::Result;
-use macroquad::texture::load_texture;
 use prpr::ext::SafeTexture;
 
 pub struct Icons {
@@ -39,36 +38,36 @@ pub struct Icons {
 impl Icons {
     pub async fn new() -> Result<Self> {
         Ok(Self {
-            icon: load_texture("icon.png").await?.into(),
-            play: load_texture("resume.png").await?.into(),
-            medal: load_texture("medal.png").await?.into(),
-            respack: load_texture("respack.png").await?.into(),
-            msg: load_texture("message.png").await?.into(),
-            settings: load_texture("settings.png").await?.into(),
-            lang: load_texture("language.png").await?.into(),
+            icon: load_theme_texture("icon.png").await?,
+            play: load_theme_texture("resume.png").await?,
+            medal: load_theme_texture("medal.png").await?,
+            respack: load_theme_texture("respack.png").await?,
+            msg: load_theme_texture("message.png").await?,
+            settings: load_theme_texture("settings.png").await?,
+            lang: load_theme_texture("language.png").await?,
             back: TEX_ICON_BACK.with(|it| it.borrow().clone().unwrap()),
-            download: load_texture("download.png").await?.into(),
-            user: load_texture("user.png").await?.into(),
-            info: load_texture("info.png").await?.into(),
-            delete: load_texture("delete.png").await?.into(),
-            menu: load_texture("menu.png").await?.into(),
-            edit: load_texture("edit.png").await?.into(),
-            ldb: load_texture("leaderboard.png").await?.into(),
-            close: load_texture("close.png").await?.into(),
-            search: load_texture("search.png").await?.into(),
-            order: load_texture("order.png").await?.into(),
-            filter: load_texture("filter.png").await?.into(),
-            r#mod: load_texture("mod.png").await?.into(),
-            star: load_texture("star.png").await?.into(),
-            star_outline: load_texture("star_outline.png").await?.into(),
-            heart: load_texture("heart.png").await?.into(),
-            heart_outline: load_texture("heart_outline.png").await?.into(),
-            cloud_none: load_texture("cloud_none.png").await?.into(),
-            cloud_check: load_texture("cloud_check.png").await?.into(),
-            plus: load_texture("plus.png").await?.into(),
-            select: load_texture("select.png").await?.into(),
+            download: load_theme_texture("download.png").await?,
+            user: load_theme_texture("user.png").await?,
+            info: load_theme_texture("info.png").await?,
+            delete: load_theme_texture("delete.png").await?,
+            menu: load_theme_texture("menu.png").await?,
+            edit: load_theme_texture("edit.png").await?,
+            ldb: load_theme_texture("leaderboard.png").await?,
+            close: load_theme_texture("close.png").await?,
+            search: load_theme_texture("search.png").await?,
+            order: load_theme_texture("order.png").await?,
+            filter: load_theme_texture("filter.png").await?,
+            r#mod: load_theme_texture("mod.png").await?,
+            star: load_theme_texture("star.png").await?,
+            star_outline: load_theme_texture("star_outline.png").await?,
+            heart: load_theme_texture("heart.png").await?,
+            heart_outline: load_theme_texture("heart_outline.png").await?,
+            cloud_none: load_theme_texture("cloud_none.png").await?,
+            cloud_check: load_theme_texture("cloud_check.png").await?,
+            plus: load_theme_texture("plus.png").await?,
+            select: load_theme_texture("select.png").await?,
 
-            r#abstract: load_texture("abstract.jpg").await?.into(),
+            r#abstract: load_theme_texture("abstract.jpg").await?,
         })
     }
 }

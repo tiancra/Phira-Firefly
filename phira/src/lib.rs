@@ -42,7 +42,7 @@ use std::{
     collections::VecDeque,
     sync::{mpsc, Mutex},
 };
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 #[cfg(target_os = "android")]
 use jni::{
@@ -56,6 +56,8 @@ static AA_TX: Mutex<Option<mpsc::Sender<i32>>> = Mutex::new(None);
 static DATA_PATH: Mutex<Option<String>> = Mutex::new(None);
 static CACHE_DIR: Mutex<Option<String>> = Mutex::new(None);
 pub static mut DATA: Option<Data> = None;
+// 当前主题路径
+static THEME_PATH: Mutex<Option<String>> = Mutex::new(None);
 
 #[cfg(target_env = "ohos")]
 use napi_derive_ohos::napi;
@@ -90,6 +92,225 @@ pub fn set_data(data: Data) {
     unsafe {
         DATA = Some(data);
     }
+}
+
+// 设置当前主题路径
+pub fn set_theme_path(path: Option<String>) {
+    *THEME_PATH.lock().unwrap() = path;
+}
+
+// 获取当前主题路径
+pub fn get_theme_path() -> Option<String> {
+    THEME_PATH.lock().unwrap().clone()
+}
+
+// 递归复制文件夹
+fn copy_dir_all(src: impl AsRef<std::path::Path>, dst: impl AsRef<std::path::Path>) -> Result<()> {
+    let src = src.as_ref();
+    let dst = dst.as_ref();
+    
+    std::fs::create_dir_all(dst)?;
+    
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        if ty.is_dir() {
+            copy_dir_all(entry.path(), dst.join(entry.file_name()))?;
+        } else {
+            std::fs::copy(entry.path(), dst.join(entry.file_name()))?;
+        }
+    }
+    Ok(())
+}
+
+// 初始化 current 目录（只复制 assets）
+fn init_current_dir() -> Result<()> {
+    let dir = dir::root()?;
+    let themes_dir = format!("{}/themes", dir);
+    let current_dir = format!("{}/current", themes_dir);
+    let current_path = std::path::Path::new(&current_dir);
+    
+    if !current_path.exists() {
+        std::fs::create_dir_all(current_path)?;
+        
+        // 复制 assets 目录的所有文件到 current
+        let mut assets_path = None;
+        
+        // Android: assets在APK内部，无法直接访问，跳过复制
+        #[cfg(target_os = "android")]
+        {
+            // Android上不复制assets，让macroquad的load_file处理
+            info!("Android platform: skipping assets copy to current directory");
+        }
+        
+        // iOS: assets在应用包内
+        #[cfg(target_os = "ios")]
+        {
+            use objc2_foundation::{NSBundle, NSBundleMainBundle};
+            let bundle = NSBundle::mainBundle();
+            if let Some(bundle_path) = bundle.resourcePath() {
+                let candidate = std::path::Path::new(bundle_path.to_string()).join("assets");
+                if candidate.exists() {
+                    assets_path = Some(candidate);
+                }
+            }
+        }
+        
+        // HarmonyOS: assets在固定路径
+        #[cfg(target_env = "ohos")]
+        {
+            let candidate = std::path::Path::new("/data/storage/el1/bundle/entry/resources/resfile/assets");
+            if candidate.exists() {
+                assets_path = Some(candidate.to_path_buf());
+            }
+        }
+        
+        // 桌面系统: 从可执行文件目录查找
+        #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
+        if let Ok(mut exe) = std::env::current_exe() {
+            while exe.pop() {
+                let candidate = exe.join("assets");
+                if candidate.exists() {
+                    assets_path = Some(candidate);
+                    break;
+                }
+            }
+        }
+        
+        if let Some(assets) = assets_path {
+            copy_dir_all(&assets, current_path)?;
+        }
+    }
+    
+    Ok(())
+}
+
+// 应用主题（复制文件到data/themes/current目录）
+pub fn apply_theme(theme_id: &str) -> Result<()> {
+    let dir = dir::root()?;
+    let themes_dir = format!("{}/themes", dir);
+    let current_dir = format!("{}/current", themes_dir);
+    let current_path = std::path::Path::new(&current_dir);
+    
+    // 清空 current 目录
+    if current_path.exists() {
+        std::fs::remove_dir_all(current_path)?;
+    }
+    std::fs::create_dir_all(current_path)?;
+    
+    // 复制 assets 目录的所有文件到 current
+    let mut assets_path = None;
+    
+    // Android: assets在APK内部，无法直接访问，跳过复制
+    #[cfg(target_os = "android")]
+    {
+        // Android上不复制assets，让macroquad的load_file处理
+        info!("Android platform: skipping assets copy in apply_theme");
+    }
+    
+    // iOS: assets在应用包内
+    #[cfg(target_os = "ios")]
+    {
+        use objc2_foundation::{NSBundle, NSBundleMainBundle};
+        let bundle = NSBundle::mainBundle();
+        if let Some(bundle_path) = bundle.resourcePath() {
+            let candidate = std::path::Path::new(bundle_path.to_string()).join("assets");
+            if candidate.exists() {
+                assets_path = Some(candidate);
+            }
+        }
+    }
+    
+    // HarmonyOS: assets在固定路径
+    #[cfg(target_env = "ohos")]
+    {
+        let candidate = std::path::Path::new("/data/storage/el1/bundle/entry/resources/resfile/assets");
+        if candidate.exists() {
+            assets_path = Some(candidate.to_path_buf());
+        }
+    }
+    
+    // 桌面系统: 从可执行文件目录查找
+    #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
+    if let Ok(mut exe) = std::env::current_exe() {
+        while exe.pop() {
+            let candidate = exe.join("assets");
+            if candidate.exists() {
+                assets_path = Some(candidate);
+                break;
+            }
+        }
+    }
+    
+    if let Some(assets) = assets_path {
+        copy_dir_all(&assets, current_path)?;
+    }
+    
+    // 复制主题文件夹的内容到 current（覆盖已存在的文件）
+    let theme_dir = format!("{}/{}", themes_dir, theme_id);
+    let theme_path = std::path::Path::new(&theme_dir);
+    if theme_path.exists() {
+        copy_dir_all(theme_path, current_path)?;
+    }
+    
+    // 设置主题路径为 current 目录
+    set_theme_path(Some(current_dir));
+    
+    Ok(())
+}
+
+// 加载主题资源
+pub async fn load_theme_res(name: &str) -> Option<Vec<u8>> {
+    if let Some(theme_path) = get_theme_path() {
+        let path = format!("{}/{}", theme_path, name);
+        match tokio::fs::read(&path).await {
+            Ok(bytes) => return Some(bytes),
+            Err(_) => {}
+        }
+    }
+    None
+}
+
+// 加载资源（只从 current 目录加载）
+pub async fn load_asset(name: &str) -> Vec<u8> {
+    if let Some(bytes) = load_theme_res(name).await {
+        return bytes;
+    }
+    warn!("Failed to load asset from theme path: {}", name);
+    load_file(name).await.unwrap_or_default()
+}
+
+// 加载纹理（优先从 current 目录加载，失败则回退到 assets）
+pub async fn load_theme_texture(name: &str) -> Result<prpr::ext::SafeTexture> {
+    // 首先尝试从主题目录加载
+    if let Some(theme_path) = get_theme_path() {
+        let full_path = format!("{}/{}", theme_path, name);
+        info!("Loading texture from: {}", full_path);
+        
+        // 直接读取文件字节
+        if let Ok(bytes) = tokio::fs::read(&full_path).await {
+            // 从字节加载图片
+            if let Ok(image) = image::load_from_memory(&bytes) {
+                // 转换为纹理
+                let texture: prpr::ext::SafeTexture = image.into();
+                return Ok(texture);
+            }
+        }
+    }
+    
+    // 如果从主题目录加载失败，回退到 assets（通过 macroquad 的 load_file）
+    info!("Falling back to assets for: {}", name);
+    let bytes = load_file(name).await
+        .map_err(|e| anyhow::anyhow!("Failed to load texture {} from assets: {}", name, e))?;
+    
+    // 从字节加载图片
+    let image = image::load_from_memory(&bytes)
+        .map_err(|e| anyhow::anyhow!("Failed to load image from assets {}: {}", name, e))?;
+    
+    // 转换为纹理
+    let texture: prpr::ext::SafeTexture = image.into();
+    
+    Ok(texture)
 }
 
 #[allow(static_mut_refs)]
@@ -199,6 +420,19 @@ async fn the_main() -> Result<()> {
     set_data(data);
     sync_data();
     save_data()?;
+    
+    // 初始化 current 目录（确保它存在并包含 assets 文件）
+    let _ = init_current_dir();
+    
+    // 应用配置的主题
+    let theme_id = get_data().theme.clone();
+    let _ = apply_theme(&theme_id);
+    
+    // 确保主题路径始终设置为 current 目录，即使 apply_theme 失败
+    if let Ok(dir) = dir::root() {
+        let current_dir = format!("{}/themes/current", dir);
+        set_theme_path(Some(current_dir));
+    }
 
     let rx = {
         let (tx, rx) = mpsc::channel();
@@ -228,6 +462,75 @@ async fn the_main() -> Result<()> {
     let mut painter = TextPainter::new(font.clone(), None);
 
     let mut main = Main::new(Box::new(MainScene::new(font).await?), TimeManager::default(), None).await?;
+
+    // 处理启动参数
+    let mut join_room: Option<phira_mp_common::RoomId> = None;
+    let mut create_room: Option<phira_mp_common::RoomId> = None;
+    let mut mp_address: Option<String> = None;
+    
+    for arg in std::env::args() {
+        let arg = arg.trim();
+        
+        // 处理多种格式的启动参数
+        let processed_arg = if arg.starts_with("phira://") {
+            // 处理 URI 格式：phira://room/join/123&server=...
+            arg.strip_prefix("phira://").unwrap_or(arg)
+        } else if arg.starts_with("room/") {
+            // 处理没有前导斜杠的格式：room/join/123&server=...
+            arg
+        } else if arg.starts_with("/room/") {
+            // 处理有前导斜杠的格式：/room/join/123&server=...
+            arg.strip_prefix("/").unwrap_or(arg)
+        } else {
+            continue;
+        };
+        
+        if processed_arg.starts_with("room/join/") {
+            let mut parts = processed_arg.split("&");
+            if let Some(room_part) = parts.next() {
+                if let Some(room_id) = room_part.strip_prefix("room/join/") {
+                    if let Ok(id) = room_id.to_string().try_into() {
+                        join_room = Some(id);
+                    }
+                }
+            }
+            // 解析服务器地址
+            for part in parts {
+                if part.starts_with("server=") {
+                    if let Some(address) = part.strip_prefix("server=") {
+                        mp_address = Some(address.to_string());
+                    }
+                }
+            }
+        } else if processed_arg.starts_with("room/create/") {
+            let mut parts = processed_arg.split("&");
+            if let Some(room_part) = parts.next() {
+                if let Some(room_id) = room_part.strip_prefix("room/create/") {
+                    if let Ok(id) = room_id.to_string().try_into() {
+                        create_room = Some(id);
+                    }
+                }
+            }
+            // 解析服务器地址
+            for part in parts {
+                if part.starts_with("server=") {
+                    if let Some(address) = part.strip_prefix("server=") {
+                        mp_address = Some(address.to_string());
+                    }
+                }
+            }
+        }
+    }
+    
+    // 处理启动参数
+    if join_room.is_some() || create_room.is_some() {
+        use crate::scene::MP_PANEL;
+        MP_PANEL.with(|it| {
+            if let Some(panel) = it.borrow_mut().as_mut() {
+                panel.handle_startup_args(join_room, create_room, mp_address);
+            }
+        });
+    }
 
     let tm = TimeManager::default();
     let mut fps_time = -1;

@@ -3,6 +3,7 @@ use crate::{
     charts_view::NEED_UPDATE,
     data::LocalChart,
     dir, get_data, get_data_mut,
+    load_theme_texture,
     mp::MPPanel,
     page::{ExportInfo, HomePage, NextPage, Page, ResPackItem, SharedState},
     save_data,
@@ -22,13 +23,14 @@ use prpr::{
     ui::{button_hit, Dialog, FontArc, RectButton, Ui, UI_AUDIO},
 };
 use sasa::{AudioClip, Music};
+use serde::Deserialize;
 use std::{
     any::Any,
     cell::RefCell,
     fs::File,
     io::{BufReader, Read, Seek, SeekFrom},
     mem,
-    path::{Component, PathBuf},
+    path::{Component, Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc, Arc,
@@ -37,6 +39,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tempfile::tempfile;
+use ::rand::Rng;
 use uuid::Uuid;
 
 const LOW_PASS: f32 = 0.95;
@@ -45,7 +48,21 @@ pub static BGM_VOLUME_UPDATED: AtomicBool = AtomicBool::new(false);
 
 thread_local! {
     static RESPACK_ITEM: RefCell<Option<ResPackItem>> = RefCell::default();
+    static IMPORTED_THEME: RefCell<Option<ImportedThemeInfo>> = RefCell::default();
     pub static MP_PANEL: RefCell<Option<MPPanel>> = RefCell::default();
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ThemeManifest {
+    pub name: String,
+    pub version: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+pub struct ImportedThemeInfo {
+    pub path: String,
+    pub manifest: ThemeManifest,
 }
 
 #[inline]
@@ -92,23 +109,25 @@ impl MainScene {
     pub async fn new(fallback: FontArc) -> Result<Self> {
         Self::init().await?;
 
-        #[cfg(closed)]
         let bgm = {
-            let bgm_clip = AudioClip::new(crate::load_res("res/bgm").await)?;
-            Some(UI_AUDIO.with(|it| {
-                it.borrow_mut().create_music(
-                    bgm_clip,
-                    sasa::MusicParams {
-                        amplifier: get_data().config.volume_bgm,
-                        loop_mix_time: 5.46,
-                        command_buffer_size: 64,
-                        ..Default::default()
-                    },
-                )
-            })?)
+            match AudioClip::new(load_file("bgm.mp3").await?) {
+                Ok(clip) => Some(UI_AUDIO.with(|it| {
+                    it.borrow_mut().create_music(
+                        clip,
+                        sasa::MusicParams {
+                            amplifier: get_data().config.volume_bgm,
+                            loop_mix_time: 5.46,
+                            command_buffer_size: 64,
+                            ..Default::default()
+                        },
+                    )
+                })?),
+                Err(err) => {
+                    warn!("failed to create audio clip: {:?}", err);
+                    None
+                }
+            }
         };
-        #[cfg(not(closed))]
-        let bgm = None;
 
         let mut sf = Self::new_inner(bgm, fallback).await?;
         sf.pages.push(Box::new(HomePage::new().await?));
@@ -128,8 +147,8 @@ impl MainScene {
         load_sfx!(UI_BTN_HITSOUND, "button.ogg");
         load_sfx!(UI_SWITCH_SOUND, "switch.ogg");
 
-        let background: SafeTexture = load_texture("background.jpg").await?.into();
-        let icon_back: SafeTexture = load_texture("back.png").await?.into();
+        let background: SafeTexture = load_theme_texture("background.jpg").await?;
+        let icon_back: SafeTexture = load_theme_texture("back.png").await?;
 
         TEX_BACKGROUND.with(|it| *it.borrow_mut() = Some(background));
         TEX_ICON_BACK.with(|it| *it.borrow_mut() = Some(icon_back));
@@ -139,8 +158,8 @@ impl MainScene {
 
     async fn new_inner(bgm: Option<Music>, fallback: FontArc) -> Result<Self> {
         let state = SharedState::new(fallback).await?;
-        let icon_user = load_texture("user.png").await?;
-        MP_PANEL.with(|it| *it.borrow_mut() = Some(MPPanel::new(icon_user.into())));
+        let icon_user = load_theme_texture("user.png").await?;
+        MP_PANEL.with(|it| *it.borrow_mut() = Some(MPPanel::new(icon_user.clone())));
         Ok(Self {
             state,
 
@@ -155,7 +174,7 @@ impl MainScene {
             import_task: None,
 
             mp_btn: RectButton::new(),
-            mp_icon: SafeTexture::from(load_texture("multiplayer.png").await?).with_mipmap(),
+            mp_icon: load_theme_texture("multiplayer.png").await?.with_mipmap(),
             mp_btn_pos: (|| -> Result<Vec2> {
                 let s = std::fs::read_to_string(position_file()?)?;
                 let (x, y) = s.split_once(',').ok_or_else(|| anyhow!("invalid"))?;
@@ -186,6 +205,10 @@ impl MainScene {
 
     pub fn take_imported_respack() -> Option<ResPackItem> {
         RESPACK_ITEM.with(|it| it.borrow_mut().take())
+    }
+
+    pub fn take_imported_theme() -> Option<ImportedThemeInfo> {
+        IMPORTED_THEME.with(|it| it.borrow_mut().take())
     }
 }
 
@@ -479,6 +502,62 @@ impl Scene for MainScene {
                             RESPACK_ITEM.with(|it| *it.borrow_mut() = Some(item));
                             show_message(itl!("import-respack-success"));
                         }
+                    }
+                }
+                "_import_theme" => {
+                    // 主题导入处理 - 解压并读取 manifest.json
+                    let temp_dir = format!("{}/themes/temp", dir::root().unwrap_or_default());
+                    // 创建临时目录
+                    let _ = std::fs::create_dir_all(&temp_dir);
+                    
+                    // 解压 zip 文件
+                    let file = std::fs::File::open(&file)?;
+                    let mut archive = zip::ZipArchive::new(file)?;
+                    
+                    // 提取所有文件
+                    for i in 0..archive.len() {
+                        let mut zip_file = archive.by_index(i)?;
+                        let outpath = Path::new(&temp_dir).join(zip_file.name());
+                        if zip_file.is_dir() {
+                            let _ = std::fs::create_dir_all(&outpath);
+                        } else {
+                            if let Some(parent) = outpath.parent() {
+                                let _ = std::fs::create_dir_all(parent);
+                            }
+                            let mut outfile = std::fs::File::create(&outpath)?;
+                            std::io::copy(&mut zip_file, &mut outfile)?;
+                        }
+                    }
+                    
+                    // 读取 manifest.json
+                    let manifest_path = Path::new(&temp_dir).join("manifest.json");
+                    if manifest_path.exists() {
+                        let manifest_content = std::fs::read_to_string(&manifest_path)?;
+                        let manifest: ThemeManifest = serde_json::from_str(&manifest_content)?;
+                        
+                        // 生成随机6位数字文件夹名
+                        let mut rng = ::rand::thread_rng();
+                        let random_num: u32 = rng.gen_range(100000..1000000);
+                        let target_dir_name = random_num.to_string();
+                        let target_dir = Path::new(&dir::root().unwrap_or_default()).join("themes").join(&target_dir_name);
+                        
+                        // 移动临时文件夹到目标位置
+                        if let Ok(_) = std::fs::rename(&temp_dir, &target_dir) {
+                            // 存储导入的主题信息
+                            let theme_info = ImportedThemeInfo {
+                                path: target_dir.to_string_lossy().to_string(),
+                                manifest,
+                            };
+                            IMPORTED_THEME.with(|it| *it.borrow_mut() = Some(theme_info));
+                            show_message(itl!("import-theme-success"));
+                        } else {
+                            show_message(itl!("import-theme-failed")).error();
+                            let _ = std::fs::remove_dir_all(&temp_dir);
+                        }
+                    } else {
+                        show_message(itl!("import-theme-no-manifest")).error();
+                        // 清理临时目录
+                        let _ = std::fs::remove_dir_all(&temp_dir);
                     }
                 }
                 _ => return_file(id, file),

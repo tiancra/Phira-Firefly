@@ -29,6 +29,12 @@ use std::{
 use tokio::net::TcpStream;
 use tracing::warn;
 
+// 启动参数
+pub struct StartupArgs {
+    pub join_room: Option<RoomId>,
+    pub create_room: Option<RoomId>,
+}
+
 const ENTER_TRANSIT: f32 = 0.5;
 const USER_LIST_TRANSIT: f32 = 0.4;
 const WIDTH: f32 = 1.6;
@@ -109,6 +115,11 @@ pub struct MPPanel {
     user_list_btn: DRectButton,
     user_list_p: Smooth<f32>,
     icon_user: SafeTexture,
+    
+    startup_args: Option<StartupArgs>,
+    
+    // 临时服务器地址，用于启动参数指定的服务器
+    temp_mp_address: Option<String>,
 }
 
 impl MPPanel {
@@ -164,6 +175,10 @@ impl MPPanel {
             user_list_btn: DRectButton::new(),
             user_list_p: Smooth::default(),
             icon_user,
+            
+            startup_args: None,
+            
+            temp_mp_address: None,
         }
     }
 
@@ -180,12 +195,12 @@ impl MPPanel {
             || self.scene_task.is_some()
     }
 
-    fn connect(&mut self) {
+    pub fn connect(&mut self) {
         let Some(token) = get_data().tokens.as_ref().map(|it| it.0.clone()) else {
             show_message(mtl!("connect-must-login")).error();
             return;
         };
-        let addr = get_data().config.mp_address.clone();
+        let addr = self.temp_mp_address.as_ref().unwrap_or(&get_data().config.mp_address).clone();
         self.connect_task = Some(Task::new(async move {
             let client = Client::new(TcpStream::connect(addr).await?).await?;
             client
@@ -196,12 +211,46 @@ impl MPPanel {
         }));
     }
 
-    fn create_room(&mut self, id: RoomId) {
+    pub fn create_room(&mut self, id: RoomId) {
         let client = self.clone_client();
         self.create_room_task = Some(Task::new(async move {
             client.create_room(id).await?;
             Ok(())
         }));
+    }
+
+    pub fn join_room(&mut self, id: RoomId) {
+        let client = self.clone_client();
+        self.join_room_task = Some(Task::new(async move {
+            client.join_room(id, false).await?;
+            client.room_state().await.ok_or_else(|| anyhow!("expected room state"))
+        }));
+    }
+
+    pub fn handle_startup_args(&mut self, join_room: Option<RoomId>, create_room: Option<RoomId>, mp_address: Option<String>) {
+        // 显示多人联机面板（使用与点击按钮时相同的方式）
+        self.show(prpr::time::TimeManager::default().real_time() as _);
+        
+        // 设置临时服务器地址
+        self.temp_mp_address = mp_address;
+        
+        if self.client.is_none() {
+            self.connect();
+        }
+        // 保存启动参数，在连接完成后处理
+        self.startup_args = Some(StartupArgs {
+            join_room: join_room.clone(),
+            create_room: create_room.clone(),
+        });
+        // 如果已经连接，直接执行操作
+        if self.client.is_some() {
+            if let Some(id) = join_room {
+                self.join_room(id);
+            }
+            if let Some(id) = create_room {
+                self.create_room(id);
+            }
+        }
     }
 
     pub fn select_chart(&mut self, id: i32) {
@@ -487,6 +536,15 @@ impl MPPanel {
                     Ok(client) => {
                         show_message(mtl!("connect-success")).ok();
                         self.client = Some(client.into());
+                        // 连接完成后处理启动参数
+                        if let Some(args) = self.startup_args.take() {
+                            if let Some(id) = args.join_room {
+                                self.join_room(id);
+                            }
+                            if let Some(id) = args.create_room {
+                                self.create_room(id);
+                            }
+                        }
                     }
                     Err(err) => {
                         show_error(err.context(mtl!("connect-failed")));

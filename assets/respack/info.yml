@@ -1,0 +1,13 @@
+name: Phigros Demo
+author: Phigros Official
+description: 这是Phira的流萤定制版本的内置资源包，也是Phigros Demo的官方资源包，你也可以点击左侧的+号来手动导入自己喜欢的资源包
+hitFx: [5, 9]
+holdAtlas: [50, 318]
+holdAtlasMH: [50, 318]
+hideParticles: true
+hitFxScale: 2.0
+hitFxDuration: 0.72
+holdKeepHead: false
+holdCompact: true
+colorPerfect: 0xE7BF7D
+colorGood: 0x9CE9FE

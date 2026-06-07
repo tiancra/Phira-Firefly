@@ -1,12 +1,15 @@
 
-info-fail = 加载谱面信息失败
-invalid-chart = 无效的谱面
+info-fail = 谱面信息被流萤吃掉了
+invalid-chart = 流萤不认识这张谱面哦
 
 importing = 导入中
 import-success = 导入成功
 import-failed = 导入失败
-import-respack-success = 导入资源包成功
-import-respack-failed = 导入资源包失败
+import-respack-success = 导入流萤的服装成功
+import-respack-failed = 导入流萤的服装失败
+import-theme-success = 导入主题成功
+import-theme-failed = 导入主题失败
+import-theme-no-manifest = 主题包中未找到 manifest.json 文件
 
 batch-import = 批量导入
 batch-importing = 批量导入中 ({ $current }/{ $total })

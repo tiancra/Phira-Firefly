@@ -1,11 +1,11 @@
 
 label = 活动
 
-load-list-failed = 加载活动列表失败
-load-failed = 加载活动失败
-load-status-failed = 加载活动状态失败
-load-ldb-failed = 加载排行榜失败
-join-failed = 参加活动失败
+load-list-failed = 活动列表被流萤吃掉了
+load-failed = 活动被流萤吃掉了
+load-status-failed = 活动状态被流萤吃掉了
+load-ldb-failed = 排行榜被流萤吃掉了
+join-failed = 活动被流萤吃掉了
 
 scroll-down-for-more = 下滑查看更多
 

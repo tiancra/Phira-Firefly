@@ -6,8 +6,8 @@ respack = 资源包
 not-opened = 功能尚未开启
 not-logged-in = 未登录
 
-failed-to-update = 加载用户信息失败
-note-try-login-again = 提示: 请尝试重新登录
+failed-to-update = 用户信息被流萤吃掉了
+note-try-login-again = 请尝试重新登录
 
 update = v{ $version } 更新
 update-desc =

@@ -1,6 +1,6 @@
 
 login = 登录
-login-sub = 登录以加入活跃的在线社区
+login-sub = 登录以加入活跃的星穹列车
 back-login = 返回登录
 register = 注册
 

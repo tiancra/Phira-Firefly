@@ -108,7 +108,7 @@ pub struct Data {
     pub config: Config,
     pub message_check_time: Option<DateTime<Utc>>,
     pub language: Option<String>,
-    pub theme: usize,
+    pub theme: String,
     pub tokens: Option<(String, String)>,
     pub respacks: Vec<String>,
     pub respack_id: usize,

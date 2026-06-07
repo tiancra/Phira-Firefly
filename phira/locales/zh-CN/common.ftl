@@ -1,5 +1,5 @@
 
-del-confirm = 你确定要删除吗？
+del-confirm = 你确定要脱下流萤的机甲吗吗？
 del-confirm-content = 该操作不可被撤销。
 
 cancel = 取消

@@ -9,7 +9,7 @@ prev-page = 上一页
 next-page = 下一页
 
 not-opened = 功能尚未开启
-failed-to-load-online = 加载在线谱面失败
+failed-to-load-online = 在线谱面被流萤吃掉了
 
 import = 导入
 
@@ -23,7 +23,7 @@ order-desc = 降序
 order-updated = 排序已更新
 order-update-failed-sort = 只能在默认排序方式下更新排序
 fav-synced = 收藏夹已同步
-fav-sync-failed = 收藏夹同步失败
+fav-sync-failed = 收藏夹同步功能被流萤玩坏了
 
 multi-select-status = 选中{ $count }项
 multi-export = 批量导出

@@ -322,13 +322,23 @@ pub async fn load_theme_res(name: &str) -> Option<Vec<u8>> {
     None
 }
 
-// 加载资源（只从 current 目录加载）
+// 加载资源（优先从 current 目录加载，失败则回退到 assets）
 pub async fn load_asset(name: &str) -> Vec<u8> {
+    // 首先尝试从主题目录加载
     if let Some(bytes) = load_theme_res(name).await {
         return bytes;
     }
-    warn!("Failed to load asset from theme path: {}", name);
-    load_file(name).await.unwrap_or_default()
+    
+    // 从主题目录加载失败，回退到 assets
+    warn!("Failed to load asset from theme path: {}, falling back to assets", name);
+    
+    match load_file(name).await {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            error!("Failed to load asset {} from assets: {}", name, e);
+            Vec::new()
+        }
+    }
 }
 
 // 加载纹理（优先从 current 目录加载，失败则回退到 assets）
@@ -351,17 +361,47 @@ pub async fn load_theme_texture(name: &str) -> Result<prpr::ext::SafeTexture> {
     
     // 如果从主题目录加载失败，回退到 assets（通过 macroquad 的 load_file）
     info!("Falling back to assets for: {}", name);
-    let bytes = load_file(name).await
-        .map_err(|e| anyhow::anyhow!("Failed to load texture {} from assets: {}", name, e))?;
     
-    // 从字节加载图片
-    let image = image::load_from_memory(&bytes)
-        .map_err(|e| anyhow::anyhow!("Failed to load image from assets {}: {}", name, e))?;
+    // Android: 尝试从 APK 的 assets 加载
+    #[cfg(target_os = "android")]
+    {
+        match load_file(name).await {
+            Ok(bytes) => {
+                // 从字节加载图片
+                match image::load_from_memory(&bytes) {
+                    Ok(image) => {
+                        let texture: prpr::ext::SafeTexture = image.into();
+                        return Ok(texture);
+                    }
+                    Err(e) => {
+                        warn!("Failed to load image from assets {}: {}", name, e);
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("Failed to load texture {} from assets: {}", name, e);
+            }
+        }
+    }
     
-    // 转换为纹理
-    let texture: prpr::ext::SafeTexture = image.into();
+    // 非Android平台：正常流程
+    #[cfg(not(target_os = "android"))]
+    {
+        let bytes = load_file(name).await
+            .map_err(|e| anyhow::anyhow!("Failed to load texture {} from assets: {}", name, e))?;
+        
+        // 从字节加载图片
+        let image = image::load_from_memory(&bytes)
+            .map_err(|e| anyhow::anyhow!("Failed to load image from assets {}: {}", name, e))?;
+        
+        // 转换为纹理
+        let texture: prpr::ext::SafeTexture = image.into();
+        
+        return Ok(texture);
+    }
     
-    Ok(texture)
+    // 如果都失败了，返回错误
+    Err(anyhow::anyhow!("Failed to load texture {} from both theme and assets", name))
 }
 
 #[allow(static_mut_refs)]

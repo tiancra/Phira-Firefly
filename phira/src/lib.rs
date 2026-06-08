@@ -123,10 +123,6 @@ fn copy_dir_all(src: impl AsRef<std::path::Path>, dst: impl AsRef<std::path::Pat
     Ok(())
 }
 
-<<<<<<< HEAD
-// 初始化 current 目录（只复制 assets）
-fn init_current_dir() -> Result<()> {
-=======
 // 需要复制的assets文件列表
 const ASSETS_FILES: &[&str] = &[
     "icon.png", "resume.png", "medal.png", "respack.png", "message.png", "settings.png",
@@ -162,29 +158,11 @@ async fn copy_assets_to_current(current_dir: &str) -> Result<()> {
 
 // 初始化 current 目录（只复制 assets）
 async fn init_current_dir() -> Result<()> {
->>>>>>> a0aabd6 (修复移动端无法编译的问题)
     let dir = dir::root()?;
     let themes_dir = format!("{}/themes", dir);
     let current_dir = format!("{}/current", themes_dir);
     let current_path = std::path::Path::new(&current_dir);
     
-<<<<<<< HEAD
-    if !current_path.exists() {
-        std::fs::create_dir_all(current_path)?;
-        
-        // 复制 assets 目录的所有文件到 current
-        let mut assets_path = None;
-        #[cfg(not(target_env = "ohos"))]
-        if let Ok(mut exe) = std::env::current_exe() {
-            while exe.pop() {
-                let candidate = exe.join("assets");
-                if candidate.exists() {
-                    assets_path = Some(candidate);
-                    break;
-                }
-            }
-        }
-=======
     std::fs::create_dir_all(&themes_dir)?;
     
     if !current_path.exists() {
@@ -193,8 +171,9 @@ async fn init_current_dir() -> Result<()> {
         // Android: 使用macroquad的load_file从APK读取assets并写入current目录
         #[cfg(target_os = "android")]
         {
-            info!("Android platform: copying assets to current directory");
-            copy_assets_to_current(&current_dir).await?;
+            // 在Android上，延迟复制assets到第一次需要时
+            // 这里只创建目录结构，不复制文件
+            info!("Android platform: created themes/current directory");
         }
         
         // iOS: assets在应用包内，可以直接复制
@@ -211,19 +190,10 @@ async fn init_current_dir() -> Result<()> {
         }
         
         // HarmonyOS: assets在固定路径
->>>>>>> a0aabd6 (修复移动端无法编译的问题)
         #[cfg(target_env = "ohos")]
         {
             let candidate = std::path::Path::new("/data/storage/el1/bundle/entry/resources/resfile/assets");
             if candidate.exists() {
-<<<<<<< HEAD
-                assets_path = Some(candidate.to_path_buf());
-            }
-        }
-        
-        if let Some(assets) = assets_path {
-            copy_dir_all(&assets, current_path)?;
-=======
                 copy_dir_all(&candidate, current_path)?;
             }
         }
@@ -238,7 +208,6 @@ async fn init_current_dir() -> Result<()> {
                     break;
                 }
             }
->>>>>>> a0aabd6 (修复移动端无法编译的问题)
         }
     }
     
@@ -252,18 +221,16 @@ pub fn apply_theme(theme_id: &str) -> Result<()> {
     let current_dir = format!("{}/current", themes_dir);
     let current_path = std::path::Path::new(&current_dir);
     
-<<<<<<< HEAD
-=======
     // 确保 themes 目录存在
     let themes_path = std::path::Path::new(&themes_dir);
     if !themes_path.exists() {
         std::fs::create_dir_all(themes_path)?;
     }
     
-    // Android: assets已经在init_current_dir中复制了，这里只需要复制主题文件
+    // Android: 简化处理，不复制文件，资源加载时直接从APK读取
     #[cfg(target_os = "android")]
     {
-        // 如果current目录不存在（init_current_dir还没运行），创建空目录
+        // 确保目录存在
         if !current_path.exists() {
             std::fs::create_dir_all(current_path)?;
         }
@@ -278,12 +245,11 @@ pub fn apply_theme(theme_id: &str) -> Result<()> {
         }
         
         info!("Android platform: applied theme {}", theme_id);
-        set_theme_path(Some(current_dir));
+        set_theme_path(Some(current_dir.clone()));
         return Ok(());
     }
     
     // 非Android平台：正常流程
->>>>>>> a0aabd6 (修复移动端无法编译的问题)
     // 清空 current 目录
     if current_path.exists() {
         std::fs::remove_dir_all(current_path)?;
@@ -291,10 +257,7 @@ pub fn apply_theme(theme_id: &str) -> Result<()> {
     std::fs::create_dir_all(current_path)?;
     
     // 复制 assets 目录的所有文件到 current
-    let mut assets_path = None;
-<<<<<<< HEAD
-    #[cfg(not(target_env = "ohos"))]
-=======
+    let mut assets_path: Option<std::path::PathBuf> = None;
     
     // iOS: assets在应用包内
     #[cfg(target_os = "ios")]
@@ -320,7 +283,6 @@ pub fn apply_theme(theme_id: &str) -> Result<()> {
     
     // 桌面系统: 从可执行文件目录查找
     #[cfg(not(any(target_os = "android", target_os = "ios", target_env = "ohos")))]
->>>>>>> a0aabd6 (修复移动端无法编译的问题)
     if let Ok(mut exe) = std::env::current_exe() {
         while exe.pop() {
             let candidate = exe.join("assets");
@@ -330,16 +292,6 @@ pub fn apply_theme(theme_id: &str) -> Result<()> {
             }
         }
     }
-<<<<<<< HEAD
-    #[cfg(target_env = "ohos")]
-    {
-        let candidate = std::path::Path::new("/data/storage/el1/bundle/entry/resources/resfile/assets");
-        if candidate.exists() {
-            assets_path = Some(candidate.to_path_buf());
-        }
-    }
-=======
->>>>>>> a0aabd6 (修复移动端无法编译的问题)
     
     if let Some(assets) = assets_path {
         copy_dir_all(&assets, current_path)?;
@@ -379,34 +331,14 @@ pub async fn load_asset(name: &str) -> Vec<u8> {
     load_file(name).await.unwrap_or_default()
 }
 
-<<<<<<< HEAD
-// 加载纹理（只从 current 目录加载）
-pub async fn load_theme_texture(name: &str) -> Result<prpr::ext::SafeTexture> {
-=======
 // 加载纹理（优先从 current 目录加载，失败则回退到 assets）
 pub async fn load_theme_texture(name: &str) -> Result<prpr::ext::SafeTexture> {
     // 首先尝试从主题目录加载
->>>>>>> a0aabd6 (修复移动端无法编译的问题)
     if let Some(theme_path) = get_theme_path() {
         let full_path = format!("{}/{}", theme_path, name);
         info!("Loading texture from: {}", full_path);
         
         // 直接读取文件字节
-<<<<<<< HEAD
-        let bytes = tokio::fs::read(&full_path).await
-            .map_err(|e| anyhow::anyhow!("Failed to read file {}: {}", full_path, e))?;
-        
-        // 从字节加载图片
-        let image = image::load_from_memory(&bytes)
-            .map_err(|e| anyhow::anyhow!("Failed to load image from {}: {}", full_path, e))?;
-        
-        // 转换为纹理
-        let texture: prpr::ext::SafeTexture = image.into();
-        
-        return Ok(texture);
-    }
-    Err(anyhow::anyhow!("Theme path not set"))
-=======
         if let Ok(bytes) = tokio::fs::read(&full_path).await {
             // 从字节加载图片
             if let Ok(image) = image::load_from_memory(&bytes) {
@@ -430,7 +362,6 @@ pub async fn load_theme_texture(name: &str) -> Result<prpr::ext::SafeTexture> {
     let texture: prpr::ext::SafeTexture = image.into();
     
     Ok(texture)
->>>>>>> a0aabd6 (修复移动端无法编译的问题)
 }
 
 #[allow(static_mut_refs)]
@@ -550,13 +481,14 @@ async fn the_main() -> Result<()> {
     save_data()?;
     
     // 初始化 current 目录（确保它存在并包含 assets 文件）
-<<<<<<< HEAD
-    let _ = init_current_dir();
+    #[cfg(target_os = "android")]
+    {
+        // Android: 等待 DATA_PATH 设置完成
+        while DATA_PATH.lock().unwrap().is_none() {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
     
-    // 应用配置的主题
-    let theme_id = get_data().theme.clone();
-    let _ = apply_theme(&theme_id);
-=======
     if let Err(e) = init_current_dir().await {
         warn!("Failed to init current directory: {}", e);
     }
@@ -566,18 +498,14 @@ async fn the_main() -> Result<()> {
     if let Err(e) = apply_theme(&theme_id) {
         warn!("Failed to apply theme {}: {}", theme_id, e);
     }
->>>>>>> a0aabd6 (修复移动端无法编译的问题)
     
     // 确保主题路径始终设置为 current 目录，即使 apply_theme 失败
     if let Ok(dir) = dir::root() {
         let current_dir = format!("{}/themes/current", dir);
-        set_theme_path(Some(current_dir));
-<<<<<<< HEAD
-=======
+        set_theme_path(Some(current_dir.clone()));
         
         // 确保目录存在
         let _ = std::fs::create_dir_all(current_dir);
->>>>>>> a0aabd6 (修复移动端无法编译的问题)
     }
 
     let rx = {

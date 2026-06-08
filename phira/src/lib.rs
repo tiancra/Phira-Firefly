@@ -443,7 +443,15 @@ async fn the_main() -> Result<()> {
         prpr::core::DPI_VALUE.store(250, std::sync::atomic::Ordering::Relaxed);
     };
 
-    init_assets();
+    #[cfg(not(target_os = "android"))]
+    {
+        init_assets();
+    }
+    #[cfg(target_os = "android")]
+    {
+        // Android: 不设置工作目录，使用默认的 assets 加载方式
+        info!("Android platform: skipping init_assets directory change");
+    }
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(4)

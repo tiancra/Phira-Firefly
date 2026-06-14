@@ -71,7 +71,7 @@ thread_local! {
 }
 
 pub fn init_assets() {
-    #[cfg(not(target_env = "ohos"))]
+    #[cfg(not(any(target_env = "ohos", target_os = "android")))]
     if let Ok(mut exe) = std::env::current_exe() {
         while exe.pop() {
             if exe.join("assets").exists() {
@@ -82,6 +82,7 @@ pub fn init_assets() {
     }
     #[cfg(target_env = "ohos")]
     let _ = std::env::set_current_dir("/data/storage/el1/bundle/entry/resources/resfile/");
+    #[cfg(not(target_os = "android"))]
     set_pc_assets_folder("assets");
 }
 

@@ -229,73 +229,76 @@ async fn the_main() -> Result<()> {
 
     let mut main = Main::new(Box::new(MainScene::new(font).await?), TimeManager::default(), None).await?;
 
-    // 处理启动参数
-    let mut join_room: Option<phira_mp_common::RoomId> = None;
-    let mut create_room: Option<phira_mp_common::RoomId> = None;
-    let mut mp_address: Option<String> = None;
-    
-    for arg in std::env::args() {
-        let arg = arg.trim();
+    #[cfg(target_os = "windows")]
+    {
+        // 处理启动参数
+        let mut join_room: Option<phira_mp_common::RoomId> = None;
+        let mut create_room: Option<phira_mp_common::RoomId> = None;
+        let mut mp_address: Option<String> = None;
         
-        // 处理多种格式的启动参数
-        let processed_arg = if arg.starts_with("phira://") {
-            // 处理 URI 格式：phira://room/join/123&server=...
-            arg.strip_prefix("phira://").unwrap_or(arg)
-        } else if arg.starts_with("room/") {
-            // 处理没有前导斜杠的格式：room/join/123&server=...
-            arg
-        } else if arg.starts_with("/room/") {
-            // 处理有前导斜杠的格式：/room/join/123&server=...
-            arg.strip_prefix("/").unwrap_or(arg)
-        } else {
-            continue;
-        };
-        
-        if processed_arg.starts_with("room/join/") {
-            let mut parts = processed_arg.split("&");
-            if let Some(room_part) = parts.next() {
-                if let Some(room_id) = room_part.strip_prefix("room/join/") {
-                    if let Ok(id) = room_id.to_string().try_into() {
-                        join_room = Some(id);
+        for arg in std::env::args() {
+            let arg = arg.trim();
+            
+            // 处理多种格式的启动参数
+            let processed_arg = if arg.starts_with("phira://") {
+                // 处理 URI 格式：phira://room/join/123&server=...
+                arg.strip_prefix("phira://").unwrap_or(arg)
+            } else if arg.starts_with("room/") {
+                // 处理没有前导斜杠的格式：room/join/123&server=...
+                arg
+            } else if arg.starts_with("/room/") {
+                // 处理有前导斜杠的格式：/room/join/123&server=...
+                arg.strip_prefix("/").unwrap_or(arg)
+            } else {
+                continue;
+            };
+            
+            if processed_arg.starts_with("room/join/") {
+                let mut parts = processed_arg.split("&");
+                if let Some(room_part) = parts.next() {
+                    if let Some(room_id) = room_part.strip_prefix("room/join/") {
+                        if let Ok(id) = room_id.to_string().try_into() {
+                            join_room = Some(id);
+                        }
                     }
                 }
-            }
-            // 解析服务器地址
-            for part in parts {
-                if part.starts_with("server=") {
-                    if let Some(address) = part.strip_prefix("server=") {
-                        mp_address = Some(address.to_string());
+                // 解析服务器地址
+                for part in parts {
+                    if part.starts_with("server=") {
+                        if let Some(address) = part.strip_prefix("server=") {
+                            mp_address = Some(address.to_string());
+                        }
                     }
                 }
-            }
-        } else if processed_arg.starts_with("room/create/") {
-            let mut parts = processed_arg.split("&");
-            if let Some(room_part) = parts.next() {
-                if let Some(room_id) = room_part.strip_prefix("room/create/") {
-                    if let Ok(id) = room_id.to_string().try_into() {
-                        create_room = Some(id);
+            } else if processed_arg.starts_with("room/create/") {
+                let mut parts = processed_arg.split("&");
+                if let Some(room_part) = parts.next() {
+                    if let Some(room_id) = room_part.strip_prefix("room/create/") {
+                        if let Ok(id) = room_id.to_string().try_into() {
+                            create_room = Some(id);
+                        }
                     }
                 }
-            }
-            // 解析服务器地址
-            for part in parts {
-                if part.starts_with("server=") {
-                    if let Some(address) = part.strip_prefix("server=") {
-                        mp_address = Some(address.to_string());
+                // 解析服务器地址
+                for part in parts {
+                    if part.starts_with("server=") {
+                        if let Some(address) = part.strip_prefix("server=") {
+                            mp_address = Some(address.to_string());
+                        }
                     }
                 }
             }
         }
-    }
-    
-    // 处理启动参数
-    if join_room.is_some() || create_room.is_some() {
-        use crate::scene::MP_PANEL;
-        MP_PANEL.with(|it| {
-            if let Some(panel) = it.borrow_mut().as_mut() {
-                panel.handle_startup_args(join_room, create_room, mp_address);
-            }
-        });
+        
+        // 处理启动参数
+        if join_room.is_some() || create_room.is_some() {
+            use crate::scene::MP_PANEL;
+            MP_PANEL.with(|it| {
+                if let Some(panel) = it.borrow_mut().as_mut() {
+                    panel.handle_startup_args(join_room, create_room, mp_address);
+                }
+            });
+        }
     }
 
     let tm = TimeManager::default();

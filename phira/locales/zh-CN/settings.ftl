@@ -1,27 +1,11 @@
 
 label = 设置
-cancel = 取消
-confirm = 确定
 
 general = 通用
 audio = 音频
 chart = 谱面
 debug = 调试
-themes = 主题
 about = 关于
-
-themes-empty = 暂未导入
-import-theme = 导入主题
-default-theme = 默认主题
-theme-delete = 删除
-theme-apply = 应用
-theme-applied = 已应用
-theme-version = 版本：{ $version }
-theme-about-content =
-  名称：{ $name }
-  版本：{ $version }
-  描述：{ $desc }
-theme-need-restart = 应用主题需要重启应用，确定重启？
 
 item-lang = 语言
 item-fullscreen = 全屏模式

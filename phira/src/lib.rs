@@ -42,7 +42,7 @@ use std::{
     collections::VecDeque,
     sync::{mpsc, Mutex},
 };
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 #[cfg(target_os = "android")]
 use jni::{
@@ -56,9 +56,6 @@ static AA_TX: Mutex<Option<mpsc::Sender<i32>>> = Mutex::new(None);
 static DATA_PATH: Mutex<Option<String>> = Mutex::new(None);
 static CACHE_DIR: Mutex<Option<String>> = Mutex::new(None);
 pub static mut DATA: Option<Data> = None;
-// 当前主题路径（仅在Windows平台使用）
-#[cfg(target_os = "windows")]
-static THEME_PATH: Mutex<Option<String>> = Mutex::new(None);
 
 #[cfg(target_env = "ohos")]
 use napi_derive_ohos::napi;
@@ -93,250 +90,6 @@ pub fn set_data(data: Data) {
     unsafe {
         DATA = Some(data);
     }
-}
-
-// 设置当前主题路径（仅在Windows平台使用）
-#[cfg(target_os = "windows")]
-pub fn set_theme_path(path: Option<String>) {
-    *THEME_PATH.lock().unwrap() = path;
-}
-
-// 获取当前主题路径（仅在Windows平台使用）
-#[cfg(target_os = "windows")]
-pub fn get_theme_path() -> Option<String> {
-    THEME_PATH.lock().unwrap().clone()
-}
-
-// 非Windows平台的空实现
-#[cfg(not(target_os = "windows"))]
-pub fn set_theme_path(_path: Option<String>) {}
-
-#[cfg(not(target_os = "windows"))]
-pub fn get_theme_path() -> Option<String> {
-    None
-}
-
-// 递归复制文件夹（仅在Windows平台使用）
-#[cfg(target_os = "windows")]
-fn copy_dir_all(src: impl AsRef<std::path::Path>, dst: impl AsRef<std::path::Path>) -> Result<()> {
-    let src = src.as_ref();
-    let dst = dst.as_ref();
-    
-    std::fs::create_dir_all(dst)?;
-    
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        let ty = entry.file_type()?;
-        if ty.is_dir() {
-            copy_dir_all(entry.path(), dst.join(entry.file_name()))?;
-        } else {
-            std::fs::copy(entry.path(), dst.join(entry.file_name()))?;
-        }
-    }
-    Ok(())
-}
-
-// 需要复制的assets文件列表（仅在Windows平台使用）
-#[cfg(target_os = "windows")]
-const ASSETS_FILES: &[&str] = &[
-    "icon.png", "resume.png", "medal.png", "respack.png", "message.png", "settings.png",
-    "language.png", "back.png", "download.png", "user.png", "info.png", "delete.png",
-    "menu.png", "edit.png", "leaderboard.png", "close.png", "search.png", "order.png",
-    "filter.png", "mod.png", "star.png", "star_outline.png", "heart.png", "heart_outline.png",
-    "cloud_none.png", "cloud_check.png", "plus.png", "select.png", "abstract.jpg",
-    "background.jpg", "multiplayer.png", "font.ttf", "phigros.ttf",
-    "button.ogg", "button_large.ogg", "switch.ogg",
-];
-
-// 使用macroquad的load_file读取assets并写入目标目录（仅在Windows平台使用）
-#[cfg(target_os = "windows")]
-async fn copy_assets_to_current(current_dir: &str) -> Result<()> {
-    for &file in ASSETS_FILES {
-        let file_path = format!("{}/{}", current_dir, file);
-        
-        match load_file(file).await {
-            Ok(bytes) => {
-                if let Some(parent) = std::path::Path::new(&file_path).parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                std::fs::write(&file_path, bytes)?;
-                info!("Copied asset to: {}", file_path);
-            }
-            Err(e) => {
-                warn!("Failed to load asset {}: {}", file, e);
-            }
-        }
-    }
-    
-    Ok(())
-}
-
-// 初始化 current 目录（仅在Windows平台使用）
-#[cfg(target_os = "windows")]
-async fn init_current_dir() -> Result<()> {
-    let dir = dir::root()?;
-    let themes_dir = format!("{}/themes", dir);
-    let current_dir = format!("{}/current", themes_dir);
-    let current_path = std::path::Path::new(&current_dir);
-    
-    std::fs::create_dir_all(&themes_dir)?;
-    
-    if !current_path.exists() {
-        std::fs::create_dir_all(current_path)?;
-        
-        // 桌面系统: 从可执行文件目录查找 assets
-        if let Ok(mut exe) = std::env::current_exe() {
-            while exe.pop() {
-                let candidate = exe.join("assets");
-                if candidate.exists() {
-                    copy_dir_all(&candidate, current_path)?;
-                    break;
-                }
-            }
-        }
-    }
-    
-    Ok(())
-}
-
-// 非Windows平台的空实现
-#[cfg(not(target_os = "windows"))]
-async fn init_current_dir() -> Result<()> {
-    Ok(())
-}
-
-// 应用主题（复制文件到data/themes/current目录）（仅在Windows平台使用）
-#[cfg(target_os = "windows")]
-pub fn apply_theme(theme_id: &str) -> Result<()> {
-    let dir = dir::root()?;
-    let themes_dir = format!("{}/themes", dir);
-    let current_dir = format!("{}/current", themes_dir);
-    let current_path = std::path::Path::new(&current_dir);
-    
-    // 确保 themes 目录存在
-    let themes_path = std::path::Path::new(&themes_dir);
-    if !themes_path.exists() {
-        std::fs::create_dir_all(themes_path)?;
-    }
-    
-    // 清空 current 目录
-    if current_path.exists() {
-        std::fs::remove_dir_all(current_path)?;
-    }
-    std::fs::create_dir_all(current_path)?;
-    
-    // 复制 assets 目录的所有文件到 current
-    let mut assets_path: Option<std::path::PathBuf> = None;
-    
-    // 桌面系统: 从可执行文件目录查找
-    if let Ok(mut exe) = std::env::current_exe() {
-        while exe.pop() {
-            let candidate = exe.join("assets");
-            if candidate.exists() {
-                assets_path = Some(candidate);
-                break;
-            }
-        }
-    }
-    
-    if let Some(assets) = assets_path {
-        copy_dir_all(&assets, current_path)?;
-    }
-    
-    // 复制主题文件夹的内容到 current（覆盖已存在的文件）
-    let theme_dir = format!("{}/{}", themes_dir, theme_id);
-    let theme_path = std::path::Path::new(&theme_dir);
-    if theme_path.exists() {
-        copy_dir_all(theme_path, current_path)?;
-    }
-    
-    // 设置主题路径为 current 目录
-    set_theme_path(Some(current_dir));
-    
-    Ok(())
-}
-
-// 非Windows平台的空实现
-#[cfg(not(target_os = "windows"))]
-pub fn apply_theme(_theme_id: &str) -> Result<()> {
-    Ok(())
-}
-
-// 加载主题资源（仅在Windows平台使用）
-#[cfg(target_os = "windows")]
-pub async fn load_theme_res(name: &str) -> Option<Vec<u8>> {
-    if let Some(theme_path) = get_theme_path() {
-        let path = format!("{}/{}", theme_path, name);
-        match tokio::fs::read(&path).await {
-            Ok(bytes) => return Some(bytes),
-            Err(_) => {}
-        }
-    }
-    None
-}
-
-// 非Windows平台的空实现
-#[cfg(not(target_os = "windows"))]
-pub async fn load_theme_res(_name: &str) -> Option<Vec<u8>> {
-    None
-}
-
-// 加载资源（Windows平台优先从 current 目录加载，其他平台直接从 assets 加载）
-pub async fn load_asset(name: &str) -> Vec<u8> {
-    // Windows: 首先尝试从主题目录加载
-    #[cfg(target_os = "windows")]
-    {
-        if let Some(bytes) = load_theme_res(name).await {
-            return bytes;
-        }
-        warn!("Failed to load asset from theme path: {}, falling back to assets", name);
-    }
-    
-    // 所有平台：从 assets 加载
-    match load_file(name).await {
-        Ok(bytes) => bytes,
-        Err(e) => {
-            error!("Failed to load asset {} from assets: {}", name, e);
-            Vec::new()
-        }
-    }
-}
-
-// 加载纹理（Windows平台优先从 current 目录加载，其他平台直接从 assets 加载）
-pub async fn load_theme_texture(name: &str) -> Result<prpr::ext::SafeTexture> {
-    // Windows: 首先尝试从主题目录加载
-    #[cfg(target_os = "windows")]
-    {
-        if let Some(theme_path) = get_theme_path() {
-            let full_path = format!("{}/{}", theme_path, name);
-            info!("Loading texture from: {}", full_path);
-            
-            // 直接读取文件字节
-            if let Ok(bytes) = tokio::fs::read(&full_path).await {
-                // 从字节加载图片
-                if let Ok(image) = image::load_from_memory(&bytes) {
-                    // 转换为纹理
-                    let texture: prpr::ext::SafeTexture = image.into();
-                    return Ok(texture);
-                }
-            }
-        }
-        
-        info!("Falling back to assets for: {}", name);
-    }
-    
-    // 所有平台：从 assets 加载
-    let bytes = load_file(name).await
-        .map_err(|e| anyhow::anyhow!("Failed to load texture {} from assets: {}", name, e))?;
-    
-    // 从字节加载图片
-    let image = image::load_from_memory(&bytes)
-        .map_err(|e| anyhow::anyhow!("Failed to load image from assets {}: {}", name, e))?;
-    
-    // 转换为纹理
-    let texture: prpr::ext::SafeTexture = image.into();
-    
-    Ok(texture)
 }
 
 #[allow(static_mut_refs)]
@@ -418,7 +171,6 @@ async fn the_main() -> Result<()> {
         prpr::core::DPI_VALUE.store(250, std::sync::atomic::Ordering::Relaxed);
     };
 
-    // 所有平台都调用 init_assets（Android 也会从 APK 加载 assets）
     init_assets();
 
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -447,29 +199,6 @@ async fn the_main() -> Result<()> {
     set_data(data);
     sync_data();
     save_data()?;
-    
-    // Windows: 初始化主题系统
-    #[cfg(target_os = "windows")]
-    {
-        if let Err(e) = init_current_dir().await {
-            warn!("Failed to init current directory: {}", e);
-        }
-        
-        // 应用配置的主题
-        let theme_id = get_data().theme.clone();
-        if let Err(e) = apply_theme(&theme_id) {
-            warn!("Failed to apply theme {}: {}", theme_id, e);
-        }
-        
-        // 确保主题路径始终设置为 current 目录，即使 apply_theme 失败
-        if let Ok(dir) = dir::root() {
-            let current_dir = format!("{}/themes/current", dir);
-            set_theme_path(Some(current_dir.clone()));
-            
-            // 确保目录存在
-            let _ = std::fs::create_dir_all(current_dir);
-        }
-    }
 
     let rx = {
         let (tx, rx) = mpsc::channel();
@@ -629,12 +358,12 @@ async fn the_main() -> Result<()> {
                 }
                 // period restrict
                 1030 => {
-                    show_and_exit("你当前为未成年账号，已被纳入防沉迷系统。根据国家相关规定，周五、周六、周日及法定节假日 20 点 - 21 点之外为健康保护时段，此段时间内无法进行游戏。");
+                    show_and_exit("你当前为未成年账号，已被纳入防沉迷系统。根据国家相关规定，周五、周六、周日及法定节假日 20 点 - 21 点之外为健康保护时段。当前时间段无法游玩，请合理安排时间。");
                     exit_time = frame_start;
                 }
                 // duration limit
                 1050 => {
-                    show_and_exit("你当前为未成年账号，已被纳入防沉迷系统。根据国家相关规定，周五、周六、周日及法定节假日 20 点 - 21 点之外为健康保护时段，此段时间内无法进行游戏。");
+                    show_and_exit("你当前为未成年账号，已被纳入防沉迷系统。根据国家相关规定，周五、周六、周日及法定节假日 20 点 - 21 点之外为健康保护时段。你已达时间限制，无法继续游戏。");
                     exit_time = frame_start;
                 }
                 // stopped

@@ -16,13 +16,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4.2.2
-      with:
-        sparse-checkout: |
-          **
-          !target/
-          !cache/
-          !data/
-        sparse-checkout-cone-mode: false
     
     - run: |
         sudo apt-get update

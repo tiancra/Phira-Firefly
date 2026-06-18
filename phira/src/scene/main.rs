@@ -92,23 +92,28 @@ impl MainScene {
     pub async fn new(fallback: FontArc) -> Result<Self> {
         Self::init().await?;
 
-        #[cfg(closed)]
-        let bgm = {
-            let bgm_clip = AudioClip::new(crate::load_res("res/bgm").await)?;
-            Some(UI_AUDIO.with(|it| {
-                it.borrow_mut().create_music(
-                    bgm_clip,
-                    sasa::MusicParams {
-                        amplifier: get_data().config.volume_bgm,
-                        loop_mix_time: 5.46,
-                        command_buffer_size: 64,
-                        ..Default::default()
-                    },
-                )
-            })?)    
-        };
-        #[cfg(not(closed))]
+        #[cfg(target_os = "android")]
         let bgm = None;
+        #[cfg(not(target_os = "android"))]
+        let bgm = {
+            match AudioClip::new(load_file("bgm.mp3").await?) {
+                Ok(clip) => Some(UI_AUDIO.with(|it| {
+                    it.borrow_mut().create_music(
+                        clip,
+                        sasa::MusicParams {
+                            amplifier: get_data().config.volume_bgm,
+                            loop_mix_time: 5.46,
+                            command_buffer_size: 64,
+                            ..Default::default()
+                        },
+                    )
+                })?),
+                Err(err) => {
+                    warn!("failed to create audio clip: {:?}", err);
+                    None
+                }
+            }
+        };
 
         let mut sf = Self::new_inner(bgm, fallback).await?;
         sf.pages.push(Box::new(HomePage::new().await?));

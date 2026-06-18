@@ -113,7 +113,15 @@ mod dir {
     use crate::{CACHE_DIR, DATA_PATH};
 
     fn ensure(s: &str) -> Result<String> {
-        let s = format!("{}/{}", DATA_PATH.lock().unwrap().as_ref().map(|it| it.as_str()).unwrap_or("."), s);
+        let base = DATA_PATH.lock().unwrap().as_ref().map(|it| it.to_string());
+        #[cfg(target_os = "android")]
+        let base = base.or_else(|| {
+            std::env::var("TMPDIR").ok().map(|tmpdir| {
+                tmpdir.trim_end_matches("/cache").to_string() + "/files"
+            })
+        });
+        let base = base.unwrap_or_else(|| ".".to_string());
+        let s = format!("{}/{}", base, s);
         let path = std::path::Path::new(&s);
         if !path.exists() {
             std::fs::create_dir_all(path)?;

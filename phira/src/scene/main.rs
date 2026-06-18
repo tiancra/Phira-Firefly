@@ -92,6 +92,9 @@ impl MainScene {
     pub async fn new(fallback: FontArc) -> Result<Self> {
         Self::init().await?;
 
+        #[cfg(target_os = "android")]
+        let bgm = None;
+        #[cfg(not(target_os = "android"))]
         let bgm = {
             match AudioClip::new(load_file("bgm.mp3").await?) {
                 Ok(clip) => Some(UI_AUDIO.with(|it| {

@@ -44,6 +44,45 @@ use tracing::{debug, warn};
 
 const PAUSE_CLICK_INTERVAL: f32 = 0.7;
 
+#[cfg(target_os = "windows")]
+mod windows_ime {
+    use std::os::raw::c_void;
+
+    #[link(name = "user32")]
+    extern "system" {
+        fn GetForegroundWindow() -> *mut c_void;
+    }
+
+    #[link(name = "imm32")]
+    extern "system" {
+        fn ImmAssociateContext(hwnd: *mut c_void, himc: *mut c_void) -> *mut c_void;
+        fn ImmGetContext(hwnd: *mut c_void) -> *mut c_void;
+        fn ImmReleaseContext(hwnd: *mut c_void, himc: *mut c_void) -> i32;
+    }
+
+    pub fn disable() {
+        unsafe {
+            let hwnd = GetForegroundWindow();
+            if !hwnd.is_null() {
+                ImmAssociateContext(hwnd, std::ptr::null_mut());
+            }
+        }
+    }
+
+    pub fn enable() {
+        unsafe {
+            let hwnd = GetForegroundWindow();
+            if !hwnd.is_null() {
+                let himc = ImmGetContext(hwnd);
+                if !himc.is_null() {
+                    ImmAssociateContext(hwnd, himc);
+                    ImmReleaseContext(hwnd, himc);
+                }
+            }
+        }
+    }
+}
+
 #[rustfmt::skip]
 #[cfg(closed)]
 mod inner;
@@ -1025,6 +1064,8 @@ impl Scene for GameScene {
         on_game_start();
         #[cfg(target_env = "ohos")]
         miniquad::native::set_interceptor_state(true);
+        #[cfg(target_os = "windows")]
+        windows_ime::disable();
         self.music = Self::new_music(&mut self.res)?;
         self.res.camera.render_target = target;
         tm.speed = self.res.config.speed as _;
@@ -1239,9 +1280,6 @@ impl Scene for GameScene {
             && (self.res.config.mods.contains(Mods::INSTANT_DEATH_AP) && counts[1] + counts[2] + counts[3] > 0
                 || self.res.config.mods.contains(Mods::INSTANT_DEATH_FC) && counts[2] + counts[3] > 0)
         {
-            if !self.music.paused() {
-                self.music.pause()?;
-            }
             self.skip_done = true;
             self.skip_transition_progress = 0.0;
             self.skip_wait_timer = 0.0;
@@ -1523,6 +1561,10 @@ impl Scene for GameScene {
     }
 
     fn next_scene(&mut self, tm: &mut TimeManager) -> NextScene {
+        if self.should_exit || self.next_scene.is_some() {
+            #[cfg(target_os = "windows")]
+            windows_ime::enable();
+        }
         if self.should_exit {
             if tm.paused() {
                 tm.resume();

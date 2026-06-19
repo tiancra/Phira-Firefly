@@ -655,8 +655,7 @@ impl GameScene {
             let full_h = 2.0 / res.aspect_ratio;
             let bar_h = full_h * skip_eased;
             let fade_out_eased = (self.skip_fade_out_progress * std::f32::consts::PI / 2.0).sin();
-            let overlay_alpha = 0.9 * (1.0 - fade_out_eased);
-            ui.fill_rect(Rect::new(-1., top, 2., bar_h), Color::new(0., 0., 0., overlay_alpha));
+            ui.fill_rect(Rect::new(-1., top, 2., bar_h), Color::new(0., 0., 0., 0.9));
             if self.skip_transition_progress >= 1.0 {
                 let text_eased = (self.skip_wait_timer / 0.3).min(1.0);
                 let text_alpha = (text_eased * std::f32::consts::PI / 2.0).sin() * (1.0 - fade_out_eased);

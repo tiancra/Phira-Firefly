@@ -222,6 +222,11 @@ async fn the_main() -> Result<()> {
     sync_data();
     save_data()?;
 
+    #[cfg(target_os = "windows")]
+    {
+        macroquad::window::set_fullscreen(get_data().config.fullscreen_mode);
+    }
+
     let rx = {
         let (tx, rx) = mpsc::channel();
         *MESSAGES_TX.lock().unwrap() = Some(tx);

@@ -158,6 +158,7 @@ pub struct GameScene {
 
     // skip bar
     skip_bar_active: bool,
+    skip_bar_retracting: bool,
     skip_bar_progress: f32,
     skip_alt_s_hold_time: f32,
     skip_countdown: f32,
@@ -356,6 +357,7 @@ impl GameScene {
             dead: false,
 
             skip_bar_active: false,
+            skip_bar_retracting: false,
             skip_bar_progress: 0.0,
             skip_alt_s_hold_time: 0.0,
             skip_countdown: 3.0,
@@ -400,9 +402,10 @@ impl GameScene {
         let top = -1. / res.aspect_ratio;
         let pause_w = 0.015;
         let pause_h = pause_w * 3.2;
-        let ui_shift_y = if self.skip_bar_active {
+        let camera_vp_h = res.camera.viewport.map(|v| v.3 as f32).unwrap_or(screen_height());
+        let ui_shift_y = if self.skip_bar_active || self.skip_bar_retracting {
             let eased = (self.skip_bar_progress * std::f32::consts::PI / 2.0).sin();
-            20.0 / screen_height() * 2.0 * res.aspect_ratio * eased
+            20.0 / camera_vp_h * 2.0 * res.aspect_ratio * eased
         } else {
             0.0
         };
@@ -565,14 +568,14 @@ impl GameScene {
                     ui.fill_rect(Rect::new(-1. + dest - hw, top, hw * 2., height), WHITE);
                 });
         });
-        if self.skip_bar_active {
+        if self.skip_bar_active || self.skip_bar_retracting {
             let eased = (self.skip_bar_progress * std::f32::consts::PI / 2.0).sin();
-            let bar_h = 20.0 / screen_height() * 2.0 * res.aspect_ratio * eased;
+            let bar_h = 20.0 / camera_vp_h * 2.0 * res.aspect_ratio * eased;
             let bar_top = -ui.top;
             ui.fill_rect(Rect::new(-1., bar_top, 2., bar_h), Color::new(0., 0., 0., 0.7));
             let white_w = self.skip_white_bar_progress * 2.0;
-            let white_h = bar_h * 0.3;
-            let white_top = bar_top + (bar_h - white_h) / 2.0;
+            let white_h = bar_h;
+            let white_top = bar_top;
             ui.fill_rect(Rect::new(-1., white_top, white_w, white_h), Color::new(1., 1., 1., 0.5));
             let text = format!("将在{:.1}秒后跳过谱面，如需取消跳过请松开按键", self.skip_countdown);
             ui.text(&text)
@@ -1185,7 +1188,9 @@ impl Scene for GameScene {
             }
         }
         // Alt+S skip bar
-        if is_key_down(KeyCode::LeftAlt) && is_key_down(KeyCode::S) {
+        let alt_s_down = is_key_down(KeyCode::LeftAlt) && is_key_down(KeyCode::S);
+        if alt_s_down {
+            self.skip_bar_retracting = false;
             if !self.skip_bar_active {
                 self.skip_bar_active = true;
                 self.skip_bar_progress = 0.0;
@@ -1196,12 +1201,19 @@ impl Scene for GameScene {
             self.skip_bar_progress = (self.skip_bar_progress + dt / 0.3).min(1.0);
             self.skip_countdown = (3.0 - self.skip_alt_s_hold_time).max(0.0);
             self.skip_white_bar_progress = (self.skip_alt_s_hold_time / 3.0).min(1.0);
-        } else {
-            self.skip_bar_active = false;
-            self.skip_bar_progress = 0.0;
-            self.skip_alt_s_hold_time = 0.0;
-            self.skip_countdown = 3.0;
-            self.skip_white_bar_progress = 0.0;
+        } else if self.skip_bar_active {
+            if !self.skip_bar_retracting {
+                self.skip_bar_retracting = true;
+            }
+            let dt = get_frame_time();
+            self.skip_bar_progress = (self.skip_bar_progress - dt / 0.3).max(0.0);
+            if self.skip_bar_progress <= 0.0 {
+                self.skip_bar_active = false;
+                self.skip_bar_retracting = false;
+                self.skip_alt_s_hold_time = 0.0;
+                self.skip_countdown = 3.0;
+                self.skip_white_bar_progress = 0.0;
+            }
         }
         Ok(())
     }

@@ -166,6 +166,7 @@ pub struct GameScene {
     skip_done: bool,
     skip_transition_progress: f32,
     skip_wait_timer: f32,
+    skip_fade_out_progress: f32,
 }
 
 macro_rules! reset {
@@ -368,6 +369,7 @@ impl GameScene {
             skip_done: false,
             skip_transition_progress: 0.0,
             skip_wait_timer: 0.0,
+            skip_fade_out_progress: 0.0,
         })
     }
 
@@ -652,10 +654,12 @@ impl GameScene {
         if self.skip_done {
             let full_h = 2.0 / res.aspect_ratio;
             let bar_h = full_h * skip_eased;
-            ui.fill_rect(Rect::new(-1., top, 2., bar_h), Color::new(0., 0., 0., 0.9));
+            let fade_out_eased = (self.skip_fade_out_progress * std::f32::consts::PI / 2.0).sin();
+            let overlay_alpha = 0.9 * (1.0 - fade_out_eased);
+            ui.fill_rect(Rect::new(-1., top, 2., bar_h), Color::new(0., 0., 0., overlay_alpha));
             if self.skip_transition_progress >= 1.0 {
                 let text_eased = (self.skip_wait_timer / 0.3).min(1.0);
-                let text_alpha = (text_eased * std::f32::consts::PI / 2.0).sin();
+                let text_alpha = (text_eased * std::f32::consts::PI / 2.0).sin() * (1.0 - fade_out_eased);
                 let gap = 20.0 / camera_vp_h * 2.0 * res.aspect_ratio;
                 ui.text("跳过曲目")
                     .pos(0., -gap / 2.)
@@ -1336,15 +1340,17 @@ impl Scene for GameScene {
             let dt = get_frame_time();
             if self.skip_transition_progress < 1.0 {
                 self.skip_transition_progress = (self.skip_transition_progress + dt / 0.5).min(1.0);
-            } else {
+            } else if self.skip_fade_out_progress < 1.0 {
                 self.skip_wait_timer += dt;
                 if self.skip_wait_timer >= 3.0 {
-                    if !self.music.paused() {
-                        self.music.pause()?;
-                    }
-                    self.finish_and_show_result()?;
-                    return Ok(());
+                    self.skip_fade_out_progress = (self.skip_fade_out_progress + dt / 0.5).min(1.0);
                 }
+            } else {
+                if !self.music.paused() {
+                    self.music.pause()?;
+                }
+                self.finish_and_show_result()?;
+                return Ok(());
             }
         }
         Ok(())

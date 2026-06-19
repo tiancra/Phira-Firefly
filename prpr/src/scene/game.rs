@@ -163,6 +163,9 @@ pub struct GameScene {
     skip_alt_s_hold_time: f32,
     skip_countdown: f32,
     skip_white_bar_progress: f32,
+    skip_done: bool,
+    skip_transition_progress: f32,
+    skip_wait_timer: f32,
 }
 
 macro_rules! reset {
@@ -362,6 +365,9 @@ impl GameScene {
             skip_alt_s_hold_time: 0.0,
             skip_countdown: 3.0,
             skip_white_bar_progress: 0.0,
+            skip_done: false,
+            skip_transition_progress: 0.0,
+            skip_wait_timer: 0.0,
         })
     }
 
@@ -380,7 +386,102 @@ impl GameScene {
         (screen_width() / screen_height()) / self.res.aspect_ratio
     }
 
+    fn finish_and_show_result(&mut self) -> Result<()> {
+        let mut record_data = None;
+        #[cfg(closed)]
+        if let Some(upload_fn) = &self.upload_fn {
+            if !self.res.config.offline_mode
+                && !self.res.config.mods.intersects(Mods::UNRATED)
+                && !self.res.config.use_keyboard
+                && self.res.config.speed >= 1.0 - 1e-3
+            {
+                if let Some(player) = &self.player {
+                    if let Some(chart) = &self.res.info.id {
+                        record_data = Some(encode_record(self, player.id, *chart));
+                    }
+                }
+            }
+        }
+        let result = self.judge.result();
+        let record = if self.res.config.mods.intersects(Mods::UNRATED) || self.res.config.speed < 1.0 - 1e-3 {
+            None
+        } else {
+            Some(SimpleRecord {
+                score: result.score as _,
+                accuracy: result.accuracy as _,
+                full_combo: result.max_combo == result.num_of_notes,
+            })
+        };
+        self.next_scene = match self.mode {
+            GameMode::Normal | GameMode::NoRetry | GameMode::View => {
+                let historic_best = self.player.as_ref().map_or(0, |it| it.historic_best);
+                if let Some(new_rec) = &record {
+                    if let Some(f) = &self.save_fn {
+                        f(new_rec.clone())?;
+                    }
+                    if let Some(best) = &mut self.best_record {
+                        best.update(new_rec);
+                    } else {
+                        self.best_record = record.clone();
+                    }
+                    if let Some(best) = &self.best_record {
+                        if let Some(player) = &mut self.player {
+                            player.historic_best = player.historic_best.max(best.score as _);
+                        }
+                    }
+                }
+                Some(NextScene::Overlay(Box::new(EndingScene::new(
+                    self.res.background.clone(),
+                    self.res.illustration.clone(),
+                    self.res.player.clone(),
+                    self.res.icons.clone(),
+                    self.res.icon_retry.clone(),
+                    self.res.icon_proceed.clone(),
+                    self.res.mod_icons.clone(),
+                    self.res.info.clone(),
+                    self.judge.result(),
+                    &self.res.config,
+                    self.res.res_pack.ending.clone(),
+                    self.upload_fn.as_ref().map(Arc::clone),
+                    self.player.as_ref().map(|it| it.rks),
+                    historic_best,
+                    record_data,
+                    self.best_record.clone(),
+                    if self.res.config.show_avg_fps { self.get_avg_fps() } else { None },
+                )?)))
+            }
+            GameMode::TweakOffset => Some(NextScene::PopWithResult(Box::new(None::<f32>))),
+            GameMode::Exercise => None,
+        };
+        Ok(())
+    }
+
     fn ui(&mut self, ui: &mut Ui, tm: &mut TimeManager) -> Result<()> {
+        if self.skip_done {
+            let res = &self.res;
+            let top = -1. / res.aspect_ratio;
+            let camera_vp_h = res.camera.viewport.map(|v| v.3 as f32).unwrap_or(screen_height());
+            let eased = (self.skip_transition_progress * std::f32::consts::PI / 2.0).sin();
+            let full_h = 2.0 / res.aspect_ratio;
+            let bar_h = full_h * eased;
+            ui.fill_rect(Rect::new(-1., top, 2., bar_h), Color::new(0., 0., 0., 0.9));
+            if self.skip_transition_progress >= 1.0 {
+                let gap = 50.0 / camera_vp_h * 2.0 * res.aspect_ratio;
+                ui.text("跳过曲目")
+                    .pos(0., -gap / 2.)
+                    .anchor(0.5, 0.5)
+                    .size(0.6)
+                    .color(WHITE)
+                    .draw();
+                ui.text("TRACK SKIP")
+                    .pos(0., gap / 2.)
+                    .anchor(0.5, 0.5)
+                    .size(0.6)
+                    .color(WHITE)
+                    .draw();
+            }
+            return Ok(());
+        }
         let time = tm.now();
         let p = match self.state {
             State::Starting => {
@@ -1194,30 +1295,50 @@ impl Scene for GameScene {
         }
         // Alt+S skip bar
         let alt_s_down = is_key_down(KeyCode::LeftAlt) && is_key_down(KeyCode::S);
-        if alt_s_down {
-            self.skip_bar_retracting = false;
-            if !self.skip_bar_active {
-                self.skip_bar_active = true;
-                self.skip_bar_progress = 0.0;
-                self.skip_alt_s_hold_time = 0.0;
-            }
-            let dt = get_frame_time();
-            self.skip_alt_s_hold_time += dt;
-            self.skip_bar_progress = (self.skip_bar_progress + dt / 0.3).min(1.0);
-            self.skip_countdown = (3.0 - self.skip_alt_s_hold_time).max(0.0);
-            self.skip_white_bar_progress = (self.skip_alt_s_hold_time / 3.0).min(1.0);
-        } else if self.skip_bar_active {
-            if !self.skip_bar_retracting {
-                self.skip_bar_retracting = true;
-            }
-            let dt = get_frame_time();
-            self.skip_bar_progress = (self.skip_bar_progress - dt / 0.3).max(0.0);
-            if self.skip_bar_progress <= 0.0 {
-                self.skip_bar_active = false;
+        if !self.skip_done {
+            if alt_s_down {
                 self.skip_bar_retracting = false;
-                self.skip_alt_s_hold_time = 0.0;
-                self.skip_countdown = 3.0;
-                self.skip_white_bar_progress = 0.0;
+                if !self.skip_bar_active {
+                    self.skip_bar_active = true;
+                    self.skip_bar_progress = 0.0;
+                    self.skip_alt_s_hold_time = 0.0;
+                }
+                let dt = get_frame_time();
+                self.skip_alt_s_hold_time += dt;
+                self.skip_bar_progress = (self.skip_bar_progress + dt / 0.3).min(1.0);
+                self.skip_countdown = (3.0 - self.skip_alt_s_hold_time).max(0.0);
+                self.skip_white_bar_progress = (self.skip_alt_s_hold_time / 3.0).min(1.0);
+                if self.skip_countdown <= 0.0 {
+                    self.skip_done = true;
+                    self.skip_bar_active = false;
+                    self.skip_bar_retracting = false;
+                    self.skip_transition_progress = 0.0;
+                    self.skip_wait_timer = 0.0;
+                }
+            } else if self.skip_bar_active {
+                if !self.skip_bar_retracting {
+                    self.skip_bar_retracting = true;
+                }
+                let dt = get_frame_time();
+                self.skip_bar_progress = (self.skip_bar_progress - dt / 0.3).max(0.0);
+                if self.skip_bar_progress <= 0.0 {
+                    self.skip_bar_active = false;
+                    self.skip_bar_retracting = false;
+                    self.skip_alt_s_hold_time = 0.0;
+                    self.skip_countdown = 3.0;
+                    self.skip_white_bar_progress = 0.0;
+                }
+            }
+        } else {
+            let dt = get_frame_time();
+            if self.skip_transition_progress < 1.0 {
+                self.skip_transition_progress = (self.skip_transition_progress + dt / 0.5).min(1.0);
+            } else {
+                self.skip_wait_timer += dt;
+                if self.skip_wait_timer >= 3.0 {
+                    self.finish_and_show_result()?;
+                    return Ok(());
+                }
             }
         }
         Ok(())

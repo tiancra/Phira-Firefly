@@ -1,8 +1,8 @@
 
-load-preview-failed = 加载歌曲预览被流萤吃掉了
-load-charts-failed = 加载难度被流萤吃掉了
+load-preview-failed = 歌曲预览被流萤吃掉了
+load-charts-failed = 难度被流萤吃掉了
 
-load-chart-failed = 加载谱面被流萤吃掉了
+load-chart-failed = 谱面被流萤吃掉了
 
 dl-cancel = 取消
 dl-status-fetch = 加载信息
@@ -32,7 +32,7 @@ unlock = 播放解锁动画
 edit-cancel = 取消
 edit-save = 保存
 edit-saving = 保存中
-edit-load-file-failed = 加载外部文件被流萤吃掉了
+edit-load-file-failed = 外部文件被流萤吃掉了
 edit-save-failed = 保存失败
 edit-saved = 保存成功
 edit-preview-invalid = 预览时间超出范围
@@ -144,7 +144,7 @@ stabilize-comment =上架谱面留言
 stabilize-commented = 留言成功
 stabilize-deny = 拒绝上架谱面
 stabilize-approved = 已通过
-stabilize-approved-passed = 已通过，谱面已上架谱面
+stabilize-approved-passed = 已通过，谱面已上架
 stabilize-denied = 已拒绝
 stabilize-denied-passed = 已拒绝，谱面已打回
 

@@ -37,7 +37,9 @@ macro_rules! langs {
 
         pub static LANGS: [&str; LANG_COUNT] = [$($lang_id,)*];
         pub static LANG_NAMES: [&str; LANG_COUNT] = [$($lang_name,)*];
-        pub static LANG_IDENTS: Lazy<[LanguageIdentifier; LANG_COUNT]> = Lazy::new(|| LANGS.map(|lang| lang.parse().unwrap()));
+        pub static LANG_IDENTS: Lazy<[LanguageIdentifier; LANG_COUNT]> = Lazy::new(|| {
+            std::array::from_fn(|i| LANGS[i].parse().unwrap_or_else(|_| unic_langid::langid!("en-US")))
+        });
     };
 }
 

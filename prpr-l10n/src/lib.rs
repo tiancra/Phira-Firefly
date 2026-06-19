@@ -31,7 +31,8 @@ langs! {
     "tr-TR": "Türkçe",
     "vi-VN": "Tiếng Việt",
     "zh-CN": "简体中文",
-    "zh-TW": "繁體中文"
+    "zh-TW": "繁體中文",
+    "zh-LZH": "文言（華夏）"
 }
 
 #[macro_export]

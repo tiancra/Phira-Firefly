@@ -1231,34 +1231,36 @@ impl Scene for GameScene {
         self.res.judge_line_color.a *= self.res.alpha;
         self.chart.update(&mut self.res);
         let res = &mut self.res;
-        if res.config.interactive && is_key_pressed(KeyCode::Space) {
-            if tm.paused() {
-                if matches!(self.state, State::Playing) {
-                    self.music.play()?;
-                    tm.resume();
+        if !self.skip_done {
+            if res.config.interactive && is_key_pressed(KeyCode::Space) {
+                if tm.paused() {
+                    if matches!(self.state, State::Playing) {
+                        self.music.play()?;
+                        tm.resume();
+                    }
+                } else if matches!(self.state, State::Playing | State::BeforeMusic) {
+                    if !self.music.paused() {
+                        self.music.pause()?;
+                    }
+                    tm.pause();
                 }
-            } else if matches!(self.state, State::Playing | State::BeforeMusic) {
-                if !self.music.paused() {
-                    self.music.pause()?;
+            }
+            if Self::interactive(res, &self.state) {
+                if is_key_pressed(KeyCode::Left) && res.config.use_keyboard {
+                    res.time -= 1.;
+                    let dst = (self.music.position() - 1.).max(0.);
+                    self.music.seek_to(dst)?;
+                    tm.seek_to(dst);
                 }
-                tm.pause();
-            }
-        }
-        if Self::interactive(res, &self.state) {
-            if is_key_pressed(KeyCode::Left) && res.config.use_keyboard {
-                res.time -= 1.;
-                let dst = (self.music.position() - 1.).max(0.);
-                self.music.seek_to(dst)?;
-                tm.seek_to(dst);
-            }
-            if is_key_pressed(KeyCode::Right) && res.config.use_keyboard {
-                res.time += 5.;
-                let dst = (self.music.position() + 5.).min(res.track_length);
-                self.music.seek_to(dst)?;
-                tm.seek_to(dst);
-            }
-            if is_key_pressed(KeyCode::Q) {
-                self.should_exit = true;
+                if is_key_pressed(KeyCode::Right) && res.config.use_keyboard {
+                    res.time += 5.;
+                    let dst = (self.music.position() + 5.).min(res.track_length);
+                    self.music.seek_to(dst)?;
+                    tm.seek_to(dst);
+                }
+                if is_key_pressed(KeyCode::Q) {
+                    self.should_exit = true;
+                }
             }
         }
         for e in &mut self.effects {
@@ -1349,6 +1351,9 @@ impl Scene for GameScene {
     }
 
     fn touch(&mut self, tm: &mut TimeManager, touch: &Touch) -> Result<bool> {
+        if self.skip_done {
+            return Ok(false);
+        }
         if self.mode == GameMode::Exercise && tm.paused() {
             let touch = Touch {
                 position: touch.position * self.touch_scale(),

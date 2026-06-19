@@ -209,6 +209,7 @@ pub struct GameScene {
     skip_fade_out_progress: f32,
     skip_alt_must_release: bool,
     skip_instant: bool,
+    corner_skip_touch_ids: [Option<u64>; 4],
 }
 
 macro_rules! reset {
@@ -415,6 +416,7 @@ impl GameScene {
             skip_fade_out_progress: 0.0,
             skip_alt_must_release: false,
             skip_instant: false,
+            corner_skip_touch_ids: [None; 4],
         })
     }
 
@@ -1089,6 +1091,7 @@ impl Scene for GameScene {
         self.skip_fade_out_progress = 0.0;
         self.skip_alt_must_release = is_key_down(KeyCode::LeftAlt);
         self.skip_instant = false;
+        self.corner_skip_touch_ids = [None; 4];
         Ok(())
     }
 
@@ -1389,7 +1392,16 @@ impl Scene for GameScene {
                 }
             }
             let all_four_corners = corners_pressed.iter().all(|&b| b);
-            let skip_activated = alt_s_down || (self.skip_bar_from_corners && all_four_corners) || (all_four_corners && !self.skip_bar_active);
+            let corner_fingers_alive = if self.skip_bar_from_corners {
+                self.corner_skip_touch_ids.iter().all(|id| {
+                    id.map_or(false, |id| {
+                        Judge::get_touches().iter().any(|t| t.id == id && t.phase != TouchPhase::Ended)
+                    })
+                })
+            } else {
+                false
+            };
+            let skip_activated = alt_s_down || (self.skip_bar_from_corners && corner_fingers_alive) || (all_four_corners && !self.skip_bar_active);
 
             if skip_activated {
                 self.skip_bar_retracting = false;
@@ -1398,6 +1410,25 @@ impl Scene for GameScene {
                     self.skip_bar_active = true;
                     self.skip_bar_progress = 0.0;
                     self.skip_alt_s_hold_time = 0.0;
+                    if all_four_corners {
+                        let mut ids = [None; 4];
+                        for touch in Judge::get_touches() {
+                            if touch.phase == TouchPhase::Started {
+                                let x = touch.position.x;
+                                let y = touch.position.y;
+                                if x < -1.0 + corner_margin && y < -half_h + corner_margin && ids[0].is_none() {
+                                    ids[0] = Some(touch.id);
+                                } else if x > 1.0 - corner_margin && y < -half_h + corner_margin && ids[1].is_none() {
+                                    ids[1] = Some(touch.id);
+                                } else if x < -1.0 + corner_margin && y > half_h - corner_margin && ids[2].is_none() {
+                                    ids[2] = Some(touch.id);
+                                } else if x > 1.0 - corner_margin && y > half_h - corner_margin && ids[3].is_none() {
+                                    ids[3] = Some(touch.id);
+                                }
+                            }
+                        }
+                        self.corner_skip_touch_ids = ids;
+                    }
                 }
                 let dt = get_frame_time();
                 self.skip_alt_s_hold_time += dt;
@@ -1422,6 +1453,7 @@ impl Scene for GameScene {
                     self.skip_bar_active = false;
                     self.skip_bar_retracting = false;
                     self.skip_bar_from_corners = false;
+                    self.corner_skip_touch_ids = [None; 4];
                     self.skip_alt_s_hold_time = 0.0;
                     self.skip_countdown = 3.0;
                     self.skip_white_bar_progress = 0.0;
@@ -1447,6 +1479,7 @@ impl Scene for GameScene {
                 self.skip_fade_out_progress = 0.0;
                 self.skip_wait_timer = 0.0;
                 self.skip_instant = false;
+                self.corner_skip_touch_ids = [None; 4];
                 return Ok(());
             }
         }

@@ -12,7 +12,7 @@ use crate::{
     bin::BinaryReader,
     config::{Config, Mods},
     core::{copy_fbo, BadNote, Chart, ChartExtra, Effect, Point, Resource, UIElement, Vector, PGR_FONT},
-    ext::{parse_time, screen_aspect, semi_white, RectExt, SafeTexture, ScaleType},
+    ext::{get_viewport, parse_time, screen_aspect, semi_white, RectExt, SafeTexture, ScaleType},
     fs::FileSystem,
     info::{ChartFormat, ChartInfo},
     judge::Judge,

@@ -457,31 +457,6 @@ impl GameScene {
     }
 
     fn ui(&mut self, ui: &mut Ui, tm: &mut TimeManager) -> Result<()> {
-        if self.skip_done {
-            let res = &self.res;
-            let top = -1. / res.aspect_ratio;
-            let camera_vp_h = res.camera.viewport.map(|v| v.3 as f32).unwrap_or(screen_height());
-            let eased = (self.skip_transition_progress * std::f32::consts::PI / 2.0).sin();
-            let full_h = 2.0 / res.aspect_ratio;
-            let bar_h = full_h * eased;
-            ui.fill_rect(Rect::new(-1., top, 2., bar_h), Color::new(0., 0., 0., 0.9));
-            if self.skip_transition_progress >= 1.0 {
-                let gap = 50.0 / camera_vp_h * 2.0 * res.aspect_ratio;
-                ui.text("跳过曲目")
-                    .pos(0., -gap / 2.)
-                    .anchor(0.5, 0.5)
-                    .size(0.6)
-                    .color(WHITE)
-                    .draw();
-                ui.text("TRACK SKIP")
-                    .pos(0., gap / 2.)
-                    .anchor(0.5, 0.5)
-                    .size(0.6)
-                    .color(WHITE)
-                    .draw();
-            }
-            return Ok(());
-        }
         let time = tm.now();
         let p = match self.state {
             State::Starting => {
@@ -535,7 +510,12 @@ impl GameScene {
                 miniquad::native::set_interceptor_state(false);
             }
         }
-        ui.alpha(res.alpha, |ui| {
+        let skip_eased = if self.skip_done {
+            (self.skip_transition_progress * std::f32::consts::PI / 2.0).sin()
+        } else {
+            0.0
+        };
+        ui.alpha(res.alpha * (1.0 - skip_eased), |ui| {
             ui.text("MAGIC BUGFIX TEXT").color(Color::new(0., 0., 0., 0.)).draw();
             if tm.now() as f32 - self.pause_first_time <= PAUSE_CLICK_INTERVAL {
                 ui.fill_circle(pause_center.x, pause_center.y, 0.05, Color::new(1., 1., 1., 0.5));
@@ -669,7 +649,28 @@ impl GameScene {
                     ui.fill_rect(Rect::new(-1. + dest - hw, top, hw * 2., height), WHITE);
                 });
         });
-        if self.skip_bar_active || self.skip_bar_retracting {
+        if self.skip_done {
+            let full_h = 2.0 / res.aspect_ratio;
+            let bar_h = full_h * skip_eased;
+            ui.fill_rect(Rect::new(-1., top, 2., bar_h), Color::new(0., 0., 0., 0.9));
+            if self.skip_transition_progress >= 1.0 {
+                let text_eased = (self.skip_wait_timer / 0.3).min(1.0);
+                let text_alpha = (text_eased * std::f32::consts::PI / 2.0).sin();
+                let gap = 20.0 / camera_vp_h * 2.0 * res.aspect_ratio;
+                ui.text("跳过曲目")
+                    .pos(0., -gap / 2.)
+                    .anchor(0.5, 0.5)
+                    .size(0.6)
+                    .color(Color::new(1., 1., 1., text_alpha))
+                    .draw();
+                ui.text("TRACK SKIP")
+                    .pos(0., gap / 2.)
+                    .anchor(0.5, 0.5)
+                    .size(0.6)
+                    .color(Color::new(1., 1., 1., text_alpha))
+                    .draw();
+            }
+        } else if self.skip_bar_active || self.skip_bar_retracting {
             let eased = (self.skip_bar_progress * std::f32::consts::PI / 2.0).sin();
             let bar_h = 20.0 / camera_vp_h * 2.0 * res.aspect_ratio * eased;
             let bar_top = top;
@@ -1336,6 +1337,9 @@ impl Scene for GameScene {
             } else {
                 self.skip_wait_timer += dt;
                 if self.skip_wait_timer >= 3.0 {
+                    if !self.music.paused() {
+                        self.music.pause()?;
+                    }
                     self.finish_and_show_result()?;
                     return Ok(());
                 }

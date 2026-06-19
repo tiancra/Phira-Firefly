@@ -571,13 +571,18 @@ impl GameScene {
         if self.skip_bar_active || self.skip_bar_retracting {
             let eased = (self.skip_bar_progress * std::f32::consts::PI / 2.0).sin();
             let bar_h = 20.0 / camera_vp_h * 2.0 * res.aspect_ratio * eased;
-            let bar_top = -ui.top;
+            let bar_top = top;
             ui.fill_rect(Rect::new(-1., bar_top, 2., bar_h), Color::new(0., 0., 0., 0.7));
             let white_w = self.skip_white_bar_progress * 2.0;
             let white_h = bar_h;
             let white_top = bar_top;
             ui.fill_rect(Rect::new(-1., white_top, white_w, white_h), Color::new(1., 1., 1., 0.5));
-            let text = format!("将在{:.1}秒后跳过谱面，如需取消跳过请松开按键", self.skip_countdown);
+            let countdown_display = (self.skip_countdown.max(0.0)).ceil() as i32;
+            let text = if countdown_display > 0 {
+                format!("将在{}秒后跳过谱面，如需取消跳过请松开按键", countdown_display)
+            } else {
+                "即将跳过谱面，如需取消请松开按键".to_owned()
+            };
             ui.text(&text)
                 .pos(0., bar_top + bar_h / 2.)
                 .anchor(0.5, 0.5)

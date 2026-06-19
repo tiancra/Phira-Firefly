@@ -155,6 +155,13 @@ pub struct GameScene {
     fps_last_frame_time: f64,
 
     dead: bool,
+
+    // skip bar
+    skip_bar_active: bool,
+    skip_bar_progress: f32,
+    skip_alt_s_hold_time: f32,
+    skip_countdown: f32,
+    skip_white_bar_progress: f32,
 }
 
 macro_rules! reset {
@@ -347,6 +354,12 @@ impl GameScene {
             fps_last_frame_time: 0.0,
 
             dead: false,
+
+            skip_bar_active: false,
+            skip_bar_progress: 0.0,
+            skip_alt_s_hold_time: 0.0,
+            skip_countdown: 3.0,
+            skip_white_bar_progress: 0.0,
         })
     }
 
@@ -387,7 +400,13 @@ impl GameScene {
         let top = -1. / res.aspect_ratio;
         let pause_w = 0.015;
         let pause_h = pause_w * 3.2;
-        let pause_center = Point::new(pause_w * 4.0 - 1., top + eps * 3.5 - (1. - p) * 0.4 + pause_h / 2.);
+        let ui_shift_y = if self.skip_bar_active {
+            let eased = (self.skip_bar_progress * std::f32::consts::PI / 2.0).sin();
+            50.0 / screen_height() * 2.0 * res.aspect_ratio * eased
+        } else {
+            0.0
+        };
+        let pause_center = Point::new(pause_w * 4.0 - 1., top + eps * 3.5 - (1. - p) * 0.4 + pause_h / 2. - ui_shift_y);
         if res.config.interactive
             && !tm.paused()
             && self.pause_rewind.is_none()
@@ -425,7 +444,7 @@ impl GameScene {
 
             // score
             let h = 0.07;
-            let score_top = top + eps * 2.2 - (1. - p) * 0.4;
+            let score_top = top + eps * 2.2 - (1. - p) * 0.4 - ui_shift_y;
             let score_right = 1. - margin;
             let score = format!("{:07}", self.judge.score());
             let scale_point = legacy_aui.then(|| {
@@ -465,7 +484,7 @@ impl GameScene {
             );
             if self.judge.combo() >= 3 {
                 if legacy_aui {
-                    let combo_top = top + eps * 2. - (1. - p) * 0.4;
+                    let combo_top = top + eps * 2. - (1. - p) * 0.4 - ui_shift_y;
                     let btm = self
                         .chart
                         .with_element(ui, res, UIElement::ComboNumber, None, (0., combo_top + unit_h / 2.), |ui, c| {
@@ -489,7 +508,7 @@ impl GameScene {
                 } else {
                     let combo = self.judge.combo().to_string();
                     let ct = ui.text(&combo).size(1.0).measure().center();
-                    let combo_y = top + eps * 2. - (1. - p) * 0.4 + ct.y;
+                    let combo_y = top + eps * 2. - (1. - p) * 0.4 + ct.y - ui_shift_y;
                     let btm = self.chart.with_element(ui, res, UIElement::ComboNumber, None, (0., combo_y), |ui, c| {
                         ui.text(&combo)
                             .pos(0., combo_y)
@@ -546,6 +565,23 @@ impl GameScene {
                     ui.fill_rect(Rect::new(-1. + dest - hw, top, hw * 2., height), WHITE);
                 });
         });
+        if self.skip_bar_active {
+            let eased = (self.skip_bar_progress * std::f32::consts::PI / 2.0).sin();
+            let bar_h = 50.0 / screen_height() * 2.0 * res.aspect_ratio * eased;
+            let bar_top = ui.top - bar_h;
+            ui.fill_rect(Rect::new(-1., bar_top, 2., bar_h), Color::new(0., 0., 0., 0.7));
+            let white_w = self.skip_white_bar_progress * 2.0;
+            let white_h = bar_h * 0.3;
+            let white_top = bar_top + (bar_h - white_h) / 2.0;
+            ui.fill_rect(Rect::new(-1., white_top, white_w, white_h), Color::new(1., 1., 1., 0.5));
+            let text = format!("将在{:.1}秒后跳过谱面，如需取消跳过请松开按键", self.skip_countdown);
+            ui.text(&text)
+                .pos(0., bar_top + bar_h / 2.)
+                .anchor(0.5, 0.5)
+                .size(0.4)
+                .color(WHITE)
+                .draw();
+        }
         Ok(())
     }
 
@@ -1147,6 +1183,25 @@ impl Scene for GameScene {
                 }
                 _ => return_input(id, text),
             }
+        }
+        // Alt+S skip bar
+        if is_key_down(KeyCode::LeftAlt) && is_key_down(KeyCode::S) {
+            if !self.skip_bar_active {
+                self.skip_bar_active = true;
+                self.skip_bar_progress = 0.0;
+                self.skip_alt_s_hold_time = 0.0;
+            }
+            let dt = get_frame_time();
+            self.skip_alt_s_hold_time += dt;
+            self.skip_bar_progress = (self.skip_bar_progress + dt / 0.3).min(1.0);
+            self.skip_countdown = (3.0 - self.skip_alt_s_hold_time).max(0.0);
+            self.skip_white_bar_progress = (self.skip_alt_s_hold_time / 3.0).min(1.0);
+        } else {
+            self.skip_bar_active = false;
+            self.skip_bar_progress = 0.0;
+            self.skip_alt_s_hold_time = 0.0;
+            self.skip_countdown = 3.0;
+            self.skip_white_bar_progress = 0.0;
         }
         Ok(())
     }

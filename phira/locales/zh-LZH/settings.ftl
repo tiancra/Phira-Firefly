@@ -71,9 +71,9 @@ load-cali-failed = 音頻爲流螢所食
 about-content =
   Phira-Firefly v{ $version }
 
-  Phira-Firefly 乃一玩法基於 Phigros 之非商業社區音樂戲，以 Rust 所造，由小天乃一小男娘基於開源之碼所改。
+  Phira-Firefly 乃一玩法基於 Phigros 之非商業社區音樂戲，以 Rust 所造，由小天是个小男娘基於開源之碼所改。
 
-  BiliBili 之號：@Phira官方 & @天才威玩戲
+  BiliBili 之號：@Phira官方 & @小天不是小男娘
   QQ 頻道：r48eajexth
 
   議加入 QQ 頻道以獲最新消息與得助！

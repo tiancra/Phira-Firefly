@@ -73,7 +73,7 @@ about-content =
 
   Phira-Firefly 是一款玩法基于 Phigros 的非商业社区音乐游戏，使用 Rust 开发，由小天是个小男娘基于开源代码修改。
 
-  BiliBili 账号：@Phira官方 & @天才威玩游戏
+  BiliBili 账号：@Phira官方 & @小天不是小男娘
   QQ 频道：r48eajexth
 
   推荐加入 QQ 频道以获取最新消息和获得帮助！

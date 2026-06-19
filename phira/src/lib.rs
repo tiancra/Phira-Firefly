@@ -93,7 +93,14 @@ pub async fn load_res_tex(name: &str) -> SafeTexture {
 }
 
 pub fn sync_data() {
-    set_prefered_locale(get_data().language.as_ref().and_then(|it| it.parse().ok()));
+    let locale = get_data().language.as_ref().and_then(|it| {
+        if it == "zh-LZH" {
+            "lzh".parse().ok()
+        } else {
+            it.parse().ok()
+        }
+    });
+    set_prefered_locale(locale);
     if get_data().language.is_none() {
         get_data_mut().language = Some(LANGS[GLOBAL.order.lock().unwrap()[0]].to_owned());
     }

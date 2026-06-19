@@ -21,7 +21,7 @@ use prpr::{
     task::Task,
     ui::{DRectButton, Scroll, Slider, Ui, PREFER_REDUCED_MOTION},
 };
-use prpr_l10n::{LanguageIdentifier, LANG_IDENTS, LANG_NAMES};
+use prpr_l10n::{LanguageIdentifier, LANG_IDENTS, LANG_NAMES, LANGS};
 use reqwest::Url;
 use serde::Deserialize;
 use std::{borrow::Cow, fs, io, net::ToSocketAddrs, path::PathBuf, sync::atomic::Ordering};
@@ -415,8 +415,7 @@ impl GeneralList {
                     get_data()
                         .language
                         .as_ref()
-                        .and_then(|it| it.parse::<LanguageIdentifier>().ok())
-                        .and_then(|ident| LANG_IDENTS.iter().position(|it| *it == ident))
+                        .and_then(|it| LANGS.iter().position(|lang| *lang == it))
                         .unwrap_or_default(),
                 ),
 
@@ -539,7 +538,7 @@ impl GeneralList {
         self.lang_btn.update(t);
         let data = get_data_mut();
         if self.lang_btn.changed() {
-            data.language = Some(LANG_IDENTS[self.lang_btn.selected()].to_string());
+            data.language = Some(LANGS[self.lang_btn.selected()].to_owned());
             sync_data();
             return Ok(true);
         }

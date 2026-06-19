@@ -704,7 +704,7 @@ impl GameScene {
             if self.skip_transition_progress >= 1.0 {
                 let text_eased = (self.skip_wait_timer / 0.3).min(1.0);
                 let text_alpha = (text_eased * std::f32::consts::PI / 2.0).sin() * (1.0 - fade_out_eased);
-                let gap = 20.0 / camera_vp_h * 2.0 * res.aspect_ratio;
+                let gap = 50.0 / camera_vp_h * 2.0 * res.aspect_ratio;
                 ui.text("跳过曲目")
                     .pos(0., -gap / 2.)
                     .anchor(0.5, 0.5)
@@ -1389,8 +1389,9 @@ impl Scene for GameScene {
                 }
             }
             let all_four_corners = corners_pressed.iter().all(|&b| b);
+            let skip_activated = alt_s_down || (self.skip_bar_from_corners && all_four_corners) || (all_four_corners && !self.skip_bar_active);
 
-            if alt_s_down || (all_four_corners && !self.skip_bar_from_corners && !self.skip_bar_active) {
+            if skip_activated {
                 self.skip_bar_retracting = false;
                 self.skip_bar_from_corners = !alt_s_down;
                 if !self.skip_bar_active {

@@ -1413,7 +1413,7 @@ impl Scene for GameScene {
                     if all_four_corners {
                         let mut ids = [None; 4];
                         for touch in Judge::get_touches() {
-                            if touch.phase == TouchPhase::Started {
+                            if touch.phase != TouchPhase::Ended {
                                 let x = touch.position.x;
                                 let y = touch.position.y;
                                 if x < -1.0 + corner_margin && y < -half_h + corner_margin && ids[0].is_none() {

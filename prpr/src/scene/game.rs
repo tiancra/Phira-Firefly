@@ -1239,10 +1239,14 @@ impl Scene for GameScene {
                 self.music.pause()?;
             }
             tm.pause();
-            self.dead = true;
+            self.skip_done = true;
+            self.skip_transition_progress = 1.0;
+            self.skip_wait_timer = 3.0;
+            self.skip_fade_out_progress = 0.0;
+            self.skip_bar_active = false;
+            self.skip_bar_retracting = false;
             #[cfg(target_env = "ohos")]
             miniquad::native::set_interceptor_state(false);
-            show_message(tl!("game-over")).error();
         }
         self.res.judge_line_color.a *= self.res.alpha;
         self.chart.update(&mut self.res);

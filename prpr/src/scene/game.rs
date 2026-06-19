@@ -208,6 +208,12 @@ pub struct GameScene {
     skip_fade_out_progress: f32,
     skip_alt_must_release: bool,
     skip_instant: bool,
+
+    // corner skip
+    corner_skip_active: bool,
+    corner_skip_touch_id: Option<u64>,
+    corner_skip_hold_time: f32,
+    corner_skip_countdown: f32,
 }
 
 macro_rules! reset {
@@ -413,6 +419,11 @@ impl GameScene {
             skip_fade_out_progress: 0.0,
             skip_alt_must_release: false,
             skip_instant: false,
+
+            corner_skip_active: false,
+            corner_skip_touch_id: None,
+            corner_skip_hold_time: 0.0,
+            corner_skip_countdown: 3.0,
         })
     }
 
@@ -733,6 +744,29 @@ impl GameScene {
             };
             ui.text(&text)
                 .pos(0., bar_top + bar_h / 2.)
+                .anchor(0.5, 0.5)
+                .size(0.4)
+                .color(WHITE)
+                .draw();
+        }
+
+        // corner skip countdown
+        if self.corner_skip_active {
+            let progress = (self.corner_skip_hold_time / 3.0).min(1.0);
+            let eased = (progress * std::f32::consts::PI / 2.0).sin();
+            let bar_h = 20.0 / camera_vp_h * 2.0 * res.aspect_ratio * eased;
+            let bar_btm = -top - bar_h;
+            ui.fill_rect(Rect::new(-1., bar_btm, 2., bar_h), Color::new(0., 0., 0., 0.7));
+            let white_w = progress * 2.0;
+            ui.fill_rect(Rect::new(-1., bar_btm, white_w, bar_h), Color::new(1., 1., 1., 0.5));
+            let countdown_display = (self.corner_skip_countdown.max(0.0)).ceil() as i32;
+            let text = if countdown_display > 0 {
+                format!("将在{}秒后跳过谱面，松开取消", countdown_display)
+            } else {
+                "即将跳过谱面，松开取消".to_owned()
+            };
+            ui.text(&text)
+                .pos(0., bar_btm + bar_h / 2.)
                 .anchor(0.5, 0.5)
                 .size(0.4)
                 .color(WHITE)
@@ -1085,6 +1119,11 @@ impl Scene for GameScene {
         self.skip_fade_out_progress = 0.0;
         self.skip_alt_must_release = is_key_down(KeyCode::LeftAlt);
         self.skip_instant = false;
+
+        self.corner_skip_active = false;
+        self.corner_skip_touch_id = None;
+        self.corner_skip_hold_time = 0.0;
+        self.corner_skip_countdown = 3.0;
         Ok(())
     }
 
@@ -1395,6 +1434,51 @@ impl Scene for GameScene {
                     self.skip_alt_s_hold_time = 0.0;
                     self.skip_countdown = 3.0;
                     self.skip_white_bar_progress = 0.0;
+                }
+            }
+
+            // corner long-press skip
+            let corner_margin = 0.2;
+            let half_h = 1.0 / res.aspect_ratio;
+            if !self.corner_skip_active && !self.skip_bar_active {
+                for touch in Judge::get_touches() {
+                    if touch.phase == TouchPhase::Started {
+                        let x = touch.position.x;
+                        let y = touch.position.y;
+                        let is_corner = (x < -1.0 + corner_margin || x > 1.0 - corner_margin)
+                            && (y < -half_h + corner_margin || y > half_h - corner_margin);
+                        if is_corner {
+                            self.corner_skip_active = true;
+                            self.corner_skip_touch_id = Some(touch.id);
+                            self.corner_skip_hold_time = 0.0;
+                            self.corner_skip_countdown = 3.0;
+                            break;
+                        }
+                    }
+                }
+            } else if self.corner_skip_active {
+                let still_holding = Judge::get_touches().iter().any(|t| {
+                    t.id == self.corner_skip_touch_id.unwrap_or(0) && t.phase != TouchPhase::Ended
+                });
+                if still_holding {
+                    let dt = get_frame_time();
+                    self.corner_skip_hold_time += dt;
+                    self.corner_skip_countdown = (3.0 - self.corner_skip_hold_time).max(0.0);
+                    if self.corner_skip_countdown <= 0.0 {
+                        self.skip_done = true;
+                        self.skip_transition_progress = 0.0;
+                        self.skip_wait_timer = 0.0;
+                        self.skip_fade_out_progress = 0.0;
+                        self.skip_bar_active = false;
+                        self.skip_bar_retracting = false;
+                        self.corner_skip_active = false;
+                        self.corner_skip_touch_id = None;
+                    }
+                } else {
+                    self.corner_skip_active = false;
+                    self.corner_skip_touch_id = None;
+                    self.corner_skip_hold_time = 0.0;
+                    self.corner_skip_countdown = 3.0;
                 }
             }
         } else {

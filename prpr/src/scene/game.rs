@@ -167,6 +167,7 @@ pub struct GameScene {
     skip_transition_progress: f32,
     skip_wait_timer: f32,
     skip_fade_out_progress: f32,
+    skip_alt_must_release: bool,
 }
 
 macro_rules! reset {
@@ -370,6 +371,7 @@ impl GameScene {
             skip_transition_progress: 0.0,
             skip_wait_timer: 0.0,
             skip_fade_out_progress: 0.0,
+            skip_alt_must_release: false,
         })
     }
 
@@ -1028,6 +1030,17 @@ impl Scene for GameScene {
         reset!(self, self.res, tm);
         set_camera(&self.res.camera);
         self.first_in = true;
+        self.skip_bar_active = false;
+        self.skip_bar_retracting = false;
+        self.skip_bar_progress = 0.0;
+        self.skip_alt_s_hold_time = 0.0;
+        self.skip_countdown = 3.0;
+        self.skip_white_bar_progress = 0.0;
+        self.skip_done = false;
+        self.skip_transition_progress = 0.0;
+        self.skip_wait_timer = 0.0;
+        self.skip_fade_out_progress = 0.0;
+        self.skip_alt_must_release = is_key_down(KeyCode::LeftAlt);
         Ok(())
     }
 
@@ -1199,7 +1212,7 @@ impl Scene for GameScene {
         };
         let time = (time - offset as f64).max(0.);
         self.res.time = time;
-        if !tm.paused() && self.pause_rewind.is_none() && self.mode != GameMode::View {
+        if !self.skip_done && !tm.paused() && self.pause_rewind.is_none() && self.mode != GameMode::View {
             self.gl.quad_gl.viewport(self.res.camera.viewport);
             self.judge.update(&mut self.res, &mut self.chart, &mut self.bad_notes);
             self.gl.quad_gl.viewport(None);
@@ -1300,7 +1313,10 @@ impl Scene for GameScene {
             }
         }
         // Alt+S skip bar
-        let alt_s_down = is_key_down(KeyCode::LeftAlt) && is_key_down(KeyCode::S);
+        if self.skip_alt_must_release && !is_key_down(KeyCode::LeftAlt) {
+            self.skip_alt_must_release = false;
+        }
+        let alt_s_down = !self.skip_alt_must_release && is_key_down(KeyCode::LeftAlt) && is_key_down(KeyCode::S);
         if !self.skip_done {
             if alt_s_down {
                 self.skip_bar_retracting = false;

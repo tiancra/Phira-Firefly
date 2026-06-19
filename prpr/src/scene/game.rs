@@ -1063,6 +1063,15 @@ impl GameScene {
     }
 }
 
+#[inline]
+fn transform_touch_pos(pos: Vec2) -> Vec2 {
+    let vp = get_viewport();
+    vec2(
+        (pos.x - vp.0 as f32) / vp.2 as f32 * 2. - 1.,
+        ((pos.y - (screen_height() - (vp.1 + vp.3) as f32)) / vp.3 as f32 * 2. - 1.) / (vp.2 as f32 / vp.3 as f32),
+    )
+}
+
 impl Scene for GameScene {
     fn enter(&mut self, tm: &mut TimeManager, target: Option<RenderTarget>) -> Result<()> {
         #[cfg(target_arch = "wasm32")]
@@ -1376,10 +1385,11 @@ impl Scene for GameScene {
             let corner_margin = 0.2;
             let half_h = 1.0 / aspect_ratio;
             let mut corners_pressed = [false; 4];
-            for touch in Judge::get_touches() {
+            for touch in touches() {
                 if touch.phase != TouchPhase::Ended {
-                    let x = touch.position.x;
-                    let y = touch.position.y;
+                    let pos = transform_touch_pos(touch.position);
+                    let x = pos.x;
+                    let y = pos.y;
                     if x < -1.0 + corner_margin && y < -half_h + corner_margin {
                         corners_pressed[0] = true;
                     } else if x > 1.0 - corner_margin && y < -half_h + corner_margin {
@@ -1395,7 +1405,7 @@ impl Scene for GameScene {
             let corner_fingers_alive = if self.skip_bar_from_corners {
                 self.corner_skip_touch_ids.iter().all(|id| {
                     id.map_or(false, |id| {
-                        Judge::get_touches().iter().any(|t| t.id == id && t.phase != TouchPhase::Ended)
+                        touches().iter().any(|t| t.id == id && t.phase != TouchPhase::Ended)
                     })
                 })
             } else {
@@ -1412,10 +1422,11 @@ impl Scene for GameScene {
                     self.skip_alt_s_hold_time = 0.0;
                     if all_four_corners {
                         let mut ids = [None; 4];
-                        for touch in Judge::get_touches() {
+                        for touch in touches() {
                             if touch.phase != TouchPhase::Ended {
-                                let x = touch.position.x;
-                                let y = touch.position.y;
+                                let pos = transform_touch_pos(touch.position);
+                                let x = pos.x;
+                                let y = pos.y;
                                 if x < -1.0 + corner_margin && y < -half_h + corner_margin && ids[0].is_none() {
                                     ids[0] = Some(touch.id);
                                 } else if x > 1.0 - corner_margin && y < -half_h + corner_margin && ids[1].is_none() {

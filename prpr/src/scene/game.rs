@@ -1330,6 +1330,7 @@ impl Scene for GameScene {
             miniquad::native::set_interceptor_state(false);
         }
         self.res.judge_line_color.a *= self.res.alpha;
+        let aspect_ratio = self.res.aspect_ratio;
         self.chart.update(&mut self.res);
         let res = &mut self.res;
         if !self.skip_done {
@@ -1439,7 +1440,7 @@ impl Scene for GameScene {
 
             // corner long-press skip
             let corner_margin = 0.2;
-            let half_h = 1.0 / res.aspect_ratio;
+            let half_h = 1.0 / aspect_ratio;
             if !self.corner_skip_active && !self.skip_bar_active {
                 for touch in Judge::get_touches() {
                     if touch.phase == TouchPhase::Started {

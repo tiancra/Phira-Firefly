@@ -1234,6 +1234,7 @@ impl Scene for GameScene {
             WHITE
         };
         if !self.dead
+            && !self.skip_done
             && matches!(self.state, State::Playing)
             && (self.res.config.mods.contains(Mods::INSTANT_DEATH_AP) && counts[1] + counts[2] + counts[3] > 0
                 || self.res.config.mods.contains(Mods::INSTANT_DEATH_FC) && counts[2] + counts[3] > 0)

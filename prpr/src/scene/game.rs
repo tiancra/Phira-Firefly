@@ -168,6 +168,7 @@ pub struct GameScene {
     skip_wait_timer: f32,
     skip_fade_out_progress: f32,
     skip_alt_must_release: bool,
+    skip_instant: bool,
 }
 
 macro_rules! reset {
@@ -703,7 +704,7 @@ impl GameScene {
     fn overlay_ui(&mut self, ui: &mut Ui, tm: &mut TimeManager) -> Result<()> {
         let c = semi_white(self.res.alpha);
         let res = &mut self.res;
-        if tm.paused() {
+        if tm.paused() && !self.skip_done {
             let h = 1. / res.aspect_ratio;
             draw_rectangle(-1., -h, 2., h * 2., Color::new(0., 0., 0., 0.6));
             let o = if self.mode == GameMode::Exercise { -0.3 } else { 0. };
@@ -1041,6 +1042,7 @@ impl Scene for GameScene {
         self.skip_wait_timer = 0.0;
         self.skip_fade_out_progress = 0.0;
         self.skip_alt_must_release = is_key_down(KeyCode::LeftAlt);
+        self.skip_instant = false;
         Ok(())
     }
 
@@ -1240,11 +1242,12 @@ impl Scene for GameScene {
             }
             tm.pause();
             self.skip_done = true;
-            self.skip_transition_progress = 1.0;
-            self.skip_wait_timer = 3.0;
+            self.skip_transition_progress = 0.0;
+            self.skip_wait_timer = 0.0;
             self.skip_fade_out_progress = 0.0;
             self.skip_bar_active = false;
             self.skip_bar_retracting = false;
+            self.skip_instant = true;
             #[cfg(target_env = "ohos")]
             miniquad::native::set_interceptor_state(false);
         }
@@ -1361,7 +1364,8 @@ impl Scene for GameScene {
                 self.skip_transition_progress = (self.skip_transition_progress + dt / 0.5).min(1.0);
             } else if self.skip_fade_out_progress < 1.0 {
                 self.skip_wait_timer += dt;
-                if self.skip_wait_timer >= 3.0 {
+                let wait_time = if self.skip_instant { 0.0 } else { 3.0 };
+                if self.skip_wait_timer >= wait_time {
                     self.skip_fade_out_progress = (self.skip_fade_out_progress + dt / 0.5).min(1.0);
                 }
             } else {
@@ -1373,6 +1377,7 @@ impl Scene for GameScene {
                 self.skip_transition_progress = 0.0;
                 self.skip_fade_out_progress = 0.0;
                 self.skip_wait_timer = 0.0;
+                self.skip_instant = false;
                 return Ok(());
             }
         }

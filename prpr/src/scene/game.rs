@@ -373,6 +373,7 @@ impl GameScene {
             skip_wait_timer: 0.0,
             skip_fade_out_progress: 0.0,
             skip_alt_must_release: false,
+            skip_instant: false,
         })
     }
 

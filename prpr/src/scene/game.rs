@@ -1350,6 +1350,10 @@ impl Scene for GameScene {
                     self.music.pause()?;
                 }
                 self.finish_and_show_result()?;
+                self.skip_done = false;
+                self.skip_transition_progress = 0.0;
+                self.skip_fade_out_progress = 0.0;
+                self.skip_wait_timer = 0.0;
                 return Ok(());
             }
         }

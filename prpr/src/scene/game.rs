@@ -1366,7 +1366,7 @@ impl Scene for GameScene {
                 self.skip_transition_progress = (self.skip_transition_progress + dt / 0.5).min(1.0);
             } else if self.skip_fade_out_progress < 1.0 {
                 self.skip_wait_timer += dt;
-                let wait_time = if self.skip_instant { 0.0 } else { 3.0 };
+                let wait_time = 3.0;
                 if self.skip_wait_timer >= wait_time {
                     self.skip_fade_out_progress = (self.skip_fade_out_progress + dt / 0.5).min(1.0);
                 }

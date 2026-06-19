@@ -1131,7 +1131,7 @@ impl Scene for GameScene {
                 time
             }
             State::Playing => {
-                if time > self.res.track_length + WAIT_TIME {
+                if !self.skip_done && time > self.res.track_length + WAIT_TIME {
                     self.state = State::Ending;
                     #[cfg(target_env = "ohos")]
                     miniquad::native::set_interceptor_state(false);
@@ -1242,7 +1242,6 @@ impl Scene for GameScene {
             if !self.music.paused() {
                 self.music.pause()?;
             }
-            tm.pause();
             self.skip_done = true;
             self.skip_transition_progress = 0.0;
             self.skip_wait_timer = 0.0;

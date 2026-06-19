@@ -428,13 +428,34 @@ fn show_and_exit(msg: &str) {
         .show();
 }
 
+#[cfg(not(target_os = "android"))]
+fn load_icon_from_png(path: &str) -> Option<miniquad::conf::Icon> {
+    let bytes = std::fs::read(path).ok()?;
+    let img = image::load_from_memory(&bytes).ok()?.to_rgba8();
+    let small = image::imageops::resize(&img, 16, 16, image::imageops::FilterType::Lanczos3).into_raw();
+    let medium = image::imageops::resize(&img, 32, 32, image::imageops::FilterType::Lanczos3).into_raw();
+    let big = image::imageops::resize(&img, 64, 64, image::imageops::FilterType::Lanczos3).into_raw();
+    Some(miniquad::conf::Icon {
+        small: small.try_into().ok()?,
+        medium: medium.try_into().ok()?,
+        big: big.try_into().ok()?,
+    })
+}
+
+#[cfg(target_os = "android")]
+fn load_icon_from_png(_path: &str) -> Option<miniquad::conf::Icon> {
+    None
+}
+
 fn build_global_window_conf() -> Conf {
     let mut conf = build_conf();
-    conf.window_title = "Phira".to_owned();
-    conf.icon = Some(miniquad::conf::Icon {
-        small: *include_bytes!("../icon/small"),
-        medium: *include_bytes!("../icon/medium"),
-        big: *include_bytes!("../icon/big"),
+    conf.window_title = "Phira-Firefly".to_owned();
+    conf.icon = load_icon_from_png("assets/icon.png").or_else(|| {
+        Some(miniquad::conf::Icon {
+            small: *include_bytes!("../icon/small"),
+            medium: *include_bytes!("../icon/medium"),
+            big: *include_bytes!("../icon/big"),
+        })
     });
 
     #[cfg(target_os = "windows")]

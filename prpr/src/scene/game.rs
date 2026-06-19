@@ -402,11 +402,11 @@ impl GameScene {
         let pause_h = pause_w * 3.2;
         let ui_shift_y = if self.skip_bar_active {
             let eased = (self.skip_bar_progress * std::f32::consts::PI / 2.0).sin();
-            50.0 / screen_height() * 2.0 * res.aspect_ratio * eased
+            20.0 / screen_height() * 2.0 * res.aspect_ratio * eased
         } else {
             0.0
         };
-        let pause_center = Point::new(pause_w * 4.0 - 1., top + eps * 3.5 - (1. - p) * 0.4 + pause_h / 2. - ui_shift_y);
+        let pause_center = Point::new(pause_w * 4.0 - 1., top + eps * 3.5 - (1. - p) * 0.4 + pause_h / 2. + ui_shift_y);
         if res.config.interactive
             && !tm.paused()
             && self.pause_rewind.is_none()
@@ -444,7 +444,7 @@ impl GameScene {
 
             // score
             let h = 0.07;
-            let score_top = top + eps * 2.2 - (1. - p) * 0.4 - ui_shift_y;
+            let score_top = top + eps * 2.2 - (1. - p) * 0.4 + ui_shift_y;
             let score_right = 1. - margin;
             let score = format!("{:07}", self.judge.score());
             let scale_point = legacy_aui.then(|| {
@@ -484,7 +484,7 @@ impl GameScene {
             );
             if self.judge.combo() >= 3 {
                 if legacy_aui {
-                    let combo_top = top + eps * 2. - (1. - p) * 0.4 - ui_shift_y;
+                    let combo_top = top + eps * 2. - (1. - p) * 0.4 + ui_shift_y;
                     let btm = self
                         .chart
                         .with_element(ui, res, UIElement::ComboNumber, None, (0., combo_top + unit_h / 2.), |ui, c| {
@@ -508,7 +508,7 @@ impl GameScene {
                 } else {
                     let combo = self.judge.combo().to_string();
                     let ct = ui.text(&combo).size(1.0).measure().center();
-                    let combo_y = top + eps * 2. - (1. - p) * 0.4 + ct.y - ui_shift_y;
+                    let combo_y = top + eps * 2. - (1. - p) * 0.4 + ct.y + ui_shift_y;
                     let btm = self.chart.with_element(ui, res, UIElement::ComboNumber, None, (0., combo_y), |ui, c| {
                         ui.text(&combo)
                             .pos(0., combo_y)
@@ -567,8 +567,8 @@ impl GameScene {
         });
         if self.skip_bar_active {
             let eased = (self.skip_bar_progress * std::f32::consts::PI / 2.0).sin();
-            let bar_h = 50.0 / screen_height() * 2.0 * res.aspect_ratio * eased;
-            let bar_top = ui.top - bar_h;
+            let bar_h = 20.0 / screen_height() * 2.0 * res.aspect_ratio * eased;
+            let bar_top = -ui.top;
             ui.fill_rect(Rect::new(-1., bar_top, 2., bar_h), Color::new(0., 0., 0., 0.7));
             let white_w = self.skip_white_bar_progress * 2.0;
             let white_h = bar_h * 0.3;

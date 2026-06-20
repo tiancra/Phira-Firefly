@@ -210,6 +210,7 @@ pub struct GameScene {
     skip_alt_must_release: bool,
     skip_instant: bool,
     corner_skip_touch_ids: [Option<u64>; 4],
+    track_skipped: bool,
 }
 
 macro_rules! reset {
@@ -417,6 +418,7 @@ impl GameScene {
             skip_alt_must_release: false,
             skip_instant: false,
             corner_skip_touch_ids: [None; 4],
+            track_skipped: false,
         })
     }
 
@@ -438,21 +440,23 @@ impl GameScene {
     fn finish_and_show_result(&mut self) -> Result<()> {
         let mut record_data = None;
         #[cfg(closed)]
-        if let Some(upload_fn) = &self.upload_fn {
-            if !self.res.config.offline_mode
-                && !self.res.config.mods.intersects(Mods::UNRATED)
-                && !self.res.config.use_keyboard
-                && self.res.config.speed >= 1.0 - 1e-3
-            {
-                if let Some(player) = &self.player {
-                    if let Some(chart) = &self.res.info.id {
-                        record_data = Some(encode_record(self, player.id, *chart));
+        if !self.track_skipped {
+            if let Some(upload_fn) = &self.upload_fn {
+                if !self.res.config.offline_mode
+                    && !self.res.config.mods.intersects(Mods::UNRATED)
+                    && !self.res.config.use_keyboard
+                    && self.res.config.speed >= 1.0 - 1e-3
+                {
+                    if let Some(player) = &self.player {
+                        if let Some(chart) = &self.res.info.id {
+                            record_data = Some(encode_record(self, player.id, *chart));
+                        }
                     }
                 }
             }
         }
         let result = self.judge.result();
-        let record = if self.res.config.mods.intersects(Mods::UNRATED) || self.res.config.speed < 1.0 - 1e-3 {
+        let record = if self.track_skipped || self.res.config.mods.intersects(Mods::UNRATED) || self.res.config.speed < 1.0 - 1e-3 {
             None
         } else {
             Some(SimpleRecord {
@@ -1101,6 +1105,7 @@ impl Scene for GameScene {
         self.skip_alt_must_release = is_key_down(KeyCode::LeftAlt);
         self.skip_instant = false;
         self.corner_skip_touch_ids = [None; 4];
+        self.track_skipped = false;
         Ok(())
     }
 
@@ -1201,21 +1206,23 @@ impl Scene for GameScene {
                     let mut record_data = None;
                     // TODO strengthen the protection
                     #[cfg(closed)]
-                    if let Some(upload_fn) = &self.upload_fn {
-                        if !self.res.config.offline_mode
-                            && !self.res.config.mods.intersects(Mods::UNRATED)
-                            && !self.res.config.use_keyboard
-                            && self.res.config.speed >= 1.0 - 1e-3
-                        {
-                            if let Some(player) = &self.player {
-                                if let Some(chart) = &self.res.info.id {
-                                    record_data = Some(encode_record(self, player.id, *chart));
+                    if !self.track_skipped {
+                        if let Some(upload_fn) = &self.upload_fn {
+                            if !self.res.config.offline_mode
+                                && !self.res.config.mods.intersects(Mods::UNRATED)
+                                && !self.res.config.use_keyboard
+                                && self.res.config.speed >= 1.0 - 1e-3
+                            {
+                                if let Some(player) = &self.player {
+                                    if let Some(chart) = &self.res.info.id {
+                                        record_data = Some(encode_record(self, player.id, *chart));
+                                    }
                                 }
                             }
                         }
                     }
                     let result = self.judge.result();
-                    let record = if self.res.config.mods.intersects(Mods::UNRATED) || self.res.config.speed < 1.0 - 1e-3 {
+                    let record = if self.track_skipped || self.res.config.mods.intersects(Mods::UNRATED) || self.res.config.speed < 1.0 - 1e-3 {
                         None
                     } else {
                         Some(SimpleRecord {
@@ -1309,6 +1316,7 @@ impl Scene for GameScene {
                 || self.res.config.mods.contains(Mods::INSTANT_DEATH_FC) && counts[2] + counts[3] > 0)
         {
             self.skip_done = true;
+            self.track_skipped = true;
             self.skip_transition_progress = 0.0;
             self.skip_wait_timer = 0.0;
             self.skip_fade_out_progress = 0.0;
@@ -1460,6 +1468,7 @@ impl Scene for GameScene {
                 self.skip_white_bar_progress = (self.skip_alt_s_hold_time / 3.0).min(1.0);
                 if self.skip_countdown <= 0.0 {
                     self.skip_done = true;
+                    self.track_skipped = true;
                     self.skip_bar_active = false;
                     self.skip_bar_retracting = false;
                     self.skip_bar_from_corners = false;

@@ -1488,6 +1488,9 @@ impl Scene for GameScene {
                 self.skip_transition_progress = (self.skip_transition_progress + dt / 0.5).min(1.0);
             } else if self.update_fn.is_some() {
                 // 多人游戏：保持遮罩显示，等待音乐结束进入 State::Ending 后再渐隐
+                if self.skip_wait_timer < 0.3 {
+                    self.skip_wait_timer += dt;
+                }
             } else if self.skip_fade_out_progress < 1.0 {
                 self.skip_wait_timer += dt;
                 let wait_time = 3.0;

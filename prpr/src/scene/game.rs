@@ -1188,7 +1188,7 @@ impl Scene for GameScene {
                 time
             }
             State::Playing => {
-                if !self.skip_done && time > self.res.track_length + WAIT_TIME {
+                if (!self.skip_done || self.update_fn.is_some()) && time > self.res.track_length + WAIT_TIME {
                     self.state = State::Ending;
                     #[cfg(target_env = "ohos")]
                     miniquad::native::set_interceptor_state(false);
@@ -1265,6 +1265,18 @@ impl Scene for GameScene {
                         GameMode::TweakOffset => Some(NextScene::PopWithResult(Box::new(None::<f32>))),
                         GameMode::Exercise => None,
                     };
+                }
+                if self.skip_done && self.update_fn.is_some() {
+                    let dt = get_frame_time();
+                    self.skip_fade_out_progress = (self.skip_fade_out_progress + dt / 0.5).min(1.0);
+                    if self.skip_fade_out_progress >= 1.0 {
+                        self.skip_done = false;
+                        self.skip_transition_progress = 0.0;
+                        self.skip_fade_out_progress = 0.0;
+                        self.skip_wait_timer = 0.0;
+                        self.skip_instant = false;
+                        self.corner_skip_touch_ids = [None; 4];
+                    }
                 }
                 self.res.alpha = (1. - (t / AFTER_TIME).min(1.).powi(2)) as f32;
                 self.res.track_length
@@ -1474,6 +1486,8 @@ impl Scene for GameScene {
             let dt = get_frame_time();
             if self.skip_transition_progress < 1.0 {
                 self.skip_transition_progress = (self.skip_transition_progress + dt / 0.5).min(1.0);
+            } else if self.update_fn.is_some() {
+                // 多人游戏：保持遮罩显示，等待音乐结束进入 State::Ending 后再渐隐
             } else if self.skip_fade_out_progress < 1.0 {
                 self.skip_wait_timer += dt;
                 let wait_time = 3.0;

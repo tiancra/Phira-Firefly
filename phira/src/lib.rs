@@ -21,6 +21,7 @@ mod tabs;
 mod tags;
 mod threed;
 mod uml;
+mod crash;
 
 use anyhow::Result;
 use core::f64;
@@ -193,6 +194,7 @@ mod dir {
 
 async fn the_main() -> Result<()> {
     log::register();
+    crash::set_panic_hook();
     #[cfg(target_env = "ohos")]
     {
         *DATA_PATH.lock().unwrap() = Some("/data/storage/el2/base".to_owned());
@@ -220,6 +222,7 @@ async fn the_main() -> Result<()> {
     }
 
     let dir = dir::root()?;
+    crash::set_log_path(&format!("{dir}/crash.log"));
     let mut data: Data = std::fs::read_to_string(format!("{dir}/data.json"))
         .map_err(anyhow::Error::new)
         .and_then(|s| Ok(serde_json::from_str(&s)?))
@@ -260,8 +263,29 @@ async fn the_main() -> Result<()> {
 
     let font = FontArc::try_from_vec(load_file("font.ttf").await?)?;
     let mut painter = TextPainter::new(font.clone(), None);
+    let mut crash_painter = TextPainter::new(font.clone(), None);
+    let crash_logo = match load_texture("crashlogo.png").await {
+        Ok(tex) => {
+            info!("crash logo loaded: {}x{}", tex.width(), tex.height());
+            Some(tex)
+        }
+        Err(e) => {
+            error!("failed to load crash logo via load_texture: {}", e);
+            match load_file("crashlogo.png").await {
+                Ok(bytes) => {
+                    let image = Image::from_file_with_format(&bytes, Some(ImageFormat::Png));
+                    info!("crash logo loaded via load_file: {}x{}", image.width, image.height);
+                    Some(Texture2D::from_image(&image))
+                }
+                Err(e2) => {
+                    error!("failed to load crash logo via load_file: {}", e2);
+                    None
+                }
+            }
+        }
+    };
 
-    let mut main = Main::new(Box::new(MainScene::new(font).await?), TimeManager::default(), None).await?;
+    let mut main = Some(Main::new(Box::new(MainScene::new(font.clone()).await?), TimeManager::default(), None).await?);
 
     #[cfg(target_os = "windows")]
     {
@@ -344,6 +368,8 @@ async fn the_main() -> Result<()> {
     let mut fps_time_sum = 0.;
 
     let mut exit_time = f64::INFINITY;
+    let mut crashed = false;
+    let mut crash_start_time = 0.0;
 
     'app: loop {
         let frame_start = tm.real_time();
@@ -356,75 +382,107 @@ async fn the_main() -> Result<()> {
             fps_time_sum += frame_time;
         }
         last_frame_start = frame_start as f32;
-        let res = || -> Result<()> {
-            main.update()?;
-            main.render(&mut painter)?;
+
+        if crashed {
+            let elapsed = get_time() - crash_start_time;
+            if elapsed < 1.5 {
+                // 先黑屏 1.5 秒
+                clear_background(BLACK);
+            } else {
+                // 再显示白色崩溃界面
+                crash::render_crash_screen(crash_logo, &mut crash_painter);
+            }
+            next_frame().await;
+            continue;
+        }
+
+        let frame_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<()> {
+            let m = main.as_mut().unwrap();
+            m.update()?;
+            m.render(&mut painter)?;
             if let Ok(paused) = rx.try_recv() {
                 if paused {
-                    main.pause()?;
+                    m.pause()?;
                 } else {
-                    main.resume()?;
+                    m.resume()?;
                 }
             }
             Ok(())
-        }();
-        if let Err(err) = res {
-            error!("uncaught error: {err:?}");
-            show_error(err);
-        }
-        if main.should_exit() {
-            break 'app;
-        }
+        }));
 
-        if let Ok(code) = aa_rx.try_recv() {
-            info!("anti addiction callback: {code}");
-            match code {
-                // login success
-                500 => {
-                    anti_addiction_action("enterGame", None);
+        match frame_result {
+            Ok(Ok(())) => {}
+            Ok(Err(err)) => {
+                error!("uncaught error: {err:?}");
+                show_error(err);
+            }
+            Err(_) => {
+                crashed = true;
+                crash_start_time = get_time();
+                if let Some(m) = main.take() {
+                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        drop(m);
+                    }));
                 }
-                // switch account
-                1001 => {
-                    anti_addiction_action("exit", None);
-                    get_data_mut().me = None;
-                    get_data_mut().tokens = None;
-                    let _ = save_data();
-                    sync_data();
-                    use crate::login::L10N_LOCAL;
-                    show_message(crate::login::tl!("logged-out")).ok();
-                }
-                // period restrict
-                1030 => {
-                    show_and_exit("你当前为未成年账号，已被纳入防沉迷系统。根据国家相关规定，周五、周六、周日及法定节假日 20 点 - 21 点之外为健康保护时段。当前时间段无法游玩，请合理安排时间。");
-                    exit_time = frame_start;
-                }
-                // duration limit
-                1050 => {
-                    show_and_exit("你当前为未成年账号，已被纳入防沉迷系统。根据国家相关规定，周五、周六、周日及法定节假日 20 点 - 21 点之外为健康保护时段。你已达时间限制，无法继续游戏。");
-                    exit_time = frame_start;
-                }
-                // stopped
-                9002 => {
-                    show_and_exit("必须实名认证方可进行游戏。");
-                    exit_time = frame_start;
-                }
-                _ => {}
+                clear_background(WHITE);
             }
         }
 
-        let t = tm.real_time();
-
-        if t > exit_time + 5. {
-            break;
+        if !crashed && main.as_ref().map(|m| m.should_exit()).unwrap_or(false) {
+            break 'app;
         }
 
-        let fps_now = t as i32;
-        if fps_now != fps_time {
-            fps_time = fps_now;
-            if fps_times.len() == FPS_BUF_SIZE {
-                let actual_fps = 1. / (fps_time_sum / FPS_BUF_SIZE as f32);
-                let current_fps = 1. / (t - frame_start);
-                info!("FPS {} (capped at {})", current_fps as u32, actual_fps as u32);
+        if !crashed {
+            if let Ok(code) = aa_rx.try_recv() {
+                info!("anti addiction callback: {code}");
+                match code {
+                    // login success
+                    500 => {
+                        anti_addiction_action("enterGame", None);
+                    }
+                    // switch account
+                    1001 => {
+                        anti_addiction_action("exit", None);
+                        get_data_mut().me = None;
+                        get_data_mut().tokens = None;
+                        let _ = save_data();
+                        sync_data();
+                        use crate::login::L10N_LOCAL;
+                        show_message(crate::login::tl!("logged-out")).ok();
+                    }
+                    // period restrict
+                    1030 => {
+                        show_and_exit("你当前为未成年账号，已被纳入防沉迷系统。根据国家相关规定，周五、周六、周日及法定节假日 20 点 - 21 点之外为健康保护时段。当前时间段无法游玩，请合理安排时间。");
+                        exit_time = frame_start;
+                    }
+                    // duration limit
+                    1050 => {
+                        show_and_exit("你当前为未成年账号，已被纳入防沉迷系统。根据国家相关规定，周五、周六、周日及法定节假日 20 点 - 21 点之外为健康保护时段。你已达时间限制，无法继续游戏。");
+                        exit_time = frame_start;
+                    }
+                    // stopped
+                    9002 => {
+                        show_and_exit("必须实名认证方可进行游戏。");
+                        exit_time = frame_start;
+                    }
+                    _ => {}
+                }
+            }
+
+            let t = tm.real_time();
+
+            if t > exit_time + 5. {
+                break;
+            }
+
+            let fps_now = t as i32;
+            if fps_now != fps_time {
+                fps_time = fps_now;
+                if fps_times.len() == FPS_BUF_SIZE {
+                    let actual_fps = 1. / (fps_time_sum / FPS_BUF_SIZE as f32);
+                    let current_fps = 1. / (t - frame_start);
+                    info!("FPS {} (capped at {})", current_fps as u32, actual_fps as u32);
+                }
             }
         }
 

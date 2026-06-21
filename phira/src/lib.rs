@@ -194,7 +194,6 @@ mod dir {
 
 async fn the_main() -> Result<()> {
     log::register();
-    crash::set_panic_hook();
     #[cfg(target_env = "ohos")]
     {
         *DATA_PATH.lock().unwrap() = Some("/data/storage/el2/base".to_owned());
@@ -542,9 +541,40 @@ fn build_global_window_conf() -> Conf {
 
 #[no_mangle]
 pub extern "C" fn quad_main() {
+    crash::set_panic_hook();
     macroquad::Window::from_config(build_global_window_conf(), async {
         if let Err(err) = the_main().await {
             error!(?err, "global error");
+            crash::set_error(&err.to_string());
+
+            // 尝试加载崩溃界面资源
+            let crash_logo = match load_texture("crashlogo.png").await {
+                Ok(tex) => Some(tex),
+                Err(_) => None,
+            };
+
+            // 尝试加载字体创建 TextPainter
+            let mut crash_painter = match load_file("font.ttf").await {
+                Ok(bytes) => match FontArc::try_from_vec(bytes) {
+                    Ok(font) => Some(TextPainter::new(font, None)),
+                    Err(_) => None,
+                },
+                Err(_) => None,
+            };
+
+            // 崩溃渲染循环：先黑屏再显示崩溃界面
+            let crash_start_time = get_time();
+            loop {
+                let elapsed = get_time() - crash_start_time;
+                if elapsed < 1.5 {
+                    clear_background(BLACK);
+                } else if let Some(ref mut painter) = crash_painter {
+                    crash::render_crash_screen(crash_logo, painter);
+                } else {
+                    crash::render_crash_screen_fallback(crash_logo);
+                }
+                next_frame().await;
+            }
         }
     });
 }

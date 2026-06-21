@@ -1,4 +1,5 @@
 use macroquad::prelude::*;
+use macroquad::text::{draw_text, measure_text};
 use prpr::{
     ext::draw_text_aligned,
     ui::{TextPainter, Ui},
@@ -136,6 +137,21 @@ pub fn set_panic_hook() {
     }));
 }
 
+/// 手动设置非 panic 导致的崩溃信息（如启动时资源加载失败）
+pub fn set_error(error_msg: &str) {
+    let (code, message) = classify_panic(error_msg);
+    let crash_info = CrashInfo {
+        code: code.to_string(),
+        message: message.to_string(),
+        panic_info: error_msg.to_string(),
+        timestamp: format!("{:?}", SystemTime::now()),
+    };
+    write_crash_log(&crash_info);
+    if let Ok(mut guard) = CRASH_INFO.lock() {
+        *guard = Some(crash_info);
+    }
+}
+
 pub fn render_crash_screen(logo: Option<Texture2D>, painter: &mut TextPainter) {
     let mut ui = Ui::new(painter, None);
     let top = ui.top;
@@ -219,4 +235,73 @@ pub fn render_crash_screen(logo: Option<Texture2D>, painter: &mut TextPainter) {
         .draw();
 
     pop_camera_state();
+}
+
+/// 当 TextPainter/字体不可用时使用的备用崩溃界面渲染（使用 macroquad 默认字体）
+pub fn render_crash_screen_fallback(logo: Option<Texture2D>) {
+    clear_background(WHITE);
+
+    let sw = screen_width();
+    let sh = screen_height();
+
+    // Logo（最上方，保持比例，不裁切）
+    if let Some(logo) = logo {
+        let logo_w = logo.width();
+        let logo_h = logo.height();
+        let max_w = sw * 0.60;
+        let max_h = sh * 0.35;
+        let scale = (max_w / logo_w).min(max_h / logo_h).min(1.0);
+        let w = logo_w * scale;
+        let h = logo_h * scale;
+        let x = (sw - w) / 2.0;
+        let y = sh * 0.10;
+        draw_texture_ex(
+            logo,
+            x,
+            y,
+            WHITE,
+            DrawTextureParams {
+                dest_size: Some(vec2(w, h)),
+                ..Default::default()
+            },
+        );
+    }
+
+    let info = CRASH_INFO.lock().unwrap();
+    let Some(info) = info.as_ref() else { return; };
+
+    // PHIRA-FIREFLY {version}
+    let version_text = format!("PHIRA-FIREFLY {}", env!("CARGO_PKG_VERSION"));
+    let version_size = sh * 0.035;
+    let version_dims = measure_text(&version_text, None, version_size as u16, 1.0);
+    draw_text(
+        &version_text,
+        (sw - version_dims.width) / 2.0,
+        sh * 0.55,
+        version_size,
+        Color::new(0.0, 0.0, 0.0, 1.0),
+    );
+
+    // 红色呼吸效果
+    let t = get_time();
+    let depth = ((t * 8.0).sin() as f32 * 0.5 + 0.5) * 8.0;
+    let g = depth / 8.0;
+    let red_color = Color::new(1.0, g, 0.0, 1.0);
+
+    // ERROR 错误代码
+    let title = format!("ERROR {}", info.code);
+    let error_size = sh * 0.050;
+    let error_dims = measure_text(&title, None, error_size as u16, 1.0);
+    draw_text(&title, (sw - error_dims.width) / 2.0, sh * 0.65, error_size, red_color);
+
+    // 错误信息
+    let message_size = sh * 0.025;
+    let message_dims = measure_text(&info.message, None, message_size as u16, 1.0);
+    draw_text(
+        &info.message,
+        (sw - message_dims.width) / 2.0,
+        sh * 0.72,
+        message_size,
+        red_color,
+    );
 }

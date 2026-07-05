@@ -54,3 +54,5 @@ inner.rs
 /prpr-avc.zip
 
 /build-android.ps1
+
+/target

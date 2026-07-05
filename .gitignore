@@ -40,3 +40,17 @@ inner.rs
 # OHOS
 
 /phira/dist/
+
+# Build artifacts
+
+/android-ndk-*.zip
+
+/commandlinetools-*.zip
+
+/assets/assets.zip
+
+/*.exe
+
+/prpr-avc.zip
+
+/build-android.ps1

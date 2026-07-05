@@ -4,6 +4,9 @@ prpr_l10n::tl_file!("parser" ptl);
 mod extra;
 pub use extra::parse_extra;
 
+mod lyrics;
+pub use lyrics::{Lyrics, LyricLine, LyricRole, LyricWord, parse, parse_lrc, parse_ttml};
+
 mod pec;
 pub use pec::parse_pec;
 

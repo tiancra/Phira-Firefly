@@ -16,7 +16,7 @@ use crate::{
     fs::FileSystem,
     info::{ChartFormat, ChartInfo},
     judge::Judge,
-    parse::{parse_extra, parse_pec, parse_phigros, parse_rpe},
+    parse::{parse, parse_extra, parse_pec, parse_phigros, parse_rpe, LyricLine, LyricRole, LyricWord},
     task::Task,
     time::TimeManager,
     ui::{RectButton, TextPainter, Ui},
@@ -153,6 +153,13 @@ enum State {
     Ending,
 }
 
+struct LyricDisplay {
+    line: LyricLine,
+    y_offset: f32,
+    appear_start: f64,
+    disappear_start: f64,
+}
+
 pub struct GameScene {
     should_exit: bool,
     next_scene: Option<NextScene>,
@@ -211,6 +218,12 @@ pub struct GameScene {
     skip_instant: bool,
     corner_skip_touch_ids: [Option<u64>; 4],
     track_skipped: bool,
+
+    // lyrics
+    lyrics: Vec<LyricLine>,
+    active_lyrics: Vec<LyricDisplay>,
+    lyric_index: usize,
+    text_height: f32,
 }
 
 macro_rules! reset {
@@ -229,6 +242,8 @@ macro_rules! reset {
         $self.fps_total_time = 0.0;
         $self.fps_last_frame_time = $tm.real_time();
         $self.dead = false;
+        $self.active_lyrics.clear();
+        $self.lyric_index = 0;
     }};
 }
 
@@ -268,11 +283,27 @@ impl GameScene {
 
     pub async fn load_chart(fs: &mut dyn FileSystem, info: &ChartInfo) -> Result<(Chart, Vec<u8>, ChartFormat)> {
         let extra = fs.load_file("extra.json").await.ok().map(String::from_utf8).transpose()?;
-        let extra = if let Some(extra) = extra {
+        let mut extra = if let Some(extra) = extra {
             parse_extra(&extra, fs).await.context("Failed to parse extra")?
         } else {
             ChartExtra::default()
         };
+
+        for name in &["lyrics.ttml", "lyric.ttml", "lyrics.lrc", "lyric.lrc", "ttml", "lrc"] {
+            if let Ok(bytes) = fs.load_file(name).await {
+                let text = String::from_utf8_lossy(&bytes).to_string();
+                match parse(&text) {
+                    Ok(lyrics) => {
+                        extra.lyrics = lyrics;
+                        break;
+                    }
+                    Err(e) => {
+                        tracing::warn!("failed to parse lyrics file {}: {}", name, e);
+                    }
+                }
+            }
+        }
+
         let bytes = Self::load_chart_bytes(fs, info).await.context("Failed to load chart")?;
         let format = Self::infer_chart_format(info, &bytes);
         let mut chart = match format {
@@ -361,6 +392,8 @@ impl GameScene {
         let judge = Judge::new(&chart);
 
         let music = Self::new_music(&mut res)?;
+        let lyrics = std::mem::take(&mut chart.extra.lyrics);
+
         Ok(Self {
             should_exit: false,
             next_scene: None,
@@ -419,6 +452,11 @@ impl GameScene {
             skip_instant: false,
             corner_skip_touch_ids: [None; 4],
             track_skipped: false,
+
+            lyrics,
+            active_lyrics: Vec::new(),
+            lyric_index: 0,
+            text_height: 0.0,
         })
     }
 
@@ -748,6 +786,138 @@ impl GameScene {
         }
 
         Ok(())
+    }
+
+    fn update_lyrics(&mut self, time: f64) {
+        const FADE_IN_TIME: f64 = 0.5;
+        const FADE_OUT_TIME: f64 = 0.3;
+
+        while self.lyric_index < self.lyrics.len() && self.lyrics[self.lyric_index].start_time <= time + FADE_IN_TIME {
+            let line = &self.lyrics[self.lyric_index];
+            let mut y_offset = 0.0;
+
+            if !matches!(line.role, LyricRole::Background) {
+                for active in &self.active_lyrics {
+                    if active.line.end_time > line.start_time {
+                        y_offset += self.text_height * 1.5;
+                    }
+                }
+            } else {
+                if let Some(last_main) = self.active_lyrics.iter().rev().find(|l| !matches!(l.line.role, LyricRole::Background)) {
+                    y_offset = last_main.y_offset;
+                }
+            }
+
+            let mut disappear_start = line.end_time;
+            if !matches!(line.role, LyricRole::Background) {
+                for i in self.lyric_index + 1..self.lyrics.len() {
+                    let next_line = &self.lyrics[i];
+                    if next_line.start_time <= line.end_time && matches!(next_line.role, LyricRole::Background) {
+                        disappear_start = disappear_start.max(next_line.end_time);
+                    } else if next_line.start_time > line.end_time {
+                        break;
+                    }
+                }
+            }
+
+            self.active_lyrics.push(LyricDisplay {
+                line: line.clone(),
+                y_offset,
+                appear_start: line.start_time,
+                disappear_start,
+            });
+            self.lyric_index += 1;
+        }
+
+        self.active_lyrics.retain(|lyric| lyric.disappear_start + FADE_OUT_TIME > time);
+    }
+
+    fn render_lyrics(&mut self, ui: &mut Ui, time: f64) {
+        const FADE_IN_TIME: f64 = 0.5;
+        const FADE_OUT_TIME: f64 = 0.3;
+
+        if self.active_lyrics.is_empty() {
+            return;
+        }
+
+        if self.text_height == 0.0 {
+            self.text_height = ui.text("测试").size(0.8).measure().h;
+        }
+
+        let res = &mut self.res;
+        let top = -1. / res.aspect_ratio;
+        let lyrics_center_y = top + (1. / res.aspect_ratio * 2.) * (1. / 3.);
+
+        for lyric in &self.active_lyrics {
+            let appear_progress = ((time - lyric.appear_start) / FADE_IN_TIME).clamp(0.0, 1.0);
+            let disappear_progress = ((time - lyric.disappear_start) / FADE_OUT_TIME).clamp(0.0, 1.0);
+            
+            let alpha = (1.0 - disappear_progress) * appear_progress;
+            if alpha <= 0.0 {
+                continue;
+            }
+
+            let role = &lyric.line.role;
+
+            let (x_pos, anchor_x, size) = match role {
+                LyricRole::Main => (-1.0 + 0.1, 0.0, 0.8),
+                LyricRole::Duet => (1.0 - 0.1, 1.0, 0.8),
+                LyricRole::Background => (-1.0 + 0.1, 0.0, 0.5),
+            };
+
+            let base_y = match role {
+                LyricRole::Background => {
+                    lyrics_center_y + self.text_height * 1.8
+                }
+                _ => {
+                    lyrics_center_y
+                }
+            } + lyric.y_offset;
+
+            let alpha_value = match role {
+                LyricRole::Background => alpha * 0.6,
+                _ => alpha,
+            };
+
+            let mut total_width = 0.0;
+            for word in &lyric.line.words {
+                total_width += ui.text(&word.text).size(size).measure().w;
+            }
+
+            let mut current_x = 0.0;
+            for (i, word) in lyric.line.words.iter().enumerate() {
+                let word_width = ui.text(&word.text).size(size).measure().w;
+                
+                if time < word.start_time {
+                    current_x += word_width;
+                    continue;
+                }
+
+                let word_appear_progress = ((time - word.start_time) / FADE_IN_TIME).clamp(0.0, 1.0);
+                let word_ease_progress = (word_appear_progress * std::f64::consts::PI / 2.0).sin() as f32;
+                let word_float_offset = word_ease_progress * self.text_height * 0.3;
+
+                let word_alpha = alpha_value * word_appear_progress;
+                let color = Color::new(1., 1., 1., word_alpha as f32);
+
+                let draw_x = if anchor_x == 0.0 {
+                    x_pos as f32 + current_x
+                } else {
+                    x_pos as f32 - total_width + current_x
+                };
+
+                let draw_y = base_y - word_float_offset;
+
+                ui.text(&word.text)
+                    .pos(draw_x, draw_y)
+                    .anchor(if anchor_x == 0.0 { 0.0 } else { 1.0 }, 0.5)
+                    .size(size)
+                    .color(color)
+                    .draw();
+
+                current_x += word_width;
+            }
+        }
     }
 
     fn overlay_ui(&mut self, ui: &mut Ui, tm: &mut TimeManager) -> Result<()> {
@@ -1329,6 +1499,9 @@ impl Scene for GameScene {
         self.res.judge_line_color.a *= self.res.alpha;
         let aspect_ratio = self.res.aspect_ratio;
         self.chart.update(&mut self.res);
+
+        self.update_lyrics(time);
+
         let res = &mut self.res;
         if !self.skip_done {
             if res.config.interactive && is_key_pressed(KeyCode::Space) {
@@ -1607,6 +1780,7 @@ impl Scene for GameScene {
             res.emitter.draw(dt);
         }
         self.ui(ui, tm)?;
+        self.render_lyrics(ui, self.res.time);
         self.overlay_ui(ui, tm)?;
 
         if self.mode == GameMode::TweakOffset {

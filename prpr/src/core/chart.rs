@@ -1,5 +1,5 @@
 use super::{BpmList, Effect, JudgeLine, JudgeLineKind, Matrix, Resource, UIElement, Vector};
-use crate::{core::Object, fs::FileSystem, judge::JudgeStatus, ui::Ui};
+use crate::{core::Object, fs::FileSystem, judge::JudgeStatus, parse::Lyrics, ui::Ui};
 use anyhow::{Context, Result};
 use macroquad::prelude::*;
 use nalgebra::Rotation2;
@@ -10,6 +10,7 @@ use std::{cell::RefCell, collections::HashMap};
 pub struct ChartExtra {
     pub effects: Vec<Effect>,
     pub global_effects: Vec<Effect>,
+    pub lyrics: Lyrics,
     #[cfg(feature = "video")]
     pub videos: Vec<(super::Video, Option<super::VideoAttach>)>,
 }

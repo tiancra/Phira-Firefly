@@ -26,3 +26,6 @@ action-failed = { $action ->
 }
 
 email-sent = Please check your inbox for an activation email from Phira.
+
+tutorial-title = Tutorial
+tutorial-content = Would you like to play the tutorial?

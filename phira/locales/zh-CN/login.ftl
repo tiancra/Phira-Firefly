@@ -26,3 +26,6 @@ action-failed = { $action ->
 }
 
 email-sent = 验证信息已发送到邮箱，请验证后登录
+
+tutorial-title = 新手教程
+tutorial-content = 是否游玩新手教程？

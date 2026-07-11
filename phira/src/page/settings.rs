@@ -1,11 +1,11 @@
 prpr_l10n::tl_file!("settings");
 
-use super::{NextPage, OffsetPage, Page, SharedState};
+use super::{NextPage, OffsetPage, Page, SFader, SharedState};
 use crate::{
     dir, get_data, get_data_mut,
     popup::ChooseButton,
     save_data,
-    scene::BGM_VOLUME_UPDATED,
+    scene::{TutorialLoadingScene, BGM_VOLUME_UPDATED},
     sync_data,
     tabs::{Tabs, TitleFn},
 };
@@ -17,7 +17,7 @@ use once_cell::sync::Lazy;
 use prpr::{
     core::BOLD_FONT,
     ext::{open_url, poll_future, semi_white, LocalTask, RectExt, SafeTexture},
-    scene::{request_input, return_input, show_error, show_message, take_input},
+    scene::{request_input, return_input, show_error, show_message, take_input, NextScene},
     task::Task,
     ui::{DRectButton, Scroll, Slider, Ui, PREFER_REDUCED_MOTION},
 };
@@ -148,6 +148,9 @@ pub struct SettingsPage {
     save_time: f32,
 
     icon: SafeTexture,
+
+    sf: SFader,
+    need_back: bool,
 }
 
 impl SettingsPage {
@@ -172,6 +175,9 @@ impl SettingsPage {
             save_time: f32::INFINITY,
 
             icon,
+
+            sf: SFader::new(),
+            need_back: false,
         }
     }
 }
@@ -179,6 +185,13 @@ impl SettingsPage {
 impl Page for SettingsPage {
     fn label(&self) -> Cow<'static, str> {
         tl!("label")
+    }
+
+    fn enter(&mut self, s: &mut SharedState) -> Result<()> {
+        if std::mem::take(&mut self.need_back) {
+            self.sf.enter(s.t);
+        }
+        Ok(())
     }
 
     fn exit(&mut self) -> Result<()> {
@@ -241,6 +254,14 @@ impl Page for SettingsPage {
             save_data()?;
             self.save_time = f32::INFINITY;
         }
+        if self.list_general.start_tutorial {
+            self.list_general.start_tutorial = false;
+            self.need_back = true;
+            match TutorialLoadingScene::new() {
+                Ok(scene) => self.sf.goto(t, scene),
+                Err(err) => show_error(err),
+            }
+        }
         Ok(())
     }
 
@@ -268,6 +289,7 @@ impl Page for SettingsPage {
                 Ok(())
             })
         })?;
+        self.sf.render(ui, s.t);
 
         Ok(())
     }
@@ -277,6 +299,10 @@ impl Page for SettingsPage {
             return self.list_audio.next_page().unwrap_or_default();
         }
         NextPage::None
+    }
+
+    fn next_scene(&mut self, s: &mut SharedState) -> NextScene {
+        self.sf.next_scene(s.t).unwrap_or_default()
     }
 }
 
@@ -399,9 +425,12 @@ struct GeneralList {
     insecure_btn: DRectButton,
     enable_anys_btn: DRectButton,
     anys_gateway_btn: DRectButton,
+    watch_tutorial_btn: DRectButton,
 
     cache_size: Option<u64>,
     cache_task: Option<Task<Result<u64>>>,
+
+    pub start_tutorial: bool,
 }
 
 impl GeneralList {
@@ -433,9 +462,12 @@ impl GeneralList {
             insecure_btn: DRectButton::new(),
             enable_anys_btn: DRectButton::new(),
             anys_gateway_btn: DRectButton::new(),
+            watch_tutorial_btn: DRectButton::new(),
 
             cache_size: None,
             cache_task: None,
+
+            start_tutorial: false,
         };
         let _ = this.update_cache_size();
         this
@@ -530,6 +562,10 @@ impl GeneralList {
         if self.anys_gateway_btn.touch(touch, t) {
             request_input("anys_gateway", InputBox::new().default_text(&data.anys_gateway));
             return Ok(Some(true));
+        }
+        if self.watch_tutorial_btn.touch(touch, t) {
+            self.start_tutorial = true;
+            return Ok(Some(false));
         }
         Ok(None)
     }
@@ -647,6 +683,10 @@ impl GeneralList {
         item! {
             render_title(ui, tl!("item-anys-gateway"), Some(tl!("item-anys-gateway-sub")));
             self.anys_gateway_btn.render_text(ui, rr, t, &data.anys_gateway, 0.4, false);
+        }
+        item! {
+            render_title(ui, tl!("item-watch-tutorial"), Some(tl!("item-watch-tutorial-sub")));
+            self.watch_tutorial_btn.render_text(ui, rr, t, tl!("item-watch-tutorial-btn"), 0.5, true);
         }
         self.lang_btn.render_top(ui, t, 1.);
         (w, h)

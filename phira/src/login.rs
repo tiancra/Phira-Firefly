@@ -7,6 +7,8 @@ use crate::{
     save_data,
     scene::{check_read_tos_and_policy, dispatch_tos_task, JUST_ACCEPTED_TOS},
 };
+
+static SHOWN_TUTORIAL_PROMPT: AtomicBool = AtomicBool::new(false);
 use anyhow::Result;
 use inputbox::{InputBox, InputMode};
 use macroquad::prelude::*;
@@ -19,7 +21,7 @@ use prpr::{
     ui::{button_hit, DRectButton, Dialog, RectButton, Ui},
 };
 use regex::Regex;
-use std::{borrow::Cow, future::Future, sync::atomic::Ordering};
+use std::{borrow::Cow, future::Future, sync::atomic::Ordering, sync::{atomic::AtomicBool, Arc}};
 
 static EMAIL_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
@@ -65,6 +67,9 @@ pub struct Login {
 
     task: Option<(&'static str, Task<Result<Option<User>>>)>,
     after_accept_tos: Option<NextAction>,
+
+    show_tutorial_prompt: bool,
+    start_tutorial: Arc<AtomicBool>,
 }
 
 enum NextAction {
@@ -103,6 +108,9 @@ impl Login {
 
             task: None,
             after_accept_tos: None,
+
+            show_tutorial_prompt: false,
+            start_tutorial: Arc::default(),
         }
     }
 
@@ -118,6 +126,10 @@ impl Login {
     pub fn dismiss(&mut self, t: f32) {
         self.show = false;
         self.fader.back(t);
+    }
+
+    pub fn take_start_tutorial(&mut self) -> bool {
+        self.start_tutorial.swap(false, Ordering::SeqCst)
     }
 
     fn register(&mut self) -> Option<Cow<'static, str>> {
@@ -274,11 +286,30 @@ impl Login {
                         }
                         if *action == "login" {
                             self.dismiss(t);
+                            if !SHOWN_TUTORIAL_PROMPT.load(Ordering::SeqCst) {
+                                self.show_tutorial_prompt = true;
+                                SHOWN_TUTORIAL_PROMPT.store(true, Ordering::SeqCst);
+                            }
                         }
                     }
                 }
                 self.task = None;
             }
+        }
+        if std::mem::take(&mut self.show_tutorial_prompt) {
+            let start = Arc::clone(&self.start_tutorial);
+            Dialog::plain(tl!("tutorial-title"), tl!("tutorial-content"))
+                .buttons(vec![
+                    ttl!("cancel").into_owned(),
+                    ttl!("confirm").into_owned(),
+                ])
+                .listener(move |_dialog, pos| {
+                    if pos == 1 {
+                        start.store(true, Ordering::SeqCst);
+                    }
+                    false
+                })
+                .show();
         }
         Ok(())
     }

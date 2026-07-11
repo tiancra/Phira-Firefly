@@ -22,6 +22,9 @@ pub use unlock::UnlockScene;
 mod profile;
 pub use profile::ProfileScene;
 
+mod tutorial;
+pub use tutorial::TutorialLoadingScene;
+
 use crate::{
     client::{Client, UserManager},
     data::LocalChart,

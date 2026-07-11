@@ -143,6 +143,7 @@ pub enum GameMode {
     Exercise,
     NoRetry,
     View,
+    Tutorial,
 }
 
 #[derive(Clone)]
@@ -543,6 +544,7 @@ impl GameScene {
             }
             GameMode::TweakOffset => Some(NextScene::PopWithResult(Box::new(None::<f32>))),
             GameMode::Exercise => None,
+            GameMode::Tutorial => Some(NextScene::Pop),
         };
         Ok(())
     }
@@ -1441,6 +1443,7 @@ impl Scene for GameScene {
                         }
                         GameMode::TweakOffset => Some(NextScene::PopWithResult(Box::new(None::<f32>))),
                         GameMode::Exercise => None,
+                        GameMode::Tutorial => Some(NextScene::Pop),
                     };
                 }
                 if self.skip_done && self.update_fn.is_some() {
@@ -1857,6 +1860,7 @@ impl Scene for GameScene {
                 // not sure if they need result. just keep it
                 GameMode::Exercise | GameMode::NoRetry | GameMode::View => NextScene::Pop,
                 GameMode::TweakOffset => NextScene::PopWithResult(Box::new(None::<f32>)),
+                GameMode::Tutorial => NextScene::Pop,
             }
         } else if let Some(next_scene) = self.next_scene.take() {
             tm.speed = 1.0;

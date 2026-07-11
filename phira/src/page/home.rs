@@ -11,7 +11,7 @@ use crate::{
     icons::Icons,
     login::Login,
     save_data,
-    scene::{check_read_tos_and_policy, ProfileScene, JUST_LOADED_TOS},
+    scene::{check_read_tos_and_policy, ProfileScene, TutorialLoadingScene, JUST_LOADED_TOS},
     sync_data,
     threed::ThreeD,
 };
@@ -457,6 +457,13 @@ impl Page for HomePage {
     fn update(&mut self, s: &mut SharedState) -> Result<()> {
         let t = s.t;
         self.login.update(t)?;
+        if self.login.take_start_tutorial() {
+            self.need_back = true;
+            match TutorialLoadingScene::new() {
+                Ok(scene) => self.sf.goto(t, scene),
+                Err(err) => show_error(err),
+            }
+        }
         let current_user = Some(get_data().me.as_ref().map_or(-1, |it| it.id));
         self.char_scroll.update(t);
         if self.char_last_user_id != current_user {

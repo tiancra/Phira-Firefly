@@ -58,6 +58,9 @@ item-use-keyboard = 使用键盘游玩
 item-use-keyboard-sub = 开启后可以使用键盘进行游戏，但成绩无法上传
 item-prefer-reduced-motion = 减少动画效果
 item-prefer-reduced-motion-sub = 减少动画和视觉特效
+item-watch-tutorial = 观看教学
+item-watch-tutorial-sub = 进入新手教程
+item-watch-tutorial-btn = 进入
 item-speed = 速度
 item-note-size = 音符大小
 

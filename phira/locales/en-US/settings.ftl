@@ -58,6 +58,9 @@ item-use-keyboard = Use Keyboard
 item-use-keyboard-sub = Enable keyboard input for gameplay. Scores cannot be uploaded when enabled.
 item-prefer-reduced-motion = Prefer Reduced Motion
 item-prefer-reduced-motion-sub = Reduce animations and visual effects
+item-watch-tutorial = Watch Tutorial
+item-watch-tutorial-sub = Enter the tutorial
+item-watch-tutorial-btn = Enter
 item-speed = Speed
 item-note-size = Note Size
 

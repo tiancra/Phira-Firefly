@@ -55,6 +55,4 @@ inner.rs
 
 /build-android.ps1
 
-/target
-
 .trae/

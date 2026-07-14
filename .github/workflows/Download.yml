@@ -1,4 +1,4 @@
-name: Download Ubuntu deb dependencies
+name: Download offline deb packages
 
 on:
   workflow_dispatch:
@@ -8,33 +8,44 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-      - name: Prepare
+      - name: Install tools
+        run: |
+          sudo apt update
+          sudo apt install -y apt-rdepends
+
+      - name: Prepare directory
         run: |
           mkdir -p debs
 
-      - name: Download packages
+      - name: Download dependencies
         run: |
-          sudo apt update
-
           cd debs
 
-          apt-get download \
+          apt-rdepends \
             build-essential \
-            dkms
+            dkms \
+            linux-headers-generic \
+          | grep -v "^ " \
+          | grep -v "^<" \
+          | xargs -r apt-get download
 
-      - name: Collect dependencies
+      - name: Download AIC8800 packages
         run: |
           cd debs
-          apt-rdepends build-essential dkms | \
-          grep -v "^ " | \
-          xargs -r apt-get download || true
+
+          wget -q https://mirror.nju.edu.cn/radxa-deb/noble-test/pool/main/a/aic8800/aic8800-firmware_*.deb || true
+          wget -q https://mirror.nju.edu.cn/radxa-deb/noble-test/pool/main/a/aic8800/aic8800-pcie-dkms_*.deb || true
+
+      - name: Show files
+        run: |
+          ls -lh debs
 
       - name: Pack
         run: |
-          tar -czf ubuntu-debs.tar.gz debs/
+          tar -czvf ubuntu-aic8800-offline.tar.gz debs
 
-      - name: Upload artifact
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: ubuntu-debs
-          path: ubuntu-debs.tar.gz
+          name: ubuntu-aic8800-offline
+          path: ubuntu-aic8800-offline.tar.gz

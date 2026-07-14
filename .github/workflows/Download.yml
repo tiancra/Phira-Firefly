@@ -1,0 +1,40 @@
+name: Download Ubuntu deb dependencies
+
+on:
+  workflow_dispatch:
+
+jobs:
+  download:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Prepare
+        run: |
+          mkdir -p debs
+
+      - name: Download packages
+        run: |
+          sudo apt update
+
+          cd debs
+
+          apt-get download \
+            build-essential \
+            dkms
+
+      - name: Collect dependencies
+        run: |
+          cd debs
+          apt-rdepends build-essential dkms | \
+          grep -v "^ " | \
+          xargs -r apt-get download || true
+
+      - name: Pack
+        run: |
+          tar -czf ubuntu-debs.tar.gz debs/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ubuntu-debs
+          path: ubuntu-debs.tar.gz

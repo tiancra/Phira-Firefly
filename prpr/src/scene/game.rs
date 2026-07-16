@@ -144,6 +144,7 @@ pub enum GameMode {
     NoRetry,
     View,
     Tutorial,
+    OffsetTrial,
 }
 
 #[derive(Clone)]
@@ -338,7 +339,7 @@ impl GameScene {
             GameMode::TweakOffset => {
                 config.mods.insert(Mods::AUTOPLAY);
             }
-            GameMode::Exercise => {
+            GameMode::Exercise | GameMode::OffsetTrial => {
                 config.mods.remove(Mods::AUTOPLAY);
             }
             _ => {}
@@ -544,6 +545,7 @@ impl GameScene {
             }
             GameMode::TweakOffset => Some(NextScene::PopWithResult(Box::new(None::<f32>))),
             GameMode::Exercise => None,
+            GameMode::OffsetTrial => Some(NextScene::Pop),
             GameMode::Tutorial => Some(NextScene::Pop),
         };
         Ok(())
@@ -1443,6 +1445,7 @@ impl Scene for GameScene {
                         }
                         GameMode::TweakOffset => Some(NextScene::PopWithResult(Box::new(None::<f32>))),
                         GameMode::Exercise => None,
+                        GameMode::OffsetTrial => Some(NextScene::Pop),
                         GameMode::Tutorial => Some(NextScene::Pop),
                     };
                 }
@@ -1834,6 +1837,20 @@ impl Scene for GameScene {
                 pop_camera_state();
             }
         }
+
+        if self.mode == GameMode::OffsetTrial && matches!(self.state, State::Ending) {
+            push_camera_state();
+            self.gl.quad_gl.viewport(None);
+            set_camera(&Camera2D {
+                zoom: vec2(1., asp),
+                ..Default::default()
+            });
+            let time = tm.now();
+            let t = (time - self.res.track_length - WAIT_TIME).max(0.);
+            let p = (t / (AFTER_TIME + 0.3)).min(1.).powi(2) as f32;
+            draw_rectangle(-1., -ui.top, 2., ui.top * 2., Color::new(0., 0., 0., p));
+            pop_camera_state();
+        }
         Ok(())
     }
 
@@ -1858,7 +1875,7 @@ impl Scene for GameScene {
                     }
                 }
                 // not sure if they need result. just keep it
-                GameMode::Exercise | GameMode::NoRetry | GameMode::View => NextScene::Pop,
+                GameMode::Exercise | GameMode::NoRetry | GameMode::View | GameMode::OffsetTrial => NextScene::Pop,
                 GameMode::TweakOffset => NextScene::PopWithResult(Box::new(None::<f32>)),
                 GameMode::Tutorial => NextScene::Pop,
             }

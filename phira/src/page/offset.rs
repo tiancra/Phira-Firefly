@@ -1,6 +1,6 @@
 prpr_l10n::tl_file!("cali");
 
-use std::borrow::Cow;
+use std::{borrow::Cow, path::Path};
 
 use super::{Page, SharedState};
 use crate::{get_data, get_data_mut, save_data};
@@ -8,9 +8,11 @@ use anyhow::{Context, Result};
 use macroquad::prelude::*;
 use prpr::{
     core::{ParticleEmitter, ResourcePack, NOTE_WIDTH_RATIO_BASE},
-    ext::{create_audio_manger, semi_black, RectExt, SafeTexture, ScaleType},
+    ext::{create_audio_manger, poll_future, semi_black, LocalTask, RectExt, SafeTexture, ScaleType},
+    fs::{self, FileSystem},
+    scene::{show_error, BasicPlayer, GameMode, LoadingScene, NextScene},
     time::TimeManager,
-    ui::{Slider, Ui},
+    ui::{DRectButton, Slider, Ui},
 };
 use sasa::{AudioClip, AudioManager, Music, MusicParams, PlaySfxParams, Sfx};
 
@@ -31,6 +33,10 @@ pub struct OffsetPage {
 
     touched: bool,
     touch: Option<(f32, f32)>,
+
+    trial_btn: DRectButton,
+    trial_task: LocalTask<Result<NextScene>>,
+    next_scene: Option<NextScene>,
 }
 
 impl OffsetPage {
@@ -72,6 +78,10 @@ impl OffsetPage {
 
             touched: false,
             touch: None,
+
+            trial_btn: DRectButton::new(),
+            trial_task: None,
+            next_scene: None,
         })
     }
 }
@@ -118,6 +128,36 @@ impl Page for OffsetPage {
             config.offset = offset / 1000.;
             return Ok(true);
         }
+        if self.trial_btn.touch(touch, t) {
+            let _ = self.cali.pause();
+            self.trial_task = Some(Box::pin(async move {
+                let mut fs = fs::fs_from_file(Path::new("assets/offsettrial"))?;
+                let mut info = fs::load_info(fs.as_mut()).await?;
+                let mut config = get_data().config.clone();
+                config.mods = Default::default();
+                let preload = LoadingScene::load(fs.as_mut(), &info.illustration).await?;
+                let player = get_data().me.as_ref().map(|it| BasicPlayer {
+                    avatar: None,
+                    id: it.id,
+                    rks: it.rks,
+                    historic_best: 0,
+                });
+                let scene = LoadingScene::new(
+                    GameMode::OffsetTrial,
+                    info,
+                    config,
+                    fs,
+                    player,
+                    None,
+                    None,
+                    None,
+                    Some(preload),
+                )
+                .await?;
+                Ok(NextScene::Overlay(Box::new(scene)))
+            }));
+            return Ok(true);
+        }
         if touch.phase == TouchPhase::Started && touch.position.x < 0. {
             self.touched = true;
         }
@@ -135,6 +175,15 @@ impl Page for OffsetPage {
             let now = self.tm.now();
             if now - pos >= -1. {
                 self.tm.update(pos);
+            }
+        }
+        if let Some(task) = &mut self.trial_task {
+            if let Some(res) = poll_future(task.as_mut()) {
+                match res {
+                    Ok(scene) => self.next_scene = Some(scene),
+                    Err(err) => show_error(err.context("Failed to load offset trial chart")),
+                }
+                self.trial_task = None;
             }
         }
         Ok(())
@@ -201,10 +250,19 @@ impl Page for OffsetPage {
             let offset = config.offset * 1000.;
             self.slider
                 .render(ui, Rect::new(0.46, -0.1, 0.45, 0.2), ot, offset, format!("{offset:.0}ms"));
+
+            let btn_w = 0.26;
+            let btn_h = 0.11;
+            let btn_r = Rect::new(r.right() - btn_w - 0.03, r.bottom() - btn_h - 0.03, btn_w, btn_h);
+            self.trial_btn.render_text(ui, btn_r, ot, "试玩", 0.5, true);
         });
 
         self.emitter.draw(get_frame_time());
 
         Ok(())
+    }
+
+    fn next_scene(&mut self, _s: &mut SharedState) -> NextScene {
+        self.next_scene.take().unwrap_or_default()
     }
 }

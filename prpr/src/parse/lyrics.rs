@@ -250,40 +250,94 @@ pub fn parse_lrc(source: &str) -> Result<Lyrics> {
     
     for line in source.lines() {
         let line = line.trim();
-        if line.is_empty() {
+        if line.is_empty() || line.starts_with('[') && !line.contains(']') {
             continue;
         }
         
         let mut remaining = line;
+        let mut times = Vec::new();
+        let mut contents = Vec::new();
+        
         while let Some(start) = remaining.find('[') {
             let end = remaining[start..].find(']').context("timestamp not closed")?;
             let timestamp = &remaining[start + 1..start + end];
-            let content_start = start + end + 1;
             
-            let time = parse_time(timestamp)?;
-            
-            let content = if let Some(next_bracket) = remaining[content_start..].find('[') {
-                &remaining[content_start..content_start + next_bracket]
-            } else {
-                &remaining[content_start..]
-            };
-            
-            let content = content.trim();
-            if !content.is_empty() {
-                lyrics.push(LyricLine {
-                    words: vec![LyricWord {
-                        text: content.to_string(),
-                        start_time: time,
-                        end_time: time + 2.0,
-                    }],
-                    start_time: time,
-                    end_time: time + 2.0,
-                    role: LyricRole::Main,
-                    agent: None,
-                });
+            if let Ok(time) = parse_time(timestamp) {
+                times.push(time);
+                
+                let content_start = start + end + 1;
+                let content = if let Some(next_bracket) = remaining[content_start..].find('[') {
+                    &remaining[content_start..content_start + next_bracket]
+                } else {
+                    &remaining[content_start..]
+                };
+                contents.push(content.to_string());
             }
             
             remaining = &remaining[start + end + 1..];
+        }
+        
+        if times.is_empty() {
+            continue;
+        }
+        
+        let mut words = Vec::new();
+        let line_start = times[0];
+        
+        if times.len() > 1 {
+            for i in 0..times.len() {
+                let start_time = times[i];
+                let end_time = times.get(i + 1).copied().unwrap_or(start_time + 2.0);
+                
+                let content = &contents[i];
+                let chars: Vec<char> = content.chars().collect();
+                
+                if chars.is_empty() {
+                    continue;
+                }
+                
+                for (j, c) in chars.iter().enumerate() {
+                    let char_start = start_time + j as f64 * (end_time - start_time) / chars.len() as f64;
+                    let char_end = if j == chars.len() - 1 {
+                        end_time
+                    } else {
+                        char_start + (end_time - start_time) / chars.len() as f64
+                    };
+                    
+                    words.push(LyricWord {
+                        text: c.to_string(),
+                        start_time: char_start,
+                        end_time: char_end,
+                    });
+                }
+            }
+            
+            let line_end = times.last().copied().unwrap_or(line_start + 2.0);
+            lyrics.push(LyricLine {
+                words,
+                start_time: line_start,
+                end_time: line_end,
+                role: LyricRole::Main,
+                agent: None,
+            });
+        } else {
+            let content = contents.join("").trim().to_string();
+            
+            if content.is_empty() {
+                continue;
+            }
+            
+            lyrics.push(LyricLine {
+                words: vec![LyricWord {
+                    text: content,
+                    start_time: line_start,
+                    end_time: line_start,
+                }],
+                start_time: line_start,
+                end_time: line_start,
+                role: LyricRole::Main,
+                agent: None,
+            });
         }
     }
     
@@ -291,9 +345,19 @@ pub fn parse_lrc(source: &str) -> Result<Lyrics> {
     
     for i in 0..lyrics.len() - 1 {
         let next_start = lyrics[i + 1].start_time;
-        lyrics[i].end_time = next_start;
-        if let Some(word) = lyrics[i].words.first_mut() {
-            word.end_time = next_start;
+        
+        if lyrics[i].end_time <= lyrics[i].start_time {
+            lyrics[i].end_time = next_start;
+            for word in &mut lyrics[i].words {
+                word.end_time = next_start;
+            }
+        } else if lyrics[i].end_time > next_start {
+            lyrics[i].end_time = next_start;
+            for word in &mut lyrics[i].words {
+                if word.end_time > next_start {
+                    word.end_time = next_start;
+                }
+            }
         }
     }
     

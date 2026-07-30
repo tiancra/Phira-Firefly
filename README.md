@@ -1,30 +1,64 @@
-# Phira
+# Phira-Firefly
 
-![Phira Showcase](https://phira.5wyxi.com/files/github-showcase.png)
+![Phira-Firefly](https://raw.githubusercontent.com/tiancra/Phira-Firefly/main/assets/icon.png)
 
 [中文版本](./README-zh_CN.md)
 
+Phira-Firefly is a fork of [Phira](https://github.com/TeamFlos/phira), a cross-platform rhythm game inspired by Phigros, developed with Rust.
+
+## Features
+
+- All features from the original Phira
+- **Track Skip**: Skip charts via Alt+S or four-finger corner press
+- **Dynamic Background**: Real-time computed diffuse fluid background based on chart cover colors
+- **Lyrics Support**: TTML-based lyrics display during gameplay
+- **Tutorial**: Built-in beginner tutorial
+- **Crash Screen**: Custom crash screen with error details
+- **文言 (Classical Chinese) Locale**: Full localization support for zh-LZH
+- **UI Enhancements**: Custom window title, icon, and various interface improvements
+
 ## Download
 
-- [GitHub Release](https://github.com/TeamFlos/phira/releases): For Android, Windows and Linux
-- [616.sb mirror](https://616.sb/#phira): Android only
-- [App Store](https://apps.apple.com/us/app/phira/id6447435864): For iOS
-- ~~[.ipa Release](https://github.com/F-Unction/phira_ipa/releases): For iOS~~
+- [GitHub Release](https://github.com/tiancra/Phira-Firefly/releases): For Android, Windows and Linux
+
+## Build from Source
+
+### Prerequisites
+
+- [Rust](https://rustup.rs/) toolchain
+- For Android: Android NDK
+
+### Build
+
+```bash
+# Clone the repository
+git clone https://github.com/tiancra/Phira-Firefly.git
+cd Phira-Firefly
+
+# Build for desktop
+cargo build --release -p phira-main
+
+# Build for Android
+# See build-android.ps1 for reference
+```
 
 ## Contribution
 
-Issues & pull requests are welcome! Also check these good first [issues](https://github.com/TeamFlos/phira/issues?q=label%3A%22good+first+issue%22) and [pull requests](https://github.com/TeamFlos/phira/issues?q=label%3A%22good+first+issue%22).
-
-If you want to talk with us in depth, email [contact@phira.cn](mailto://contact@phira.cn). Currently we are looking for **Rust** Programmers *with rhythm/music game experience*.
+Issues & pull requests are welcome!
 
 ## Translation
 
-See our [Weblate](https://hosted.weblate.org/engage/phira/) page for the latest translation progress. You can easily contribute to translations there.
+The project supports multiple languages including English, Simplified Chinese, Traditional Chinese, Classical Chinese (文言), Japanese, Korean, Russian, French, and more.
 
-![Translation Progress](https://hosted.weblate.org/widget/phira/svg-badge.svg)
+## Acknowledgements
 
-![Translation Status](https://hosted.weblate.org/widget/phira/multi-auto.svg)
+- [Phira](https://github.com/TeamFlos/phira) - The original project by TeamFlos
+- [Phigros](https://phigros.com/) - The inspiration for this game
+
+## License
+
+[GPL-3.0](./LICENSE)
 
 ## Star History
 
-[![Stargazers over time](https://starchart.cc/TeamFlos/phira.svg?variant=adaptive)](https://starchart.cc/TeamFlos/phira)
+[![Stargazers over time](https://starchart.cc/tiancra/Phira-Firefly.svg?variant=adaptive)](https://starchart.cc/tiancra/Phira-Firefly)

@@ -7,6 +7,25 @@ use serde::{Deserialize, Serialize};
 
 pub static TIPS: Lazy<Vec<String>> = Lazy::new(|| include_str!("tips.txt").split('\n').map(str::to_owned).collect());
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum DynamicBackgroundMode {
+    #[default]
+    Off,
+    StaticBrightness,
+    DynamicBrightness,
+}
+
+impl DynamicBackgroundMode {
+    pub fn as_u8(self) -> u8 {
+        match self {
+            Self::Off => 0,
+            Self::StaticBrightness => 1,
+            Self::DynamicBrightness => 2,
+        }
+    }
+}
+
 bitflags! {
     #[derive(Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq, Debug)]
     #[serde(transparent)]
@@ -60,6 +79,7 @@ pub struct Config {
     pub chart_debug: bool,
     pub disable_effect: bool,
     pub double_click_to_pause: bool,
+    pub dynamic_background: DynamicBackgroundMode,
     pub double_hint: bool,
     pub fullscreen_mode: bool,
     pub fxaa: bool,
@@ -100,6 +120,7 @@ impl Default for Config {
             chart_debug: false,
             disable_effect: false,
             double_click_to_pause: true,
+            dynamic_background: DynamicBackgroundMode::Off,
             double_hint: true,
             fxaa: false,
             interactive: true,

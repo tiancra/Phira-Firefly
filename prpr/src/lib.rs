@@ -4,6 +4,7 @@ pub mod core;
 pub mod dir;
 pub mod ext;
 pub mod fs;
+pub mod gamepad;
 pub mod info;
 pub mod judge;
 pub mod parse;

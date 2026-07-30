@@ -15,6 +15,7 @@ use inputbox::InputBox;
 use macroquad::prelude::*;
 use once_cell::sync::Lazy;
 use prpr::{
+    config::DynamicBackgroundMode,
     core::BOLD_FONT,
     ext::{open_url, poll_future, semi_white, LocalTask, RectExt, SafeTexture},
     scene::{request_input, return_input, show_error, show_message, take_input, NextScene},
@@ -853,6 +854,7 @@ struct ChartList {
     dhint_btn: DRectButton,
     opt_btn: DRectButton,
     use_keyboard_btn: DRectButton,
+    dynamic_bg_btn: ChooseButton,
     speed_slider: Slider,
     size_slider: Slider,
 }
@@ -867,13 +869,20 @@ impl ChartList {
             dhint_btn: DRectButton::new(),
             opt_btn: DRectButton::new(),
             use_keyboard_btn: DRectButton::new(),
+            dynamic_bg_btn: ChooseButton::new()
+                .with_options(vec![
+                    tl!("dynamic-bg-off").to_string(),
+                    tl!("dynamic-bg-static").to_string(),
+                    tl!("dynamic-bg-dynamic").to_string(),
+                ])
+                .with_selected(get_data().config.dynamic_background.as_u8() as usize),
             speed_slider: Slider::new(0.5..2., 0.05),
             size_slider: Slider::new(0.8..1.2, 0.005),
         }
     }
 
-    pub fn top_touch(&mut self, _touch: &Touch, _t: f32) -> bool {
-        false
+    pub fn top_touch(&mut self, touch: &Touch, t: f32) -> bool {
+        self.dynamic_bg_btn.top_touch(touch, t)
     }
 
     pub fn touch(&mut self, touch: &Touch, t: f32) -> Result<Option<bool>> {
@@ -907,6 +916,9 @@ impl ChartList {
             config.use_keyboard ^= true;
             return Ok(Some(true));
         }
+        if self.dynamic_bg_btn.touch(touch, t) {
+            return Ok(Some(false));
+        }
         if let wt @ Some(_) = self.speed_slider.touch(touch, t, &mut config.speed) {
             return Ok(wt);
         }
@@ -916,7 +928,17 @@ impl ChartList {
         Ok(None)
     }
 
-    pub fn update(&mut self, _t: f32) -> Result<bool> {
+    pub fn update(&mut self, t: f32) -> Result<bool> {
+        self.dynamic_bg_btn.update(t);
+        if self.dynamic_bg_btn.changed() {
+            let data = get_data_mut();
+            data.config.dynamic_background = match self.dynamic_bg_btn.selected() {
+                0 => DynamicBackgroundMode::Off,
+                1 => DynamicBackgroundMode::StaticBrightness,
+                _ => DynamicBackgroundMode::DynamicBrightness,
+            };
+            return Ok(true);
+        }
         Ok(false)
     }
 
@@ -941,6 +963,10 @@ impl ChartList {
         item! {
             render_title(ui, tl!("item-ap-fc-indicator"), Some(tl!("item-ap-fc-indicator-sub")));
             render_switch(ui, rr, t, &mut self.ap_fc_indicator_btn, config.ap_fc_indicator);
+        }
+        item! {
+            render_title(ui, tl!("item-dynamic-bg"), Some(tl!("item-dynamic-bg-sub")));
+            self.dynamic_bg_btn.render(ui, rr, t);
         }
         item! {
             render_title(ui, tl!("item-show-avg-fps"), Some(tl!("item-show-avg-fps-sub")));
@@ -970,6 +996,7 @@ impl ChartList {
             render_title(ui, tl!("item-note-size"), None);
             self.size_slider.render(ui, rr, t, config.note_scale, format!("{:.3}", config.note_scale));
         }
+        self.dynamic_bg_btn.render_top(ui, t, 1.);
         (w, h)
     }
 }

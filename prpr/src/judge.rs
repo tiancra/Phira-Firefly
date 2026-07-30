@@ -371,6 +371,10 @@ impl Judge {
         };
         repeat_all_miniquad_input(&mut handler, *SUBSCRIBER_ID);
         handler.finalize();
+        let mut pending = crate::gamepad::take_pending();
+        handler.status.key_delta += pending.key_delta;
+        handler.status.keys_down += pending.keys_down;
+        handler.status.touches.append(&mut pending.touches);
         TOUCHES.with(|it| {
             *it.borrow_mut() = handler.status;
         });

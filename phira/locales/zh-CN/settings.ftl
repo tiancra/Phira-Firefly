@@ -71,6 +71,12 @@ item-touch-debug-sub = 游玩过程中显示触摸点
 
 load-cali-failed = 音频被流萤吃掉了
 
+item-dynamic-bg = 动态背景
+item-dynamic-bg-sub = 强制启用所有谱面的实时演算动态背景
+dynamic-bg-off = 关闭
+dynamic-bg-static = 固定亮度
+dynamic-bg-dynamic = 动态亮度
+
 about-content =
   Phira-Firefly v{ $version }
 

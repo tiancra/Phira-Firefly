@@ -14,6 +14,7 @@ use crate::{
     core::{copy_fbo, BadNote, Chart, ChartExtra, DynamicBackground, Effect, Point, Resource, UIElement, Vector, PGR_FONT},
     ext::{get_viewport, parse_time, screen_aspect, semi_white, RectExt, SafeTexture, ScaleType},
     fs::FileSystem,
+    gamepad::{GamepadFrame, GamepadInput},
     info::{ChartFormat, ChartInfo},
     judge::Judge,
     parse::{parse, parse_extra, parse_pec, parse_phigros, parse_rpe, LyricLine, LyricRole, LyricWord},
@@ -183,6 +184,8 @@ pub struct GameScene {
     exercise_btns: (RectButton, RectButton),
 
     pub music: Music,
+
+    gamepad: GamepadInput,
 
     state: State,
     pub last_update_time: f64,
@@ -419,6 +422,7 @@ impl GameScene {
             exercise_btns: (RectButton::new(), RectButton::new()),
 
             music,
+            gamepad: GamepadInput::new(),
 
             state: State::Starting,
             last_update_time: 0.,
@@ -1506,9 +1510,17 @@ impl Scene for GameScene {
 
         self.update_lyrics(time);
 
+        let gamepad_frame = if self.res.config.use_keyboard {
+            let frame = self.gamepad.poll();
+            crate::gamepad::push_pending(frame.clone());
+            frame
+        } else {
+            GamepadFrame::default()
+        };
+
         let res = &mut self.res;
         if !self.skip_done {
-            if res.config.interactive && is_key_pressed(KeyCode::Space) {
+            if res.config.interactive && (is_key_pressed(KeyCode::Space) || gamepad_frame.menu_pressed) {
                 if tm.paused() {
                     if matches!(self.state, State::Playing) {
                         self.music.play()?;

@@ -71,6 +71,12 @@ item-touch-debug-sub = Display user touch points.
 
 load-cali-failed = Failed to load calibration audio.
 
+item-dynamic-bg = Dynamic Background
+item-dynamic-bg-sub = Force real-time dynamic background on all charts.
+dynamic-bg-off = Off
+dynamic-bg-static = Static Brightness
+dynamic-bg-dynamic = Dynamic Brightness
+
 about-content =
   Phira v{ $version }
 

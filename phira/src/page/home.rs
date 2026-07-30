@@ -17,7 +17,6 @@ use crate::{
 };
 use ::rand::{random, thread_rng, Rng};
 use anyhow::{bail, Context, Result};
-use chrono::NaiveDate;
 use image::DynamicImage;
 use macroquad::prelude::*;
 use prpr::{
@@ -26,7 +25,7 @@ use prpr::{
     info::ChartInfo,
     scene::{show_error, NextScene},
     task::Task,
-    ui::{button_hit_large, clip_rounded_rect, ClipType, DRectButton, Dialog, FontArc, RectButton, Scroll, Ui},
+    ui::{button_hit_large, clip_rounded_rect, ClipType, DRectButton, FontArc, RectButton, Scroll, Ui},
 };
 use prpr_l10n::LANG_IDENTS;
 use reqwest::StatusCode;
@@ -42,14 +41,6 @@ const BOARD_SWITCH_TIME: f32 = 4.;
 const BOARD_TRANSIT_TIME: f32 = 1.2;
 
 type BoldFontUpdateTask = Task<Result<Option<(FontArc, String)>>>;
-
-#[derive(Deserialize)]
-struct Version {
-    version: semver::Version,
-    date: NaiveDate,
-    description: String,
-    url: String,
-}
 
 pub struct HomePage {
     icons: Arc<Icons>,
@@ -79,7 +70,6 @@ pub struct HomePage {
     has_new_task: Option<Task<Result<bool>>>,
     has_new: bool,
 
-    check_update_task: Option<Task<Result<Option<Version>>>>,
     check_bold_font_update_task: Option<BoldFontUpdateTask>,
 
     btn_play_3d: ThreeD,
@@ -121,11 +111,6 @@ impl HomePage {
             None
         };
 
-        let flavor = match load_file("flavor").await.map(String::from_utf8) {
-            Ok(Ok(flavor)) => flavor.trim().to_owned(),
-            _ => "none".to_owned(),
-        };
-
         let mut res = Self {
             icons: Arc::new(Icons::new().await?),
 
@@ -154,12 +139,6 @@ impl HomePage {
             has_new_task: None,
             has_new: false,
 
-            check_update_task: Some(Task::new(async move {
-                Ok(recv_raw(Client::get("/check-update").query(&[("version", env!("CARGO_PKG_VERSION")), ("flavor", &flavor)]))
-                    .await?
-                    .json()
-                    .await?)
-            })),
             check_bold_font_update_task: {
                 let cksum = BOLD_FONT_CKSUM.with(|it| it.borrow().clone());
                 Some(Task::new(async move {
@@ -550,44 +529,6 @@ impl Page for HomePage {
                     }
                 }
                 self.has_new_task = None;
-            }
-        }
-        if let Some(task) = &mut self.check_update_task {
-            if let Some(res) = task.take() {
-                match res {
-                    Err(err) => {
-                        warn!("fail to check update {:?}", err);
-                    }
-                    Ok(Some(ver)) => {
-                        if get_data().ignored_version.as_ref().is_none_or(|it| it < &ver.version) {
-                            Dialog::plain(
-                                tl!("update", "version" => ver.version.to_string()),
-                                tl!("update-desc", "date" => ver.date.to_string(), "desc" => ver.description),
-                            )
-                            .buttons(vec![
-                                ttl!("cancel").into_owned(),
-                                tl!("update-ignore").into_owned(),
-                                tl!("update-go").into_owned(),
-                            ])
-                            .listener(move |_dialog, pos| {
-                                match pos {
-                                    1 => {
-                                        get_data_mut().ignored_version = Some(ver.version.clone());
-                                        let _ = save_data();
-                                    }
-                                    2 => {
-                                        let _ = open_url(&ver.url);
-                                    }
-                                    _ => {}
-                                }
-                                false
-                            })
-                            .show();
-                        }
-                    }
-                    _ => {}
-                }
-                self.check_update_task = None;
             }
         }
         if let Some(task) = &mut self.check_bold_font_update_task {

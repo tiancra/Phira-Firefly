@@ -1,6 +1,6 @@
 use super::{draw_background, ending::RecordUpdateState, game::GameMode, GameScene, NextScene, Scene};
 use crate::{
-    config::Config,
+    config::{Config, DynamicBackgroundMode},
     core::{DynamicBackground, Resource, BOLD_FONT},
     ext::{get_viewport, poll_future, semi_black, semi_white, LocalTask, RectExt, SafeTexture},
     fs::FileSystem,
@@ -109,6 +109,11 @@ impl LoadingScene {
         } else {
             Self::load(fs.as_mut(), &info.illustration).await?
         };
+
+        // 设置项强制覆盖谱面的动态背景模式
+        if config.dynamic_background != DynamicBackgroundMode::Off {
+            info.dynamic_background = config.dynamic_background.as_u8();
+        }
 
         let dynamic_bg = if info.dynamic_background > 0 {
             match Self::load_dynamic(fs.as_mut(), &info).await {

@@ -47,7 +47,7 @@ impl GamepadInput {
         }
         #[cfg(not(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos")))))]
         {
-            Self
+            Self {}
         }
     }
 

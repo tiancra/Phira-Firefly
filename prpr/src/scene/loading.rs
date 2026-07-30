@@ -1,8 +1,8 @@
 use super::{draw_background, ending::RecordUpdateState, game::GameMode, GameScene, NextScene, Scene};
 use crate::{
     config::Config,
-    core::{Resource, BOLD_FONT},
-    ext::{poll_future, semi_black, semi_white, LocalTask, RectExt, SafeTexture, BLACK_TEXTURE},
+    core::{DynamicBackground, Resource, BOLD_FONT},
+    ext::{get_viewport, poll_future, semi_black, semi_white, LocalTask, RectExt, SafeTexture},
     fs::FileSystem,
     info::ChartInfo,
     judge::Judge,
@@ -103,23 +103,41 @@ impl LoadingScene {
 
         preloaded: Option<(SafeTexture, SafeTexture, Color)>,
     ) -> Result<Self> {
-        let (background, theme_color) = match preloaded {
-            Some((ill, bg, color)) => (Some((ill, bg)), color),
-            None => match Self::load(fs.as_mut(), &info.illustration).await {
-                Ok((ill, bg, color)) => (Some((ill, bg)), color),
+        // 加载界面始终使用静态模糊曲绘；动态背景只在游玩界面生效
+        let (illustration, background, theme_color) = if let Some((ill, bg, color)) = preloaded {
+            (ill, bg, color)
+        } else {
+            Self::load(fs.as_mut(), &info.illustration).await?
+        };
+
+        let dynamic_bg = if info.dynamic_background > 0 {
+            match Self::load_dynamic(fs.as_mut(), &info).await {
+                Ok(dbg) => Some(dbg),
                 Err(err) => {
-                    warn!("failed to load background: {err:?}");
-                    (None, WHITE)
+                    warn!("failed to load dynamic background: {err:?}");
+                    None
                 }
-            },
+            }
+        } else {
+            None
         };
         let use_black = (theme_color.r * 0.299 + theme_color.g * 0.587 + theme_color.b * 0.114) > 186. / 255.;
-        let (illustration, background) = background.unwrap_or_else(|| (BLACK_TEXTURE.clone(), BLACK_TEXTURE.clone()));
         if info.tip.is_none() {
             info.tip = Some(crate::config::TIPS.choose(&mut thread_rng()).unwrap().to_owned());
         }
-        let future =
-            Box::pin(GameScene::new(mode, info.clone(), config, fs, player, background.clone(), illustration.clone(), upload_fn, update_fn, save_fn));
+        let future = Box::pin(GameScene::new(
+            mode,
+            info.clone(),
+            config,
+            fs,
+            player,
+            background.clone(),
+            illustration.clone(),
+            dynamic_bg,
+            upload_fn,
+            update_fn,
+            save_fn,
+        ));
         let charter = Regex::new(r"\[!:[0-9]+:([^:]*)\]").unwrap().replace_all(&info.charter, "$1").to_string();
 
         Ok(Self {
@@ -135,6 +153,13 @@ impl LoadingScene {
             theme_color,
             use_black,
         })
+    }
+
+    /// 仅创建动态背景对象；加载界面仍使用静态模糊曲绘。
+    async fn load_dynamic(fs: &mut dyn FileSystem, info: &ChartInfo) -> Result<DynamicBackground> {
+        let image = image::load_from_memory(&fs.load_file(&info.illustration).await?).context("Failed to decode image")?;
+        let vp = get_viewport();
+        DynamicBackground::new(info.dynamic_background, &image, info.background_dim, vp)
     }
 }
 

@@ -7,6 +7,7 @@ mod inner;
 mod anim;
 mod charts_view;
 mod client;
+mod crash;
 mod data;
 mod icons;
 mod images;
@@ -21,7 +22,6 @@ mod tabs;
 mod tags;
 mod threed;
 mod uml;
-mod crash;
 
 use anyhow::Result;
 use core::f64;
@@ -63,7 +63,6 @@ pub unsafe extern "C" fn Java_quad_1native_QuadNative_preprocessInput(
     #[allow(dead_code)] z: miniquad::native::ndk_sys::jboolean,
     #[allow(dead_code)] z2: miniquad::native::ndk_sys::jboolean,
 ) {
-
 }
 
 static MESSAGES_TX: Mutex<Option<mpsc::Sender<bool>>> = Mutex::new(None);
@@ -94,13 +93,10 @@ pub async fn load_res_tex(name: &str) -> SafeTexture {
 }
 
 pub fn sync_data() {
-    let locale = get_data().language.as_ref().and_then(|it| {
-        if it == "zh-LZH" {
-            "lzh".parse().ok()
-        } else {
-            it.parse().ok()
-        }
-    });
+    let locale = get_data()
+        .language
+        .as_ref()
+        .and_then(|it| if it == "zh-LZH" { "lzh".parse().ok() } else { it.parse().ok() });
     set_prefered_locale(locale);
     if get_data().language.is_none() {
         get_data_mut().language = Some(LANGS[GLOBAL.order.lock().unwrap()[0]].to_owned());
@@ -138,9 +134,9 @@ mod dir {
         let base = DATA_PATH.lock().unwrap().as_ref().map(|it| it.to_string());
         #[cfg(target_os = "android")]
         let base = base.or_else(|| {
-            std::env::var("TMPDIR").ok().map(|tmpdir| {
-                tmpdir.trim_end_matches("/cache").to_string() + "/files"
-            })
+            std::env::var("TMPDIR")
+                .ok()
+                .map(|tmpdir| tmpdir.trim_end_matches("/cache").to_string() + "/files")
         });
         let base = base.unwrap_or_else(|| ".".to_string());
         let s = format!("{}/{}", base, s);
@@ -292,10 +288,10 @@ async fn the_main() -> Result<()> {
         let mut join_room: Option<phira_mp_common::RoomId> = None;
         let mut create_room: Option<phira_mp_common::RoomId> = None;
         let mut mp_address: Option<String> = None;
-        
+
         for arg in std::env::args() {
             let arg = arg.trim();
-            
+
             // 处理多种格式的启动参数
             let processed_arg = if arg.starts_with("phira://") {
                 // 处理 URI 格式：phira://room/join/123&server=...
@@ -309,7 +305,7 @@ async fn the_main() -> Result<()> {
             } else {
                 continue;
             };
-            
+
             if processed_arg.starts_with("room/join/") {
                 let mut parts = processed_arg.split("&");
                 if let Some(room_part) = parts.next() {
@@ -346,7 +342,7 @@ async fn the_main() -> Result<()> {
                 }
             }
         }
-        
+
         // 处理启动参数
         if join_room.is_some() || create_room.is_some() {
             use crate::scene::MP_PANEL;

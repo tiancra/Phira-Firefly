@@ -1,4 +1,4 @@
-use super::{MSRenderTarget, Matrix, Point, NOTE_WIDTH_RATIO_BASE};
+use super::{DynamicBackground, MSRenderTarget, Matrix, Point, NOTE_WIDTH_RATIO_BASE};
 use crate::{
     config::Config,
     ext::{create_audio_manger, nalgebra_to_glm, SafeTexture},
@@ -421,6 +421,7 @@ pub struct Resource {
 
     pub background: SafeTexture,
     pub illustration: SafeTexture,
+    pub dynamic_bg: Option<DynamicBackground>,
     pub icons: [SafeTexture; 8],
     pub mod_icons: [SafeTexture; 7],
     pub res_pack: ResourcePack,
@@ -492,6 +493,7 @@ impl Resource {
         player: Option<SafeTexture>,
         background: SafeTexture,
         illustration: SafeTexture,
+        mut dynamic_bg: Option<DynamicBackground>,
         has_no_effect: bool,
     ) -> Result<Self> {
         macro_rules! load_tex {
@@ -509,7 +511,15 @@ impl Resource {
         };
 
         let mut audio = create_audio_manger(&config)?;
-        let music = AudioClip::new(fs.load_file(&info.music).await?)?;
+        let music_bytes = fs.load_file(&info.music).await?;
+        let music = AudioClip::new(music_bytes.clone())?;
+        if let Some(dbg) = &mut dynamic_bg {
+            if dbg.mode() == 2 {
+                if let Ok(spectrum) = DynamicBackground::decode_audio(&music_bytes) {
+                    dbg.set_audio(spectrum);
+                }
+            }
+        }
         let track_length = music.length();
         let buffer_size = Some(BUFFER_SIZE);
         let sfx_click = audio.create_sfx(res_pack.sfx_click.clone(), buffer_size)?;
@@ -542,6 +552,7 @@ impl Resource {
 
             background,
             illustration,
+            dynamic_bg,
             icons: Self::load_icons().await?,
             mod_icons: Self::load_mod_icons().await?,
             res_pack,

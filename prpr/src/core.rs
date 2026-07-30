@@ -27,6 +27,9 @@ pub use anim::{Anim, AnimFloat, AnimVector, Keyframe};
 mod chart;
 pub use chart::{Chart, ChartExtra, ChartSettings, HitSoundMap};
 
+mod dynamic_background;
+pub use dynamic_background::{AudioSpectrum, DynamicBackground};
+
 mod effect;
 pub use effect::{Effect, Uniform};
 

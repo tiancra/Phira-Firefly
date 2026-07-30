@@ -229,6 +229,8 @@ impl Scene for ChapterScene {
                     illustration: ":illu".to_owned(),
                     unlock_video: None,
 
+                    dynamic_background: 0,
+
                     preview_start: 0.,
                     preview_end: None,
                     aspect_ratio: 16. / 9.,

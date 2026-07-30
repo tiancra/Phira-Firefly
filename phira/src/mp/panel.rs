@@ -115,9 +115,9 @@ pub struct MPPanel {
     user_list_btn: DRectButton,
     user_list_p: Smooth<f32>,
     icon_user: SafeTexture,
-    
+
     startup_args: Option<StartupArgs>,
-    
+
     // 临时服务器地址，用于启动参数指定的服务器
     temp_mp_address: Option<String>,
 }
@@ -175,9 +175,9 @@ impl MPPanel {
             user_list_btn: DRectButton::new(),
             user_list_p: Smooth::default(),
             icon_user,
-            
+
             startup_args: None,
-            
+
             temp_mp_address: None,
         }
     }
@@ -230,10 +230,10 @@ impl MPPanel {
     pub fn handle_startup_args(&mut self, join_room: Option<RoomId>, create_room: Option<RoomId>, mp_address: Option<String>) {
         // 显示多人联机面板（使用与点击按钮时相同的方式）
         self.show(prpr::time::TimeManager::default().real_time() as _);
-        
+
         // 设置临时服务器地址
         self.temp_mp_address = mp_address;
-        
+
         if self.client.is_none() {
             self.connect();
         }

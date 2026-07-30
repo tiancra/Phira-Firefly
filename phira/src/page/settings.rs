@@ -21,7 +21,7 @@ use prpr::{
     task::Task,
     ui::{DRectButton, Scroll, Slider, Ui, PREFER_REDUCED_MOTION},
 };
-use prpr_l10n::{LANG_NAMES, LANGS};
+use prpr_l10n::{LANGS, LANG_NAMES};
 use reqwest::Url;
 use serde::Deserialize;
 use std::{borrow::Cow, fs, io, net::ToSocketAddrs, path::PathBuf, sync::atomic::Ordering};

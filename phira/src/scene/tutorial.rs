@@ -20,25 +20,10 @@ impl TutorialLoadingScene {
             let info = fs::load_info(fs.as_mut()).await?;
             let (illustration, background, _) = LoadingScene::load(fs.as_mut(), &info.illustration).await?;
             let config = crate::get_data().config.clone();
-            let scene = GameScene::new(
-                GameMode::Tutorial,
-                info,
-                config,
-                fs,
-                None,
-                background,
-                illustration,
-                None,
-                None,
-                None,
-            )
-            .await?;
+            let scene = GameScene::new(GameMode::Tutorial, info, config, fs, None, background, illustration, None, None, None, None).await?;
             Ok(scene)
         }));
-        Ok(Self {
-            load_task,
-            next_scene: None,
-        })
+        Ok(Self { load_task, next_scene: None })
     }
 }
 

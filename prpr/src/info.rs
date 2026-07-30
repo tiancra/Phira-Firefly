@@ -33,6 +33,9 @@ pub struct ChartInfo {
     pub illustration: String,
     pub unlock_video: Option<String>,
 
+    #[serde(default, rename = "DynamicBackground", alias = "dynamicBackground")]
+    pub dynamic_background: u8,
+
     pub preview_start: f32,
     pub preview_end: Option<f32>,
     pub aspect_ratio: f32,
@@ -73,6 +76,8 @@ impl Default for ChartInfo {
             music: "song.mp3".to_string(),
             illustration: "background.png".to_string(),
             unlock_video: None,
+
+            dynamic_background: 0,
 
             preview_start: 0.,
             preview_end: None,

@@ -11,7 +11,7 @@ use super::{
 use crate::{
     bin::BinaryReader,
     config::{Config, Mods},
-    core::{copy_fbo, BadNote, Chart, ChartExtra, Effect, Point, Resource, UIElement, Vector, PGR_FONT},
+    core::{copy_fbo, BadNote, Chart, ChartExtra, DynamicBackground, Effect, Point, Resource, UIElement, Vector, PGR_FONT},
     ext::{get_viewport, parse_time, screen_aspect, semi_white, RectExt, SafeTexture, ScaleType},
     fs::FileSystem,
     info::{ChartFormat, ChartInfo},
@@ -331,6 +331,7 @@ impl GameScene {
         player: Option<BasicPlayer>,
         background: SafeTexture,
         illustration: SafeTexture,
+        mut dynamic_bg: Option<DynamicBackground>,
         upload_fn: Option<UploadFn>,
         update_fn: Option<UpdateFn>,
         save_fn: Option<SaveFn>,
@@ -377,6 +378,7 @@ impl GameScene {
             player.as_ref().and_then(|it| it.avatar.clone()),
             background,
             illustration,
+            dynamic_bg,
             chart.extra.effects.is_empty() && effects.is_empty(),
         )
         .await
@@ -855,7 +857,7 @@ impl GameScene {
         for lyric in &self.active_lyrics {
             let appear_progress = ((time - lyric.appear_start) / FADE_IN_TIME).clamp(0.0, 1.0);
             let disappear_progress = ((time - lyric.disappear_start) / FADE_OUT_TIME).clamp(0.0, 1.0);
-            
+
             let alpha = (1.0 - disappear_progress) * appear_progress;
             if alpha <= 0.0 {
                 continue;
@@ -870,12 +872,8 @@ impl GameScene {
             };
 
             let base_y = match role {
-                LyricRole::Background => {
-                    lyrics_center_y + self.text_height * 1.8
-                }
-                _ => {
-                    lyrics_center_y
-                }
+                LyricRole::Background => lyrics_center_y + self.text_height * 1.8,
+                _ => lyrics_center_y,
             } + lyric.y_offset;
 
             let alpha_value = match role {
@@ -891,7 +889,7 @@ impl GameScene {
             let mut current_x = 0.0;
             for (i, word) in lyric.line.words.iter().enumerate() {
                 let word_width = ui.text(&word.text).size(size).measure().w;
-                
+
                 if time < word.start_time {
                     current_x += word_width;
                     continue;
@@ -1602,11 +1600,9 @@ impl Scene for GameScene {
             }
             let all_four_corners = corners_pressed.iter().all(|&b| b);
             let corner_fingers_alive = if self.skip_bar_from_corners {
-                self.corner_skip_touch_ids.iter().all(|id| {
-                    id.map_or(false, |id| {
-                        touches().iter().any(|t| t.id == id && t.phase != TouchPhase::Ended)
-                    })
-                })
+                self.corner_skip_touch_ids
+                    .iter()
+                    .all(|id| id.map_or(false, |id| touches().iter().any(|t| t.id == id && t.phase != TouchPhase::Ended)))
             } else {
                 false
             };
@@ -1747,6 +1743,13 @@ impl Scene for GameScene {
             .as_ref()
             .map(|it| if msaa { it.input() } else { it.output() })
             .or(res.camera.render_target);
+        if let Some(dbg) = &mut res.dynamic_bg {
+            let vp = get_viewport();
+            dbg.update(tm.now() as f32, vp, Some(self.music.position() as f32));
+            // 同步 Resource 持有的背景纹理句柄，因为 DynamicBackground 的 Clone 会创建独立的输出纹理
+            res.background = dbg.texture();
+        }
+
         push_camera_state();
         set_camera(&Camera2D {
             zoom: vec2(1., -asp),
@@ -1768,6 +1771,7 @@ impl Scene for GameScene {
         self.gl.quad_gl.viewport(chart_target_vp);
 
         let h = 1. / res.aspect_ratio;
+
         draw_rectangle(-1., -h, 2., h * 2., Color::new(0., 0., 0., res.alpha * res.info.background_dim));
 
         self.chart.render(ui, res);

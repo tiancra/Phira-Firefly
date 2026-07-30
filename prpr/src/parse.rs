@@ -5,7 +5,7 @@ mod extra;
 pub use extra::parse_extra;
 
 mod lyrics;
-pub use lyrics::{Lyrics, LyricLine, LyricRole, LyricWord, parse, parse_lrc, parse_ttml};
+pub use lyrics::{parse, parse_lrc, parse_ttml, LyricLine, LyricRole, LyricWord, Lyrics};
 
 mod pec;
 pub use pec::parse_pec;

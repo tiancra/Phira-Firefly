@@ -21,7 +21,12 @@ use prpr::{
     ui::{button_hit, DRectButton, Dialog, RectButton, Ui},
 };
 use regex::Regex;
-use std::{borrow::Cow, future::Future, sync::atomic::Ordering, sync::{atomic::AtomicBool, Arc}};
+use std::{
+    borrow::Cow,
+    future::Future,
+    sync::atomic::Ordering,
+    sync::{atomic::AtomicBool, Arc},
+};
 
 static EMAIL_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
@@ -299,10 +304,7 @@ impl Login {
         if std::mem::take(&mut self.show_tutorial_prompt) {
             let start = Arc::clone(&self.start_tutorial);
             Dialog::plain(tl!("tutorial-title"), tl!("tutorial-content"))
-                .buttons(vec![
-                    ttl!("cancel").into_owned(),
-                    ttl!("confirm").into_owned(),
-                ])
+                .buttons(vec![ttl!("cancel").into_owned(), ttl!("confirm").into_owned()])
                 .listener(move |_dialog, pos| {
                     if pos == 1 {
                         start.store(true, Ordering::SeqCst);

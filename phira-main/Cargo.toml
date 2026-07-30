@@ -10,3 +10,6 @@ video = ["phira/video"]
 
 [dependencies]
 phira = { workspace = true, default-features = false }
+
+[build-dependencies]
+winres = "0.1"

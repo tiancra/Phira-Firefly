@@ -4,10 +4,7 @@ use prpr::{
     ext::draw_text_aligned,
     ui::{TextPainter, Ui},
 };
-use std::{
-    sync::Mutex,
-    time::SystemTime,
-};
+use std::{sync::Mutex, time::SystemTime};
 
 pub struct CrashInfo {
     pub code: String,
@@ -42,20 +39,9 @@ pub fn classify_panic(info: &str) -> (&'static str, &'static str) {
         || lower.contains("gl")
         || lower.contains("draw")
     {
-        (
-            ERR_RENDER,
-            "游戏渲染引擎发生严重错误，图形系统无法正常工作。建议更新显卡驱动或降低画质设置后重试。",
-        )
-    } else if lower.contains("audio")
-        || lower.contains("sound")
-        || lower.contains("music")
-        || lower.contains("playback")
-        || lower.contains("sfx")
-    {
-        (
-            ERR_AUDIO,
-            "音频系统出现崩溃，无法正常播放音乐或音效。请检查音频设备是否被其他程序占用。",
-        )
+        (ERR_RENDER, "游戏渲染引擎发生严重错误，图形系统无法正常工作。建议更新显卡驱动或降低画质设置后重试。")
+    } else if lower.contains("audio") || lower.contains("sound") || lower.contains("music") || lower.contains("playback") || lower.contains("sfx") {
+        (ERR_AUDIO, "音频系统出现崩溃，无法正常播放音乐或音效。请检查音频设备是否被其他程序占用。")
     } else if lower.contains("load")
         || lower.contains("file")
         || lower.contains("assets")
@@ -64,19 +50,9 @@ pub fn classify_panic(info: &str) -> (&'static str, &'static str) {
         || lower.contains("not found")
         || lower.contains("不存在")
     {
-        (
-            ERR_RESOURCE,
-            "游戏资源加载失败，可能由于文件损坏或缺失。建议验证游戏文件完整性后重试。",
-        )
-    } else if lower.contains("memory")
-        || lower.contains("alloc")
-        || lower.contains("out of memory")
-        || lower.contains("failed to allocate")
-    {
-        (
-            ERR_MEMORY,
-            "系统内存不足，无法继续运行游戏。请关闭其他程序释放内存后重试。",
-        )
+        (ERR_RESOURCE, "游戏资源加载失败，可能由于文件损坏或缺失。建议验证游戏文件完整性后重试。")
+    } else if lower.contains("memory") || lower.contains("alloc") || lower.contains("out of memory") || lower.contains("failed to allocate") {
+        (ERR_MEMORY, "系统内存不足，无法继续运行游戏。请关闭其他程序释放内存后重试。")
     } else if lower.contains("network")
         || lower.contains("connection")
         || lower.contains("http")
@@ -84,26 +60,16 @@ pub fn classify_panic(info: &str) -> (&'static str, &'static str) {
         || lower.contains("timeout")
         || lower.contains("dns")
     {
-        (
-            ERR_NETWORK,
-            "网络连接异常，无法与服务器通信。请检查网络连接后重试。",
-        )
+        (ERR_NETWORK, "网络连接异常，无法与服务器通信。请检查网络连接后重试。")
     } else {
         (ERR_UNKNOWN, "无法预计的游戏程序失败")
     }
 }
 
 pub fn write_crash_log(info: &CrashInfo) {
-    let log = format!(
-        "[{}]\n错误代码: {}\n错误描述: {}\n崩溃信息: {}\n",
-        info.timestamp, info.code, info.message, info.panic_info
-    );
+    let log = format!("[{}]\n错误代码: {}\n错误描述: {}\n崩溃信息: {}\n", info.timestamp, info.code, info.message, info.panic_info);
     let path = CRASH_LOG_PATH.lock().unwrap();
-    let path = if path.is_empty() {
-        "crash.log".to_owned()
-    } else {
-        path.clone()
-    };
+    let path = if path.is_empty() { "crash.log".to_owned() } else { path.clone() };
     let _ = std::fs::write(&path, log);
 }
 
@@ -204,15 +170,7 @@ pub fn render_crash_screen(logo: Option<Texture2D>, painter: &mut TextPainter) {
     // PHIRA-FIREFLY {version}
     let version = env!("CARGO_PKG_VERSION");
     let version_text = format!("PHIRA-FIREFLY {}", version);
-    draw_text_aligned(
-        &mut ui,
-        &version_text,
-        0.0,
-        version_y,
-        (0.5, 0.5),
-        0.5,
-        Color::new(0.0, 0.0, 0.0, 1.0),
-    );
+    draw_text_aligned(&mut ui, &version_text, 0.0, version_y, (0.5, 0.5), 0.5, Color::new(0.0, 0.0, 0.0, 1.0));
 
     // 红色呼吸效果（从 #F00 到 #F80）
     let t = get_time();
@@ -268,19 +226,15 @@ pub fn render_crash_screen_fallback(logo: Option<Texture2D>) {
     }
 
     let info = CRASH_INFO.lock().unwrap();
-    let Some(info) = info.as_ref() else { return; };
+    let Some(info) = info.as_ref() else {
+        return;
+    };
 
     // PHIRA-FIREFLY {version}
     let version_text = format!("PHIRA-FIREFLY {}", env!("CARGO_PKG_VERSION"));
     let version_size = sh * 0.035;
     let version_dims = measure_text(&version_text, None, version_size as u16, 1.0);
-    draw_text(
-        &version_text,
-        (sw - version_dims.width) / 2.0,
-        sh * 0.55,
-        version_size,
-        Color::new(0.0, 0.0, 0.0, 1.0),
-    );
+    draw_text(&version_text, (sw - version_dims.width) / 2.0, sh * 0.55, version_size, Color::new(0.0, 0.0, 0.0, 1.0));
 
     // 红色呼吸效果
     let t = get_time();
@@ -297,11 +251,5 @@ pub fn render_crash_screen_fallback(logo: Option<Texture2D>) {
     // 错误信息
     let message_size = sh * 0.025;
     let message_dims = measure_text(&info.message, None, message_size as u16, 1.0);
-    draw_text(
-        &info.message,
-        (sw - message_dims.width) / 2.0,
-        sh * 0.72,
-        message_size,
-        red_color,
-    );
+    draw_text(&info.message, (sw - message_dims.width) / 2.0, sh * 0.72, message_size, red_color);
 }

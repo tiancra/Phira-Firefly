@@ -592,7 +592,9 @@ impl Main {
                 }
             }
 
-            self.handle_nav_actions(&targets, &nav_state, gamepad_input, &mut ui);
+            if nav_enabled {
+                self.handle_nav_actions(&targets, &nav_state, gamepad_input, &mut ui);
+            }
             let remove = FULL_LOADING.with(|it| {
                 if let Some(loading) = it.borrow_mut().as_mut() {
                     if Arc::strong_count(&loading.keep_alive) > 1 {

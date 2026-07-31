@@ -341,6 +341,9 @@ pub trait Scene {
     fn next_scene(&mut self, _tm: &mut TimeManager) -> NextScene {
         NextScene::None
     }
+    fn nav_enabled(&self) -> bool {
+        true
+    }
 }
 
 pub trait RenderTargetChooser {
@@ -445,6 +448,7 @@ impl Main {
                 *self.scenes.last_mut().unwrap() = scene;
             }
         }
+        crate::gamepad::poll_global();
         Judge::on_new_frame();
         let mut touches = Judge::get_touches();
         touches.iter_mut().for_each(f);
@@ -501,16 +505,21 @@ impl Main {
             return Ok(());
         }
 
-        crate::gamepad::poll_global();
         crate::ui::clear_focus_targets();
 
         let mut ui = Ui::new(painter, self.viewport);
         ui.set_touches(self.touches.take().unwrap());
         ui.scope(|ui| self.scenes.last_mut().unwrap().render(&mut self.tm, ui))?;
 
+        let nav_enabled = self.scenes.last().map(|s| s.nav_enabled()).unwrap_or(false)
+            && !DIALOG.with(|it| it.borrow().is_some());
         let targets = crate::ui::get_focus_targets();
         let gamepad_input = crate::gamepad::nav_input_static();
-        let nav_state = crate::gamepad::update_nav(&targets, gamepad_input, macroquad::prelude::get_frame_time());
+        let nav_state = if nav_enabled {
+            crate::gamepad::update_nav(&targets, gamepad_input, macroquad::prelude::get_frame_time())
+        } else {
+            crate::gamepad::NavState::default()
+        };
 
         if self.top_level {
             push_camera_state();
@@ -518,11 +527,13 @@ impl Main {
             let mut gl = unsafe { get_internal_gl() };
             gl.flush();
 
-            if let Some(target) = nav_state.current_target(&targets) {
-                ui.draw_focus_frame(target.rect, nav_state.phase);
-            }
+            if nav_enabled {
+                if let Some(target) = nav_state.current_target(&targets) {
+                    ui.draw_focus_frame(target.rect, nav_state.phase);
+                }
 
-            self.handle_nav_actions(&targets, &nav_state, gamepad_input, &mut ui);
+                self.handle_nav_actions(&targets, &nav_state, gamepad_input, &mut ui);
+            }
 
             BILLBOARD.with(|it| {
                 let mut guard = it.borrow_mut();

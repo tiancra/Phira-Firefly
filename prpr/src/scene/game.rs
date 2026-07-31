@@ -204,6 +204,7 @@ pub struct GameScene {
     fps_last_frame_time: f64,
 
     dead: bool,
+    game_paused: bool,
 
     // skip bar
     skip_bar_active: bool,
@@ -218,6 +219,7 @@ pub struct GameScene {
     skip_wait_timer: f32,
     skip_fade_out_progress: f32,
     skip_alt_must_release: bool,
+    skip_gp_combo_must_release: bool,
     skip_instant: bool,
     corner_skip_touch_ids: [Option<u64>; 4],
     track_skipped: bool,
@@ -441,6 +443,7 @@ impl GameScene {
             fps_last_frame_time: 0.0,
 
             dead: false,
+            game_paused: false,
 
             skip_bar_active: false,
             skip_bar_retracting: false,
@@ -454,6 +457,7 @@ impl GameScene {
             skip_wait_timer: 0.0,
             skip_fade_out_progress: 0.0,
             skip_alt_must_release: false,
+            skip_gp_combo_must_release: false,
             skip_instant: false,
             corner_skip_touch_ids: [None; 4],
             track_skipped: false,
@@ -1276,6 +1280,7 @@ impl Scene for GameScene {
         self.skip_wait_timer = 0.0;
         self.skip_fade_out_progress = 0.0;
         self.skip_alt_must_release = is_key_down(KeyCode::LeftAlt);
+        self.skip_gp_combo_must_release = false;
         self.skip_instant = false;
         self.corner_skip_touch_ids = [None; 4];
         self.track_skipped = false;
@@ -1287,6 +1292,7 @@ impl Scene for GameScene {
             self.pause_rewind = None;
             self.music.pause()?;
             tm.pause();
+            self.game_paused = true;
         }
         #[cfg(target_env = "ohos")]
         miniquad::native::set_interceptor_state(false);
@@ -1297,6 +1303,7 @@ impl Scene for GameScene {
         if !matches!(self.state, State::Playing) {
             tm.resume();
         }
+        self.game_paused = false;
         Ok(())
     }
 
@@ -1584,6 +1591,14 @@ impl Scene for GameScene {
             self.skip_alt_must_release = false;
         }
         let alt_s_down = !self.skip_alt_must_release && is_key_down(KeyCode::LeftAlt) && is_key_down(KeyCode::S);
+
+        // Gamepad LB+RB+LT+RT combo
+        let gp_nav = crate::gamepad::nav_input_static();
+        if self.skip_gp_combo_must_release && !gp_nav.skip_combo {
+            self.skip_gp_combo_must_release = false;
+        }
+        let gp_skip_down = !self.skip_gp_combo_must_release && gp_nav.skip_combo;
+
         if !self.skip_done {
             // detect four corners pressed
             let corner_margin = 0.2;
@@ -1613,11 +1628,11 @@ impl Scene for GameScene {
             } else {
                 false
             };
-            let skip_activated = alt_s_down || (self.skip_bar_from_corners && corner_fingers_alive) || (all_four_corners && !self.skip_bar_active);
+            let skip_activated = alt_s_down || gp_skip_down || (self.skip_bar_from_corners && corner_fingers_alive) || (all_four_corners && !self.skip_bar_active);
 
             if skip_activated {
                 self.skip_bar_retracting = false;
-                self.skip_bar_from_corners = !alt_s_down;
+                self.skip_bar_from_corners = !alt_s_down && !gp_skip_down;
                 if !self.skip_bar_active {
                     self.skip_bar_active = true;
                     self.skip_bar_progress = 0.0;
@@ -1656,6 +1671,9 @@ impl Scene for GameScene {
                     self.skip_bar_from_corners = false;
                     self.skip_transition_progress = 0.0;
                     self.skip_wait_timer = 0.0;
+                    if gp_skip_down {
+                        self.skip_gp_combo_must_release = true;
+                    }
                 }
             } else if self.skip_bar_active {
                 if !self.skip_bar_retracting {
@@ -1897,5 +1915,9 @@ impl Scene for GameScene {
         } else {
             NextScene::None
         }
+    }
+
+    fn nav_enabled(&self) -> bool {
+        !matches!(self.state, State::Playing) || self.game_paused
     }
 }

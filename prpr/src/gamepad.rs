@@ -174,6 +174,7 @@ impl GamepadInput {
 
     /// Returns the left stick direction for navigation (if active)
     /// and the button press states (A, B, X rising edges)
+    /// Also detects LB+RB+LT+RT combo for TRACK SKIP
     #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos"))))]
     pub fn nav_input(&mut self) -> NavInput {
         let Some(gilrs) = self.gilrs.as_mut() else {
@@ -185,6 +186,10 @@ impl GamepadInput {
         let mut a_down = false;
         let mut b_down = false;
         let mut x_down = false;
+        let mut lb = false;
+        let mut rb = false;
+        let mut lt = false;
+        let mut rt = false;
 
         for (_, gp) in gilrs.gamepads() {
             let raw = vec2(gp.value(Axis::LeftStickX), gp.value(Axis::LeftStickY));
@@ -194,6 +199,10 @@ impl GamepadInput {
             a_down |= gp.is_pressed(Button::South);
             b_down |= gp.is_pressed(Button::East);
             x_down |= gp.is_pressed(Button::West);
+            lb |= gp.is_pressed(Button::LeftTrigger);
+            rb |= gp.is_pressed(Button::RightTrigger);
+            lt |= gp.value(Axis::LeftZ) > 0.5;
+            rt |= gp.value(Axis::RightZ) > 0.5;
         }
 
         let a_pressed = a_down && !self.a_was_down;
@@ -210,6 +219,7 @@ impl GamepadInput {
             a_pressed,
             b_pressed,
             x_pressed,
+            skip_combo: lb && rb && lt && rt,
         }
     }
 
@@ -225,6 +235,7 @@ pub struct NavInput {
     pub a_pressed: bool,
     pub b_pressed: bool,
     pub x_pressed: bool,
+    pub skip_combo: bool,
 }
 
 /// Navigation state machine: tracks focus index and handles stick-based navigation.

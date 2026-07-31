@@ -294,6 +294,17 @@ impl Scene for MainScene {
     }
 
     fn update(&mut self, tm: &mut TimeManager) -> Result<()> {
+        // Handle gamepad B-key back within MainScene pages
+        if prpr::gamepad::take_back_pressed() && self.pages.len() > 1 && !self.state.fader.transiting() {
+            if !self.pages.last_mut().unwrap().on_back_pressed(&mut self.state) {
+                if self.pages.len() == 2 {
+                    if let Some(bgm) = &mut self.bgm {
+                        bgm.set_low_pass(0.)?;
+                    }
+                }
+                self.pop();
+            }
+        }
         UI_AUDIO.with(|it| it.borrow_mut().recover_if_needed())?;
         if get_data().config.mp_enabled {
             MP_PANEL.with(|it| {

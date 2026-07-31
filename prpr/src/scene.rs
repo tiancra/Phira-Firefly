@@ -534,6 +534,14 @@ impl Main {
             }
         });
         self.scenes.last_mut().unwrap().update(&mut self.tm)?;
+
+        // Handle gamepad B-key back: pop sub-scene if not in main scene
+        if crate::gamepad::take_back_pressed() && self.scenes.len() > 1 {
+            self.scenes.pop();
+            self.tm.seek_to(self.times.pop().unwrap());
+            self.scenes.last_mut().unwrap().enter(&mut self.tm, self.target_chooser.choose())?;
+        }
+
         Ok(())
     }
 
@@ -548,15 +556,12 @@ impl Main {
         ui.set_touches(self.touches.take().unwrap());
         ui.scope(|ui| self.scenes.last_mut().unwrap().render(&mut self.tm, ui))?;
 
-        let nav_enabled = self.scenes.last().map(|s| s.nav_enabled()).unwrap_or(false)
-            && !DIALOG.with(|it| it.borrow().is_some());
-        let targets = crate::ui::get_focus_targets();
-        let gamepad_input = crate::gamepad::nav_input_static();
-        let nav_state = if nav_enabled {
-            crate::gamepad::update_nav(&targets, gamepad_input, macroquad::prelude::get_frame_time())
-        } else {
-            crate::gamepad::NavState::default()
-        };
+        let has_dialog = DIALOG.with(|it| it.borrow().is_some());
+
+        // If dialog is open, clear scene focus targets so only dialog buttons are navigable
+        if has_dialog {
+            crate::ui::clear_focus_targets();
+        }
 
         if self.top_level {
             push_camera_state();
@@ -564,25 +569,38 @@ impl Main {
             let mut gl = unsafe { get_internal_gl() };
             gl.flush();
 
+            BILLBOARD.with(|it| {
+                let mut guard = it.borrow_mut();
+                let t = guard.1.now() as f32;
+                guard.0.render(&mut ui, t);
+            });
+
+            // Render dialog before navigation so its buttons register as focus targets
+            if has_dialog {
+                DIALOG.with(|it| {
+                    if let Some(dialog) = it.borrow_mut().as_mut() {
+                        dialog.render(&mut ui, self.tm.now() as _);
+                    }
+                });
+            }
+
+            let nav_enabled = self.scenes.last().map(|s| s.nav_enabled()).unwrap_or(false)
+                || has_dialog;
+            let targets = crate::ui::get_focus_targets();
+            let gamepad_input = crate::gamepad::nav_input_static();
+            let nav_state = if nav_enabled {
+                crate::gamepad::update_nav(&targets, gamepad_input, macroquad::prelude::get_frame_time())
+            } else {
+                crate::gamepad::NavState::default()
+            };
+
             if nav_enabled {
                 if let Some(target) = nav_state.current_target(&targets) {
                     ui.draw_focus_frame(target.rect, nav_state.phase);
                 }
             }
 
-            // Always handle A/B/X nav actions (B back/exit works even without focus targets)
             self.handle_nav_actions(&targets, &nav_state, gamepad_input, &mut ui);
-
-            BILLBOARD.with(|it| {
-                let mut guard = it.borrow_mut();
-                let t = guard.1.now() as f32;
-                guard.0.render(&mut ui, t);
-            });
-            DIALOG.with(|it| {
-                if let Some(dialog) = it.borrow_mut().as_mut() {
-                    dialog.render(&mut ui, self.tm.now() as _);
-                }
-            });
             let remove = FULL_LOADING.with(|it| {
                 if let Some(loading) = it.borrow_mut().as_mut() {
                     if Arc::strong_count(&loading.keep_alive) > 1 {
@@ -631,35 +649,41 @@ impl Main {
         if input.a_pressed {
             if let Some(target) = nav_state.current_target(targets) {
                 let center = target.rect.center();
-                // Convert UI coords (-1..1) to screen pixels for touch injection
-                let (vw, vh) = (screen_width(), screen_height());
-                let px = (center.x + 1.0) * 0.5 * vw;
-                let py = (center.y + 1.0) * 0.5 * vh;
+                // Convert global UI coords to screen pixels using viewport
+                let vp = crate::ext::get_viewport();
+                let sh = screen_height();
+                let aspect = vp.2 as f32 / vp.3 as f32;
+                let px = (center.x + 1.0) * 0.5 * vp.2 as f32 + vp.0 as f32;
+                let py = (center.y * aspect + 1.0) * 0.5 * vp.3 as f32 + (sh - (vp.1 + vp.3) as f32);
                 crate::gamepad::push_nav_touch(vec2(px, py));
             }
         }
 
-        // B: back / exit
+        // B: back or cancel dialog
         if input.b_pressed {
-            if self.scenes.len() <= 1 {
-                // Main scene: show exit confirmation dialog
-                if !DIALOG.with(|d| d.borrow().is_some()) {
-                    let confirm_exit = crate::ui::Dialog::plain(
-                        "退出 Phira-Firefly",
-                        "确定要退出 Phira-Firefly 吗？",
-                    ).buttons(vec!["是".to_string(), "否".to_string()])
-                    .listener(move |_dlg, pos| {
-                        if pos == 0 {
-                            // Exit
-                            std::process::exit(0);
-                        }
-                        false
-                    });
-                    confirm_exit.show();
-                }
+            let has_dialog = DIALOG.with(|d| d.borrow().is_some());
+            if has_dialog {
+                // B cancels dialog
+                DIALOG.with(|d| *d.borrow_mut() = None);
             } else {
-                // Sub-scene: pop it
                 crate::gamepad::push_nav_back();
+            }
+        }
+
+        // HOME/Mode: exit confirmation on main scene
+        if input.home_pressed {
+            if self.scenes.len() <= 1 && !DIALOG.with(|d| d.borrow().is_some()) {
+                let confirm_exit = crate::ui::Dialog::plain(
+                    "退出 Phira-Firefly",
+                    "确定要退出 Phira-Firefly 吗？",
+                ).buttons(vec!["确定".to_string(), "取消".to_string()])
+                .listener(move |_dlg, pos| {
+                    if pos == 0 {
+                        std::process::exit(0);
+                    }
+                    false
+                });
+                confirm_exit.show();
             }
         }
 

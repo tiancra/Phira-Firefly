@@ -29,6 +29,7 @@ pub struct GamepadInput {
     a_was_down: bool,
     b_was_down: bool,
     x_was_down: bool,
+    home_was_down: bool,
     retry_timer: f32,
 }
 
@@ -52,6 +53,7 @@ impl GamepadInput {
             a_was_down: false,
             b_was_down: false,
             x_was_down: false,
+            home_was_down: false,
             retry_timer: 0.0,
         }
     }
@@ -101,6 +103,7 @@ impl GamepadInput {
         let mut a_down = false;
         let mut b_down = false;
         let mut x_down = false;
+        let mut home_down = false;
         let mut lb = false;
         let mut rb = false;
         let mut lt_trigger = false;
@@ -160,6 +163,7 @@ impl GamepadInput {
             a_down |= gp.is_pressed(Button::South);
             b_down |= gp.is_pressed(Button::East);
             x_down |= gp.is_pressed(Button::West);
+            home_down |= gp.is_pressed(Button::Mode);
 
             // LB/RB: only use digital button detection
             lb |= gp.is_pressed(Button::LeftTrigger);
@@ -196,9 +200,11 @@ impl GamepadInput {
         nav.a_pressed = a_down && !self.a_was_down;
         nav.b_pressed = b_down && !self.b_was_down;
         nav.x_pressed = x_down && !self.x_was_down;
+        nav.home_pressed = home_down && !self.home_was_down;
         self.a_was_down = a_down;
         self.b_was_down = b_down;
         self.x_was_down = x_down;
+        self.home_was_down = home_down;
 
         nav.left_stick = left_stick;
         nav.dpad_dir = dpad_dir_from_buttons(dpad_up, dpad_down, dpad_left, dpad_right);
@@ -279,6 +285,7 @@ pub struct NavInput {
     pub a_pressed: bool,
     pub b_pressed: bool,
     pub x_pressed: bool,
+    pub home_pressed: bool,
     pub skip_combo: bool,
 }
 

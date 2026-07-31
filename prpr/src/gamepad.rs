@@ -1,9 +1,6 @@
 //! 手柄输入支持（仅桌面平台）
 //!
-//! 当 `use_keyboard` 开启时，手柄按键/扳机映射为键盘式击打，摇杆映射为虚拟触摸
-//! 用于 Drag/Flick，菜单键触发暂停。
-//!
-//! 手柄导航系统：左摇杆在非游玩界面遍历可点击控件，A 确认、B 返回、X 联机。
+//! 手柄导航系统：左摇杆+十字键双重保障，A确认、B返回、X联机。
 //! 支持 PS / Xbox 360 / Xbox One / Switch 等常见协议手柄。
 //! gilrs 已将不同手柄的按键统一映射为标准 Button / Axis 枚举。
 
@@ -20,29 +17,23 @@ pub struct GamepadFrame {
     pub menu_pressed: bool,
 }
 
-#[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos"))))]
+#[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios", target_env = "ohos")))]
 use gilrs::{Axis, Button, Gilrs};
 
+#[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios", target_env = "ohos")))]
 pub struct GamepadInput {
-    #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos"))))]
     gilrs: Option<Gilrs>,
-    #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos"))))]
     buttons: std::collections::HashSet<Button>,
-    #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos"))))]
     menu_down: bool,
-    #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos"))))]
     sticks: [Option<Vec2>; 2],
-    // Navigation state
-    #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos"))))]
     a_was_down: bool,
-    #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos"))))]
     b_was_down: bool,
-    #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos"))))]
     x_was_down: bool,
-    // Retry timer for gilrs reinit
-    #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos"))))]
     retry_timer: f32,
 }
+
+#[cfg(any(target_arch = "wasm32", target_os = "android", target_os = "ios", target_env = "ohos"))]
+pub struct GamepadInput {}
 
 impl Default for GamepadInput {
     fn default() -> Self {
@@ -51,31 +42,27 @@ impl Default for GamepadInput {
 }
 
 impl GamepadInput {
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios", target_env = "ohos")))]
     pub fn new() -> Self {
-        #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos"))))]
-        {
-            Self {
-                gilrs: Gilrs::new().ok(),
-                buttons: Default::default(),
-                menu_down: false,
-                sticks: [None; 2],
-                a_was_down: false,
-                b_was_down: false,
-                x_was_down: false,
-                retry_timer: 0.0,
-            }
-        }
-        #[cfg(not(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos")))))]
-        {
-            Self {}
+        Self {
+            gilrs: Gilrs::new().ok(),
+            buttons: Default::default(),
+            menu_down: false,
+            sticks: [None; 2],
+            a_was_down: false,
+            b_was_down: false,
+            x_was_down: false,
+            retry_timer: 0.0,
         }
     }
 
-    /// Poll gamepad and return both gameplay frame and navigation input.
-    /// Merged into one pass to ensure consistent state.
-    #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos"))))]
+    #[cfg(any(target_arch = "wasm32", target_os = "android", target_os = "ios", target_env = "ohos"))]
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios", target_env = "ohos")))]
     pub fn poll(&mut self, dt: f32) -> (GamepadFrame, NavInput) {
-        // Retry gilrs initialization if it failed
         if self.gilrs.is_none() {
             self.retry_timer += dt;
             if self.retry_timer >= 2.0 {
@@ -93,55 +80,42 @@ impl GamepadInput {
             return (frame, nav);
         };
 
-        // Process all pending events
         while gilrs.next_event().is_some() {}
 
         const DEADZONE: f32 = 0.25;
-        const NAV_DEADZONE: f32 = 0.3;
+        const NAV_DEADZONE: f32 = 0.25;
         const STICK_IDS: [u64; 2] = [u64::MAX - 2000, u64::MAX - 2001];
         const STICK_AXES: [(Axis, Axis); 2] = [(Axis::LeftStickX, Axis::LeftStickY), (Axis::RightStickX, Axis::RightStickY)];
 
-        // gilrs normalizes all controllers (PS, Xbox, Switch) to these buttons:
-        //   South = A/Cross/B(bottom), East = B/Circle/A(right),
-        //   West = X/Square/Y(left),  North = Y/Triangle/X(top)
-        //   LeftTrigger = LB/L1/L,    RightTrigger = RB/R1/R
-        //   LeftTrigger2 = LT/L2/ZL,  RightTrigger2 = RT/R2/ZR
         const HIT_BUTTONS: [Button; 12] = [
-            Button::South,
-            Button::East,
-            Button::North,
-            Button::West,
-            Button::LeftTrigger,
-            Button::LeftTrigger2,
-            Button::RightTrigger,
-            Button::RightTrigger2,
-            Button::DPadUp,
-            Button::DPadDown,
-            Button::DPadLeft,
-            Button::DPadRight,
+            Button::South, Button::East, Button::North, Button::West,
+            Button::LeftTrigger, Button::LeftTrigger2,
+            Button::RightTrigger, Button::RightTrigger2,
+            Button::DPadUp, Button::DPadDown, Button::DPadLeft, Button::DPadRight,
         ];
 
         let mut current = std::collections::HashSet::new();
         let mut menu_down = false;
 
-        // Nav state
         let mut left_stick = Vec2::ZERO;
         let mut a_down = false;
         let mut b_down = false;
         let mut x_down = false;
         let mut lb = false;
         let mut rb = false;
-        let mut lt = false;
-        let mut rt = false;
+        let mut lt_trigger = false;
+        let mut rt_trigger = false;
+        let mut dpad_up = false;
+        let mut dpad_down = false;
+        let mut dpad_left = false;
+        let mut dpad_right = false;
 
         for (_, gp) in gilrs.gamepads() {
-            // --- Gameplay button state ---
             for &btn in &HIT_BUTTONS {
                 if gp.is_pressed(btn) {
                     current.insert(btn);
                 }
             }
-            // Analog triggers as digital for gameplay
             if gp.value(Axis::LeftZ) > 0.5 {
                 current.insert(Button::LeftTrigger2);
             }
@@ -149,12 +123,10 @@ impl GamepadInput {
                 current.insert(Button::RightTrigger2);
             }
 
-            // Menu
             if gp.is_pressed(Button::Start) || gp.is_pressed(Button::Select) || gp.is_pressed(Button::Mode) {
                 menu_down = true;
             }
 
-            // --- Stick touches for gameplay (Drag/Flick) ---
             for (i, &(ax_x, ax_y)) in STICK_AXES.iter().enumerate() {
                 let raw = vec2(gp.value(ax_x), gp.value(ax_y));
                 let active = raw.length_squared() > DEADZONE * DEADZONE;
@@ -162,50 +134,53 @@ impl GamepadInput {
                     let pos = raw.clamp_length_max(1.0);
                     if self.sticks[i].is_none() {
                         frame.touches.push(Touch {
-                            id: STICK_IDS[i],
-                            phase: TouchPhase::Started,
-                            position: pos,
-                            time: f64::NEG_INFINITY,
+                            id: STICK_IDS[i], phase: TouchPhase::Started,
+                            position: pos, time: f64::NEG_INFINITY,
                         });
                     }
                     frame.touches.push(Touch {
-                        id: STICK_IDS[i],
-                        phase: TouchPhase::Moved,
-                        position: pos,
-                        time: f64::NEG_INFINITY,
+                        id: STICK_IDS[i], phase: TouchPhase::Moved,
+                        position: pos, time: f64::NEG_INFINITY,
                     });
                     self.sticks[i] = Some(pos);
                 } else if let Some(last) = self.sticks[i].take() {
                     frame.touches.push(Touch {
-                        id: STICK_IDS[i],
-                        phase: TouchPhase::Ended,
-                        position: last,
-                        time: f64::NEG_INFINITY,
+                        id: STICK_IDS[i], phase: TouchPhase::Ended,
+                        position: last, time: f64::NEG_INFINITY,
                     });
                 }
             }
 
-            // --- Navigation input (all from same gilrs state) ---
             let raw_stick = vec2(gp.value(Axis::LeftStickX), gp.value(Axis::LeftStickY));
             if raw_stick.length_squared() > NAV_DEADZONE * NAV_DEADZONE {
                 left_stick = raw_stick.clamp_length_max(1.0);
             }
+
             a_down |= gp.is_pressed(Button::South);
             b_down |= gp.is_pressed(Button::East);
             x_down |= gp.is_pressed(Button::West);
-            lb |= gp.is_pressed(Button::LeftTrigger);
-            rb |= gp.is_pressed(Button::RightTrigger);
-            lt |= gp.value(Axis::LeftZ) > 0.5;
-            rt |= gp.value(Axis::RightZ) > 0.5;
+
+            lb |= gp.is_pressed(Button::LeftTrigger)
+                || gp.is_pressed(Button::LeftTrigger2)
+                || gp.value(Axis::LeftZ) > -0.5;
+            rb |= gp.is_pressed(Button::RightTrigger)
+                || gp.is_pressed(Button::RightTrigger2)
+                || gp.value(Axis::RightZ) > -0.5;
+
+            lt_trigger |= gp.value(Axis::LeftZ) > 0.1;
+            rt_trigger |= gp.value(Axis::RightZ) > 0.1;
+
+            dpad_up |= gp.is_pressed(Button::DPadUp);
+            dpad_down |= gp.is_pressed(Button::DPadDown);
+            dpad_left |= gp.is_pressed(Button::DPadLeft);
+            dpad_right |= gp.is_pressed(Button::DPadRight);
         }
 
-        // Menu rising edge
         if menu_down && !self.menu_down {
             frame.menu_pressed = true;
         }
         self.menu_down = menu_down;
 
-        // Gameplay key delta
         for btn in &current {
             if !self.buttons.contains(btn) {
                 frame.key_delta += 1;
@@ -219,7 +194,6 @@ impl GamepadInput {
         }
         self.buttons = current;
 
-        // Nav rising edges
         nav.a_pressed = a_down && !self.a_was_down;
         nav.b_pressed = b_down && !self.b_was_down;
         nav.x_pressed = x_down && !self.x_was_down;
@@ -228,18 +202,18 @@ impl GamepadInput {
         self.x_was_down = x_down;
 
         nav.left_stick = left_stick;
-        nav.skip_combo = lb && rb && lt && rt;
+        nav.dpad_dir = dpad_dir_from_buttons(dpad_up, dpad_down, dpad_left, dpad_right);
+        nav.skip_combo = lb && rb && lt_trigger && rt_trigger;
 
         (frame, nav)
     }
 
-    #[cfg(not(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos")))))]
+    #[cfg(any(target_arch = "wasm32", target_os = "android", target_os = "ios", target_env = "ohos"))]
     pub fn poll(&mut self, _dt: f32) -> (GamepadFrame, NavInput) {
         (GamepadFrame::default(), NavInput::default())
     }
 
-    /// Get raw gamepad state for diagnostics (test page).
-    #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos"))))]
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios", target_env = "ohos")))]
     pub fn get_raw_state(&mut self) -> GamepadRawState {
         let mut raw = GamepadRawState::default();
         raw.gilrs_ready = self.gilrs.is_some();
@@ -255,8 +229,12 @@ impl GamepadInput {
             raw.east |= gp.is_pressed(Button::East);
             raw.north |= gp.is_pressed(Button::North);
             raw.west |= gp.is_pressed(Button::West);
-            raw.lb |= gp.is_pressed(Button::LeftTrigger);
-            raw.rb |= gp.is_pressed(Button::RightTrigger);
+            raw.lb |= gp.is_pressed(Button::LeftTrigger)
+                || gp.is_pressed(Button::LeftTrigger2)
+                || gp.value(Axis::LeftZ) > -0.5;
+            raw.rb |= gp.is_pressed(Button::RightTrigger)
+                || gp.is_pressed(Button::RightTrigger2)
+                || gp.value(Axis::RightZ) > -0.5;
             raw.lt = raw.lt.max(gp.value(Axis::LeftZ));
             raw.rt = raw.rt.max(gp.value(Axis::RightZ));
             raw.dpad_up |= gp.is_pressed(Button::DPadUp);
@@ -266,6 +244,16 @@ impl GamepadInput {
             raw.start |= gp.is_pressed(Button::Start);
             raw.select |= gp.is_pressed(Button::Select);
             raw.mode |= gp.is_pressed(Button::Mode);
+            raw.axis_lx = raw.axis_lx.max(gp.value(Axis::LeftStickX));
+            raw.axis_ly = raw.axis_ly.max(gp.value(Axis::LeftStickY));
+            raw.axis_rx = raw.axis_rx.max(gp.value(Axis::RightStickX));
+            raw.axis_ry = raw.axis_ry.max(gp.value(Axis::RightStickY));
+            raw.axis_lz = raw.axis_lz.max(gp.value(Axis::LeftZ));
+            raw.axis_rz = raw.axis_rz.max(gp.value(Axis::RightZ));
+            raw.btn_lt1 |= gp.is_pressed(Button::LeftTrigger);
+            raw.btn_lt2 |= gp.is_pressed(Button::LeftTrigger2);
+            raw.btn_rt1 |= gp.is_pressed(Button::RightTrigger);
+            raw.btn_rt2 |= gp.is_pressed(Button::RightTrigger2);
             first = false;
         }
         if first {
@@ -274,22 +262,29 @@ impl GamepadInput {
         raw
     }
 
-    #[cfg(not(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos")))))]
+    #[cfg(any(target_arch = "wasm32", target_os = "android", target_os = "ios", target_env = "ohos"))]
     pub fn get_raw_state(&mut self) -> GamepadRawState {
         GamepadRawState::default()
     }
 }
 
+fn dpad_dir_from_buttons(up: bool, down: bool, left: bool, right: bool) -> Vec2 {
+    let x = (right as i32) as f32 - (left as i32) as f32;
+    let y = (up as i32) as f32 - (down as i32) as f32;
+    let v = vec2(x, -y);
+    if v.length_squared() > 0.01 { v.normalize() } else { Vec2::ZERO }
+}
+
 #[derive(Default, Clone, Copy)]
 pub struct NavInput {
     pub left_stick: Vec2,
+    pub dpad_dir: Vec2,
     pub a_pressed: bool,
     pub b_pressed: bool,
     pub x_pressed: bool,
     pub skip_combo: bool,
 }
 
-/// Navigation state machine: tracks focus index and handles stick-based navigation.
 #[derive(Default, Clone)]
 pub struct NavState {
     pub focus_index: usize,
@@ -300,67 +295,42 @@ pub struct NavState {
 
 impl NavState {
     pub fn new() -> Self {
-        Self {
-            focus_index: 0,
-            phase: 0.0,
-            last_stick_dir: Vec2::ZERO,
-            nav_cooldown: 0.0,
-        }
+        Self { focus_index: 0, phase: 0.0, last_stick_dir: Vec2::ZERO, nav_cooldown: 0.0 }
     }
 
-    /// Process navigation update: returns the updated focus index after stick movement
     pub fn update(&mut self, targets: &[FocusTarget], input: NavInput, dt: f32) {
         self.phase += dt * 2.0;
+        if targets.is_empty() { self.focus_index = 0; return; }
+        if self.focus_index >= targets.len() { self.focus_index = 0; }
+        if self.nav_cooldown > 0.0 { self.nav_cooldown -= dt; }
 
-        if targets.is_empty() {
-            self.focus_index = 0;
-            return;
-        }
+        let combined = if input.left_stick.length_squared() > input.dpad_dir.length_squared() {
+            input.left_stick
+        } else {
+            input.dpad_dir
+        };
 
-        if self.focus_index >= targets.len() {
-            self.focus_index = 0;
-        }
-
-        if self.nav_cooldown > 0.0 {
-            self.nav_cooldown -= dt;
-        }
-
-        let stick = input.left_stick;
-        if stick.length_squared() > 0.3 * 0.3 {
-            // Check if stick changed direction significantly
-            let dot = stick.dot(self.last_stick_dir);
+        if combined.length_squared() > 0.2 * 0.2 {
+            let dot = combined.dot(self.last_stick_dir);
             if self.nav_cooldown <= 0.0 || dot < 0.5 {
-                self.last_stick_dir = stick.normalize();
+                self.last_stick_dir = combined.normalize();
                 self.nav_cooldown = 0.15;
 
-                // Find nearest target in stick direction from current focus
                 let current = &targets[self.focus_index];
-                let current_center = current.rect.center();
+                let cc = current.rect.center();
                 let mut best_idx = self.focus_index;
                 let mut best_score = f32::MAX;
 
                 for (i, target) in targets.iter().enumerate() {
-                    if i == self.focus_index {
-                        continue;
-                    }
+                    if i == self.focus_index { continue; }
                     let tc = target.rect.center();
-                    let diff = tc - current_center;
+                    let diff = tc - cc;
                     let dist = diff.length();
-                    if dist < 0.001 {
-                        continue;
-                    }
+                    if dist < 0.001 { continue; }
                     let dir = diff / dist;
-                    let alignment = dir.dot(stick.normalize()).max(0.0);
-                    // Prefer elements in the stick direction, weighted by distance
-                    let score = if alignment > 0.1 {
-                        dist / (alignment + 0.1)
-                    } else {
-                        f32::MAX
-                    };
-                    if score < best_score {
-                        best_score = score;
-                        best_idx = i;
-                    }
+                    let alignment = dir.dot(combined.normalize()).max(0.0);
+                    let score = if alignment > 0.1 { dist / (alignment + 0.1) } else { f32::MAX };
+                    if score < best_score { best_score = score; best_idx = i; }
                 }
 
                 if best_idx != self.focus_index && best_score < f32::MAX {
@@ -377,7 +347,6 @@ impl NavState {
     }
 }
 
-/// Raw gamepad state for diagnostic/testing purposes.
 #[derive(Default, Clone, Copy)]
 pub struct GamepadRawState {
     pub connected: bool,
@@ -399,6 +368,16 @@ pub struct GamepadRawState {
     pub start: bool,
     pub select: bool,
     pub mode: bool,
+    pub axis_lx: f32,
+    pub axis_ly: f32,
+    pub axis_rx: f32,
+    pub axis_ry: f32,
+    pub axis_lz: f32,
+    pub axis_rz: f32,
+    pub btn_lt1: bool,
+    pub btn_lt2: bool,
+    pub btn_rt1: bool,
+    pub btn_rt2: bool,
 }
 
 thread_local! {
@@ -428,24 +407,16 @@ pub fn last_frame() -> GamepadFrame {
     LAST_FRAME.with(|it| it.borrow().clone())
 }
 
-/// Poll the global gamepad: processes events, updates gameplay frame and navigation input.
-/// Must be called every frame.
 pub fn poll_global() {
     let dt = macroquad::prelude::get_frame_time();
     GAMEPAD.with(|it| {
         let mut guard = it.borrow_mut();
         let (frame, nav) = guard.poll(dt);
         let raw = guard.get_raw_state();
-        LAST_FRAME.with(|f| {
-            *f.borrow_mut() = frame.clone();
-        });
+        LAST_FRAME.with(|f| { *f.borrow_mut() = frame.clone(); });
         push_pending(frame);
-        LAST_NAV_INPUT.with(|n| {
-            *n.borrow_mut() = nav;
-        });
-        LAST_RAW_STATE.with(|r| {
-            *r.borrow_mut() = raw;
-        });
+        LAST_NAV_INPUT.with(|n| { *n.borrow_mut() = nav; });
+        LAST_RAW_STATE.with(|r| { *r.borrow_mut() = raw; });
     });
 }
 
@@ -470,52 +441,24 @@ pub fn update_nav(targets: &[FocusTarget], input: NavInput, dt: f32) -> NavState
 }
 
 pub fn reset_nav_focus() {
-    NAV_STATE.with(|it| {
-        it.borrow_mut().focus_index = 0;
-    });
+    NAV_STATE.with(|it| { it.borrow_mut().focus_index = 0; });
 }
 
 pub fn push_nav_touch(pos: Vec2) {
-    let touch = Touch {
-        id: u64::MAX - 3000,
-        phase: TouchPhase::Started,
-        position: pos,
-        time: f64::NEG_INFINITY,
-    };
+    let touch = Touch { id: u64::MAX - 3000, phase: TouchPhase::Started, position: pos, time: f64::NEG_INFINITY };
     push_pending(GamepadFrame {
-        key_delta: 0,
-        keys_down: 0,
-        touches: vec![touch.clone(), Touch {
-            id: u64::MAX - 3000,
-            phase: TouchPhase::Ended,
-            position: pos,
-            time: f64::NEG_INFINITY,
-        }],
-        menu_pressed: false,
+        key_delta: 0, keys_down: 0, menu_pressed: false,
+        touches: vec![touch, Touch { id: u64::MAX - 3000, phase: TouchPhase::Ended, position: pos, time: f64::NEG_INFINITY }],
     });
 }
 
-pub fn push_nav_back() {
-    BACK_PRESSED.with(|it| {
-        *it.borrow_mut() = true;
-    });
-}
-
-pub fn push_nav_multilang() {
-    MULTILANG_PRESSED.with(|it| {
-        *it.borrow_mut() = true;
-    });
-}
+pub fn push_nav_back() { BACK_PRESSED.with(|it| { *it.borrow_mut() = true; }); }
+pub fn push_nav_multilang() { MULTILANG_PRESSED.with(|it| { *it.borrow_mut() = true; }); }
 
 thread_local! {
     static BACK_PRESSED: RefCell<bool> = const { RefCell::new(false) };
     static MULTILANG_PRESSED: RefCell<bool> = const { RefCell::new(false) };
 }
 
-pub fn take_back_pressed() -> bool {
-    BACK_PRESSED.with(|it| std::mem::take(&mut *it.borrow_mut()))
-}
-
-pub fn take_multilang_pressed() -> bool {
-    MULTILANG_PRESSED.with(|it| std::mem::take(&mut *it.borrow_mut()))
-}
+pub fn take_back_pressed() -> bool { BACK_PRESSED.with(|it| std::mem::take(&mut *it.borrow_mut())) }
+pub fn take_multilang_pressed() -> bool { MULTILANG_PRESSED.with(|it| std::mem::take(&mut *it.borrow_mut())) }

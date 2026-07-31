@@ -186,7 +186,11 @@ impl RectButton {
     }
 
     pub fn set(&mut self, ui: &mut Ui, rect: Rect) {
-        register_focus_target(rect, FocusType::Button, format!("rb_{:p}", self as *mut _));
+        // Register focus target in global UI coordinates (-1..1)
+        let tl = ui.to_global((rect.x, rect.y));
+        let br = ui.to_global((rect.right(), rect.bottom()));
+        let global_rect = Rect::new(tl.0.min(br.0), tl.1.min(br.1), (br.0 - tl.0).abs(), (br.1 - tl.1).abs());
+        register_focus_target(global_rect, FocusType::Button, format!("rb_{:p}", self as *mut _));
         let mat = nalgebra_to_glm(&ui.transform) * ui.gl_transform;
         let tr = |x: f32, y: f32| {
             let pos = mat * vec4(x, y, 0., 1.);
@@ -999,7 +1003,11 @@ impl<'a> Ui<'a> {
 
     pub fn button(&mut self, id: &str, rect: Rect, text: impl Into<String>) -> bool {
         let text = text.into();
-        register_focus_target(rect, FocusType::Button, id);
+        // Register focus target in global UI coordinates
+        let tl = self.to_global((rect.x, rect.y));
+        let br = self.to_global((rect.right(), rect.bottom()));
+        let global_rect = Rect::new(tl.0.min(br.0), tl.1.min(br.1), (br.0 - tl.0).abs(), (br.1 - tl.1).abs());
+        register_focus_target(global_rect, FocusType::Button, id);
         STATE.with(|state| {
             let mut state = state.borrow_mut();
             let entry = state.entry(id.to_owned()).or_default();
@@ -1041,7 +1049,10 @@ impl<'a> Ui<'a> {
             );
             let r = Rect::new(r.x, r.y, text.right() - r.x, (text.bottom() - r.y).max(w));
             self.clicked(r, entry);
-            register_focus_target(r, FocusType::Checkbox, label);
+            let tl = self.to_global((r.x, r.y));
+            let br = self.to_global((r.right(), r.bottom()));
+            let gr = Rect::new(tl.0.min(br.0), tl.1.min(br.1), (br.0 - tl.0).abs(), (br.1 - tl.1).abs());
+            register_focus_target(gr, FocusType::Checkbox, label);
             r
         })
     }
@@ -1136,7 +1147,11 @@ impl<'a> Ui<'a> {
                 *value = (*value + step).min(range.end);
             }
 
-            register_focus_target(Rect::new(0., cy - s, x + s * 2., cy + s), FocusType::Slider, text);
+            let sr = Rect::new(0., cy - s, x + s * 2., cy + s);
+            let tl = self.to_global((sr.x, sr.y));
+            let br = self.to_global((sr.right(), sr.bottom()));
+            let gr = Rect::new(tl.0.min(br.0), tl.1.min(br.1), (br.0 - tl.0).abs(), (br.1 - tl.1).abs());
+            register_focus_target(gr, FocusType::Slider, text);
 
             Rect::new(0., 0., x + s * 2., cy + s)
         })

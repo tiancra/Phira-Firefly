@@ -307,34 +307,50 @@ impl NavState {
             input.dpad_dir
         };
 
-        if combined.length_squared() > 0.2 * 0.2 {
-            let dot = combined.dot(self.last_stick_dir);
-            if self.nav_cooldown <= 0.0 || dot < 0.5 {
-                self.last_stick_dir = combined.normalize();
-                self.nav_cooldown = 0.15;
+        if combined.length_squared() > 0.2 * 0.2 && self.nav_cooldown <= 0.0 {
+            let dir = combined.normalize();
+            self.last_stick_dir = dir;
+            self.nav_cooldown = 0.2;
 
-                let current = &targets[self.focus_index];
-                let cc = current.rect.center();
-                let mut best_idx = self.focus_index;
-                let mut best_score = f32::MAX;
+            let current = &targets[self.focus_index];
+            let cc = current.rect.center();
+            let mut best_idx = self.focus_index;
+            let mut best_score = f32::MAX;
 
-                for (i, target) in targets.iter().enumerate() {
-                    if i == self.focus_index { continue; }
-                    let tc = target.rect.center();
-                    let diff = tc - cc;
-                    let dist = diff.length();
-                    if dist < 0.001 { continue; }
-                    let dir = diff / dist;
-                    let alignment = dir.dot(combined.normalize()).max(0.0);
-                    let score = if alignment > 0.1 { dist / (alignment + 0.1) } else { f32::MAX };
-                    if score < best_score { best_score = score; best_idx = i; }
-                }
+            // Determine if navigation is primarily horizontal or vertical
+            let is_vertical = dir.y.abs() > dir.x.abs();
 
-                if best_idx != self.focus_index && best_score < f32::MAX {
-                    self.focus_index = best_idx;
-                }
+            for (i, target) in targets.iter().enumerate() {
+                if i == self.focus_index { continue; }
+                let tc = target.rect.center();
+                let diff = tc - cc;
+                let len = diff.length();
+                if len < 0.001 { continue; }
+
+                let (alignment, dist) = if is_vertical {
+                    // Must move in the correct Y direction
+                    if diff.y * dir.y <= 0.0 { continue; }
+                    let alignment = (diff.y / len).abs(); // 0..1, how vertical
+                    let dist = diff.y.abs() + diff.x.abs() * 3.0; // penalize horizontal offset
+                    (alignment, dist)
+                } else {
+                    // Must move in the correct X direction
+                    if diff.x * dir.x <= 0.0 { continue; }
+                    let alignment = (diff.x / len).abs(); // 0..1, how horizontal
+                    let dist = diff.x.abs() + diff.y.abs() * 3.0; // penalize vertical offset
+                    (alignment, dist)
+                };
+
+                let score = dist / (alignment + 0.3);
+                if score < best_score { best_score = score; best_idx = i; }
             }
-        } else {
+
+            if best_idx != self.focus_index && best_score < f32::MAX {
+                self.focus_index = best_idx;
+            }
+        }
+
+        if combined.length_squared() < 0.15 * 0.15 {
             self.last_stick_dir = Vec2::ZERO;
         }
     }

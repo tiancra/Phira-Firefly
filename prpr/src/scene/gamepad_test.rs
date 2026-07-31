@@ -209,7 +209,7 @@ impl Scene for GamepadTestScene {
 
         // --- Back button ---
         let btn_rect = Rect::new(cx - 0.08, sr.y + sr.h - 0.06, 0.16, 0.035);
-        if ui.button("gp_test_back", btn_rect, "返回 (B / Esc / LB+RB长按)") {
+        if ui.button("gp_test_back", btn_rect, "返回 (Esc / LB+RB长按)") {
             self.back_clicked = true;
         }
 
@@ -218,7 +218,6 @@ impl Scene for GamepadTestScene {
 
     fn next_scene(&mut self, _tm: &mut TimeManager) -> NextScene {
         if self.back_clicked
-            || crate::gamepad::nav_input_static().b_pressed
             || is_key_pressed(KeyCode::Escape)
         {
             return NextScene::Pop;

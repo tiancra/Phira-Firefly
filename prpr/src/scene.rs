@@ -9,6 +9,9 @@ pub use ending::{EndingScene, RecordUpdateState};
 mod game;
 pub use game::{GameMode, GameScene, SimpleRecord};
 
+mod gamepad_test;
+pub use gamepad_test::GamepadTestScene;
+
 mod loading;
 pub use loading::{BasicPlayer, LoadingScene, SaveFn, UpdateFn, UploadFn};
 
@@ -371,6 +374,7 @@ pub struct Main {
     pub top_level: bool,
     touches: Option<Vec<Touch>>,
     pub viewport: Option<(i32, i32, i32, i32)>,
+    gp_test_timer: f32,
 }
 
 impl Main {
@@ -396,6 +400,7 @@ impl Main {
             top_level: true,
             touches: None,
             viewport: None,
+            gp_test_timer: 0.0,
         })
     }
 
@@ -449,6 +454,31 @@ impl Main {
             }
         }
         crate::gamepad::poll_global();
+
+        // --- Gamepad test entry detection: LB+RB hold 3s or F9 key ---
+        {
+            let nav_enabled = self.scenes.last().map(|s| s.nav_enabled()).unwrap_or(false)
+                && !DIALOG.with(|it| it.borrow().is_some());
+            if nav_enabled {
+                let raw = crate::gamepad::raw_state_static();
+                let both_pressed = raw.lb && raw.rb;
+                let f9_pressed = is_key_pressed(KeyCode::F9);
+                if both_pressed || f9_pressed {
+                    self.gp_test_timer += macroquad::prelude::get_frame_time();
+                    if self.gp_test_timer >= 3.0 || f9_pressed {
+                        self.gp_test_timer = 0.0;
+                        self.times.push(self.tm.now());
+                        GamepadTestScene::new().enter(&mut self.tm, self.target_chooser.choose())?;
+                        self.scenes.push(Box::new(GamepadTestScene::new()));
+                    }
+                } else {
+                    self.gp_test_timer = 0.0;
+                }
+            } else {
+                self.gp_test_timer = 0.0;
+            }
+        }
+
         Judge::on_new_frame();
         let mut touches = Judge::get_touches();
         touches.iter_mut().for_each(f);

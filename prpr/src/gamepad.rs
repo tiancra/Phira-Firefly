@@ -237,6 +237,47 @@ impl GamepadInput {
     pub fn poll(&mut self, _dt: f32) -> (GamepadFrame, NavInput) {
         (GamepadFrame::default(), NavInput::default())
     }
+
+    /// Get raw gamepad state for diagnostics (test page).
+    #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos"))))]
+    pub fn get_raw_state(&mut self) -> GamepadRawState {
+        let mut raw = GamepadRawState::default();
+        raw.gilrs_ready = self.gilrs.is_some();
+        let Some(gilrs) = self.gilrs.as_ref() else {
+            return raw;
+        };
+        let mut first = true;
+        for (_, gp) in gilrs.gamepads() {
+            raw.connected = true;
+            raw.left_stick = vec2(gp.value(Axis::LeftStickX), gp.value(Axis::LeftStickY));
+            raw.right_stick = vec2(gp.value(Axis::RightStickX), gp.value(Axis::RightStickY));
+            raw.south |= gp.is_pressed(Button::South);
+            raw.east |= gp.is_pressed(Button::East);
+            raw.north |= gp.is_pressed(Button::North);
+            raw.west |= gp.is_pressed(Button::West);
+            raw.lb |= gp.is_pressed(Button::LeftTrigger);
+            raw.rb |= gp.is_pressed(Button::RightTrigger);
+            raw.lt = raw.lt.max(gp.value(Axis::LeftZ));
+            raw.rt = raw.rt.max(gp.value(Axis::RightZ));
+            raw.dpad_up |= gp.is_pressed(Button::DPadUp);
+            raw.dpad_down |= gp.is_pressed(Button::DPadDown);
+            raw.dpad_left |= gp.is_pressed(Button::DPadLeft);
+            raw.dpad_right |= gp.is_pressed(Button::DPadRight);
+            raw.start |= gp.is_pressed(Button::Start);
+            raw.select |= gp.is_pressed(Button::Select);
+            raw.mode |= gp.is_pressed(Button::Mode);
+            first = false;
+        }
+        if first {
+            raw.connected = false;
+        }
+        raw
+    }
+
+    #[cfg(not(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos")))))]
+    pub fn get_raw_state(&mut self) -> GamepadRawState {
+        GamepadRawState::default()
+    }
 }
 
 #[derive(Default, Clone, Copy)]
@@ -336,12 +377,37 @@ impl NavState {
     }
 }
 
+/// Raw gamepad state for diagnostic/testing purposes.
+#[derive(Default, Clone, Copy)]
+pub struct GamepadRawState {
+    pub connected: bool,
+    pub gilrs_ready: bool,
+    pub left_stick: Vec2,
+    pub right_stick: Vec2,
+    pub dpad_up: bool,
+    pub dpad_down: bool,
+    pub dpad_left: bool,
+    pub dpad_right: bool,
+    pub south: bool,
+    pub east: bool,
+    pub north: bool,
+    pub west: bool,
+    pub lb: bool,
+    pub rb: bool,
+    pub lt: f32,
+    pub rt: f32,
+    pub start: bool,
+    pub select: bool,
+    pub mode: bool,
+}
+
 thread_local! {
     static PENDING: RefCell<GamepadFrame> = RefCell::default();
     static NAV_STATE: RefCell<NavState> = RefCell::new(NavState::new());
     static GAMEPAD: RefCell<GamepadInput> = RefCell::new(GamepadInput::new());
     static LAST_FRAME: RefCell<GamepadFrame> = RefCell::default();
     static LAST_NAV_INPUT: RefCell<NavInput> = RefCell::new(NavInput::default());
+    static LAST_RAW_STATE: RefCell<GamepadRawState> = RefCell::new(GamepadRawState::default());
 }
 
 pub fn push_pending(frame: GamepadFrame) {
@@ -369,6 +435,7 @@ pub fn poll_global() {
     GAMEPAD.with(|it| {
         let mut guard = it.borrow_mut();
         let (frame, nav) = guard.poll(dt);
+        let raw = guard.get_raw_state();
         LAST_FRAME.with(|f| {
             *f.borrow_mut() = frame.clone();
         });
@@ -376,11 +443,18 @@ pub fn poll_global() {
         LAST_NAV_INPUT.with(|n| {
             *n.borrow_mut() = nav;
         });
+        LAST_RAW_STATE.with(|r| {
+            *r.borrow_mut() = raw;
+        });
     });
 }
 
 pub fn nav_input_static() -> NavInput {
     LAST_NAV_INPUT.with(|it| *it.borrow())
+}
+
+pub fn raw_state_static() -> GamepadRawState {
+    LAST_RAW_STATE.with(|it| *it.borrow())
 }
 
 pub fn get_nav_state() -> NavState {

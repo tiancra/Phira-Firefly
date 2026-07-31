@@ -160,15 +160,13 @@ impl GamepadInput {
             b_down |= gp.is_pressed(Button::East);
             x_down |= gp.is_pressed(Button::West);
 
-            lb |= gp.is_pressed(Button::LeftTrigger)
-                || gp.is_pressed(Button::LeftTrigger2)
-                || gp.value(Axis::LeftZ) > -0.5;
-            rb |= gp.is_pressed(Button::RightTrigger)
-                || gp.is_pressed(Button::RightTrigger2)
-                || gp.value(Axis::RightZ) > -0.5;
+            // LB/RB: only use digital button detection
+            lb |= gp.is_pressed(Button::LeftTrigger);
+            rb |= gp.is_pressed(Button::RightTrigger);
 
-            lt_trigger |= gp.value(Axis::LeftZ) > 0.1;
-            rt_trigger |= gp.value(Axis::RightZ) > 0.1;
+            // LT/RT: use analog trigger with threshold
+            lt_trigger |= gp.value(Axis::LeftZ) > 0.3;
+            rt_trigger |= gp.value(Axis::RightZ) > 0.3;
 
             dpad_up |= gp.is_pressed(Button::DPadUp);
             dpad_down |= gp.is_pressed(Button::DPadDown);
@@ -229,12 +227,10 @@ impl GamepadInput {
             raw.east |= gp.is_pressed(Button::East);
             raw.north |= gp.is_pressed(Button::North);
             raw.west |= gp.is_pressed(Button::West);
-            raw.lb |= gp.is_pressed(Button::LeftTrigger)
-                || gp.is_pressed(Button::LeftTrigger2)
-                || gp.value(Axis::LeftZ) > -0.5;
-            raw.rb |= gp.is_pressed(Button::RightTrigger)
-                || gp.is_pressed(Button::RightTrigger2)
-                || gp.value(Axis::RightZ) > -0.5;
+            // LB/RB: digital button only
+            raw.lb |= gp.is_pressed(Button::LeftTrigger);
+            raw.rb |= gp.is_pressed(Button::RightTrigger);
+            // LT/RT: analog axis
             raw.lt = raw.lt.max(gp.value(Axis::LeftZ));
             raw.rt = raw.rt.max(gp.value(Axis::RightZ));
             raw.dpad_up |= gp.is_pressed(Button::DPadUp);

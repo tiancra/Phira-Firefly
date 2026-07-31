@@ -1,5 +1,5 @@
 //! Gamepad test scene: displays a gamepad diagram and highlights pressed buttons/sticks.
-//! Accessible by holding LB+RB for 3 seconds on non-gameplay screens, or pressing F9.
+//! Exit: Press B, Esc, or hold LB+RB for 3 seconds.
 
 use super::{NextScene, Scene};
 use crate::{
@@ -11,11 +11,12 @@ use macroquad::prelude::*;
 
 pub struct GamepadTestScene {
     back_clicked: bool,
+    lb_rb_timer: f32,
 }
 
 impl GamepadTestScene {
     pub fn new() -> Self {
-        Self { back_clicked: false }
+        Self { back_clicked: false, lb_rb_timer: 0.0 }
     }
 }
 
@@ -25,7 +26,6 @@ impl Scene for GamepadTestScene {
     }
 
     fn render(&mut self, _tm: &mut TimeManager, ui: &mut Ui) -> anyhow::Result<()> {
-        // Use screen_rect for full-window coverage
         let sr = ui.screen_rect();
         let cx = sr.center().x;
         let cy = sr.center().y;
@@ -33,6 +33,7 @@ impl Scene for GamepadTestScene {
         ui.fill_rect(sr, Color::new(0.12, 0.12, 0.15, 1.0));
 
         let raw = raw_state_static();
+        let dt = get_frame_time();
 
         // Title
         ui.text("手柄测试 / GAMEPAD TEST")
@@ -67,6 +68,31 @@ impl Scene for GamepadTestScene {
                 .color(Color::new(0.5, 0.9, 0.5, 1.0))
                 .no_baseline()
                 .draw();
+        }
+
+        // LB+RB hold to exit indicator
+        if raw.lb && raw.rb {
+            self.lb_rb_timer += dt;
+            let progress = (self.lb_rb_timer / 3.0).min(1.0);
+            // Progress bar
+            let bar_w = 0.3;
+            let bar_h = 0.015;
+            let bar_x = cx - bar_w / 2.0;
+            let bar_y = sr.y + 0.15;
+            ui.fill_rect(Rect::new(bar_x, bar_y, bar_w, bar_h), Color::new(0.3, 0.3, 0.35, 1.0));
+            ui.fill_rect(Rect::new(bar_x, bar_y, bar_w * progress, bar_h), Color::new(1.0, 0.6, 0.2, 1.0));
+            ui.text(format!("长按退出 {:.0}s", 3.0 - self.lb_rb_timer))
+                .pos(cx, bar_y + bar_h + 0.015)
+                .anchor(0.5, 0.5)
+                .size(0.2)
+                .color(Color::new(1.0, 0.8, 0.5, 1.0))
+                .no_baseline()
+                .draw();
+            if self.lb_rb_timer >= 3.0 {
+                self.back_clicked = true;
+            }
+        } else {
+            self.lb_rb_timer = 0.0;
         }
 
         // --- Gamepad diagram ---
@@ -147,7 +173,7 @@ impl Scene for GamepadTestScene {
 
         for (bx, bval, lbl) in [(lb_cx, raw.lt, "LT"), (rb_cx, raw.rt, "RT")] {
             ui.fill_rect(Rect::new(bx - bar_w / 2.0, bar_y, bar_w, bar_h), Color::new(0.3, 0.3, 0.35, 1.0));
-            let fill = (bval * bar_w) as f32;
+            let fill = (bval.abs() * bar_w) as f32;
             if fill > 0.001 {
                 ui.fill_rect(Rect::new(bx - bar_w / 2.0, bar_y, fill, bar_h), Color::new(1.0, 0.6, 0.2, 1.0));
             }
@@ -164,7 +190,7 @@ impl Scene for GamepadTestScene {
         ui.fill_circle(select_cx, ss_y, ss_r, if raw.select { Color::new(1.0, 0.6, 0.2, 1.0) } else { Color::new(0.35, 0.35, 0.4, 1.0) });
         ui.text("Select").pos(select_cx, ss_y - ss_r * 2.0).anchor(0.5, 0.5).size(0.16).color(WHITE).no_baseline().draw();
 
-        // --- Debug panel: all axes and buttons ---
+        // --- Debug panel ---
         let dbg_x = sr.x + 0.03;
         let dbg_y = body_rect.y + body_rect.h + 0.11;
         let ls = 0.025;
@@ -172,18 +198,18 @@ impl Scene for GamepadTestScene {
 
         ui.text(format!("Axis LX={:+.3} LY={:+.3} RX={:+.3} RY={:+.3}", raw.axis_lx, raw.axis_ly, raw.axis_rx, raw.axis_ry))
             .pos(dbg_x, dbg_y).anchor(0.0, 0.5).size(0.2).color(col).no_baseline().draw();
-        ui.text(format!("Axis LZ={:+.3} RZ={:+.3}  (LT={:.3} RT={:.3})", raw.axis_lz, raw.axis_rz, raw.lt, raw.rt))
+        ui.text(format!("Axis LZ={:+.3} RZ={:+.3}", raw.axis_lz, raw.axis_rz))
             .pos(dbg_x, dbg_y + ls).anchor(0.0, 0.5).size(0.2).color(col).no_baseline().draw();
         ui.text(format!("Btns: LT1={} LT2={} RT1={} RT2={}  LB={} RB={}", raw.btn_lt1 as i32, raw.btn_lt2 as i32, raw.btn_rt1 as i32, raw.btn_rt2 as i32, raw.lb as i32, raw.rb as i32))
             .pos(dbg_x, dbg_y + ls * 2.0).anchor(0.0, 0.5).size(0.2).color(col).no_baseline().draw();
         ui.text(format!("Face: Y={} A={} X={} B={}  DPad: U={} D={} L={} R={}", raw.north as i32, raw.south as i32, raw.west as i32, raw.east as i32, raw.dpad_up as i32, raw.dpad_down as i32, raw.dpad_left as i32, raw.dpad_right as i32))
             .pos(dbg_x, dbg_y + ls * 3.0).anchor(0.0, 0.5).size(0.2).color(col).no_baseline().draw();
-        ui.text(format!("Connected:{} GilrsOK:{} Start={} Select={} Mode={}", raw.connected as i32, raw.gilrs_ready as i32, raw.start as i32, raw.select as i32, raw.mode as i32))
+        ui.text(format!("Connected:{} GilrsOK:{}", raw.connected as i32, raw.gilrs_ready as i32))
             .pos(dbg_x, dbg_y + ls * 4.0).anchor(0.0, 0.5).size(0.2).color(col).no_baseline().draw();
 
         // --- Back button ---
-        let btn_rect = Rect::new(cx - 0.08, sr.y + sr.h - 0.08, 0.16, 0.045);
-        if ui.button("gp_test_back", btn_rect, "返回 (B / Esc)") {
+        let btn_rect = Rect::new(cx - 0.08, sr.y + sr.h - 0.06, 0.16, 0.035);
+        if ui.button("gp_test_back", btn_rect, "返回 (B / Esc / LB+RB长按)") {
             self.back_clicked = true;
         }
 
@@ -192,7 +218,7 @@ impl Scene for GamepadTestScene {
 
     fn next_scene(&mut self, _tm: &mut TimeManager) -> NextScene {
         if self.back_clicked
-            || crate::gamepad::take_back_pressed()
+            || crate::gamepad::nav_input_static().b_pressed
             || is_key_pressed(KeyCode::Escape)
         {
             return NextScene::Pop;

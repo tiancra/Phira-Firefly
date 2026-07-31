@@ -631,8 +631,11 @@ impl Main {
         if input.a_pressed {
             if let Some(target) = nav_state.current_target(targets) {
                 let center = target.rect.center();
-                let global = ui.to_global((center.x, center.y));
-                crate::gamepad::push_nav_touch(vec2(global.0, global.1));
+                // Convert UI coords (-1..1) to screen pixels for touch injection
+                let (vw, vh) = (screen_width(), screen_height());
+                let px = (center.x + 1.0) * 0.5 * vw;
+                let py = (center.y + 1.0) * 0.5 * vh;
+                crate::gamepad::push_nav_touch(vec2(px, py));
             }
         }
 

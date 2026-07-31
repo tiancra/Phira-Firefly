@@ -153,7 +153,8 @@ impl GamepadInput {
 
             let raw_stick = vec2(gp.value(Axis::LeftStickX), gp.value(Axis::LeftStickY));
             if raw_stick.length_squared() > NAV_DEADZONE * NAV_DEADZONE {
-                left_stick = raw_stick.clamp_length_max(1.0);
+                // Invert Y: gilrs up=+1, but UI coords down=+1
+                left_stick = vec2(raw_stick.x, -raw_stick.y).clamp_length_max(1.0);
             }
 
             a_down |= gp.is_pressed(Button::South);

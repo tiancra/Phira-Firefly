@@ -598,6 +598,41 @@ thread_local! {
     static STATE: RefCell<HashMap<String, Option<u64>>> = RefCell::new(HashMap::new());
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum FocusType {
+    Button,
+    Slider,
+    Checkbox,
+    Input,
+    Back,
+    Tab,
+}
+
+#[derive(Debug, Clone)]
+pub struct FocusTarget {
+    pub rect: Rect,
+    pub focus_type: FocusType,
+    pub id: String,
+}
+
+thread_local! {
+    pub static FOCUS_TARGETS: RefCell<Vec<FocusTarget>> = const { RefCell::new(Vec::new()) };
+}
+
+pub fn clear_focus_targets() {
+    FOCUS_TARGETS.with(|it| it.borrow_mut().clear());
+}
+
+pub fn get_focus_targets() -> Vec<FocusTarget> {
+    FOCUS_TARGETS.with(|it| it.borrow().clone())
+}
+
+pub fn register_focus_target(rect: Rect, focus_type: FocusType, id: impl Into<String>) {
+    FOCUS_TARGETS.with(|it| {
+        it.borrow_mut().push(FocusTarget { rect, focus_type, id: id.into() });
+    });
+}
+
 pub struct InputParams<'a> {
     pub changed: Option<&'a mut bool>,
     pub mode: InputMode,
@@ -963,6 +998,7 @@ impl<'a> Ui<'a> {
 
     pub fn button(&mut self, id: &str, rect: Rect, text: impl Into<String>) -> bool {
         let text = text.into();
+        register_focus_target(rect, FocusType::Button, id);
         STATE.with(|state| {
             let mut state = state.borrow_mut();
             let entry = state.entry(id.to_owned()).or_default();
@@ -987,13 +1023,13 @@ impl<'a> Ui<'a> {
     }
 
     pub fn checkbox(&mut self, text: impl Into<String>, value: &mut bool) -> Rect {
-        let text = text.into();
+        let label = text.into();
         STATE.with(|state| {
             let mut state = state.borrow_mut();
-            let entry = state.entry(format!("chkbox#{text}")).or_default();
+            let entry = state.entry(format!("chkbox#{label}")).or_default();
             let w = 0.08;
             let s = 0.025;
-            let text = self.text(text).pos(w, 0.).size(0.47).no_baseline().draw();
+            let text = self.text(label.clone()).pos(w, 0.).size(0.47).no_baseline().draw();
             let r = Rect::new(w / 2. - s, text.center().y - s, s * 2., s * 2.);
             self.fill_path(
                 &r.rounded(0.01),
@@ -1003,9 +1039,8 @@ impl<'a> Ui<'a> {
                 },
             );
             let r = Rect::new(r.x, r.y, text.right() - r.x, (text.bottom() - r.y).max(w));
-            if self.clicked(r, entry) {
-                *value ^= true;
-            }
+            self.clicked(r, entry);
+            register_focus_target(r, FocusType::Checkbox, label);
             r
         })
     }
@@ -1099,6 +1134,8 @@ impl<'a> Ui<'a> {
             if self.clicked(r, state.entry(format!("{text}:+")).or_default()) {
                 *value = (*value + step).min(range.end);
             }
+
+            register_focus_target(Rect::new(0., cy - s, x + s * 2., cy + s), FocusType::Slider, text);
 
             Rect::new(0., 0., x + s * 2., cy + s)
         })
@@ -1223,6 +1260,23 @@ impl<'a> Ui<'a> {
     #[inline]
     pub fn content_rect(&self) -> Rect {
         Rect::new(-0.7, -self.top + 0.15, 1.67, self.top * 2. - 0.18)
+    }
+
+    pub fn draw_focus_frame(&mut self, rect: Rect, phase: f32) {
+        let breath = 1.0 + 0.08 * (phase * std::f32::consts::TAU).sin();
+        let padded = rect.feather(0.012);
+        let glow = rect.feather(0.02);
+
+        self.stroke_path(
+            &glow.rounded(0.02),
+            0.004,
+            Color::new(0.33, 0.69, 1.0, 0.3 * breath),
+        );
+        self.stroke_path(
+            &padded.rounded(0.015),
+            0.0025,
+            Color::new(0.33, 0.69, 1.0, 0.9 * breath),
+        );
     }
 
     pub fn full_loading<'b>(&mut self, text: impl Into<Cow<'b, str>>, t: f32) {

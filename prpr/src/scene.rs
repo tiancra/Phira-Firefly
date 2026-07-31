@@ -500,16 +500,29 @@ impl Main {
         if self.paused {
             return Ok(());
         }
+
+        crate::ui::clear_focus_targets();
+
         let mut ui = Ui::new(painter, self.viewport);
         ui.set_touches(self.touches.take().unwrap());
         ui.scope(|ui| self.scenes.last_mut().unwrap().render(&mut self.tm, ui))?;
+
+        let targets = crate::ui::get_focus_targets();
+        let gamepad_input = crate::gamepad::nav_input_static();
+        let nav_state = crate::gamepad::update_nav(&targets, gamepad_input, macroquad::prelude::get_frame_time());
+
         if self.top_level {
             push_camera_state();
             set_camera(&ui.camera());
             let mut gl = unsafe { get_internal_gl() };
             gl.flush();
-            // gl.quad_gl.render_pass(None);
-            // gl.quad_gl.viewport(None);
+
+            if let Some(target) = nav_state.current_target(&targets) {
+                ui.draw_focus_frame(target.rect, nav_state.phase);
+            }
+
+            self.handle_nav_actions(&targets, &nav_state, gamepad_input, &mut ui);
+
             BILLBOARD.with(|it| {
                 let mut guard = it.borrow_mut();
                 let t = guard.1.now() as f32;
@@ -555,6 +568,34 @@ impl Main {
 
     pub fn should_exit(&self) -> bool {
         self.should_exit
+    }
+
+    fn handle_nav_actions(
+        &mut self,
+        targets: &[crate::ui::FocusTarget],
+        nav_state: &crate::gamepad::NavState,
+        input: crate::gamepad::NavInput,
+        _ui: &mut Ui,
+    ) {
+        if input.a_pressed {
+            if let Some(target) = nav_state.current_target(targets) {
+                let center = target.rect.center();
+                crate::gamepad::push_nav_touch(center);
+            }
+        }
+
+        if input.b_pressed {
+            let has_back = targets.iter().any(|t| matches!(t.focus_type, crate::ui::FocusType::Back));
+            if has_back {
+                crate::gamepad::push_nav_back();
+            } else {
+                self.scenes.last_mut().unwrap().next_scene(&mut self.tm);
+            }
+        }
+
+        if input.x_pressed {
+            crate::gamepad::push_nav_multilang();
+        }
     }
 }
 

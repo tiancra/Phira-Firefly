@@ -586,7 +586,7 @@ impl Main {
                 crate::gamepad::NavState::default()
             };
 
-            if nav_enabled {
+            if nav_enabled && crate::gamepad::is_connected() {
                 if let Some(target) = nav_state.current_target(&targets) {
                     ui.draw_focus_frame(target.rect, nav_state.phase);
                 }

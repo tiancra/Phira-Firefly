@@ -461,6 +461,11 @@ pub fn raw_state_static() -> GamepadRawState {
     LAST_RAW_STATE.with(|it| *it.borrow())
 }
 
+/// Whether any gamepad is currently connected.
+pub fn is_connected() -> bool {
+    LAST_RAW_STATE.with(|it| it.borrow().connected)
+}
+
 pub fn get_nav_state() -> NavState {
     NAV_STATE.with(|it| it.borrow().clone())
 }

@@ -338,7 +338,9 @@ impl Scroll {
         } else {
             0.
         };
-        (if self.horizontal { &mut self.x_scroller } else { &mut self.y_scroller }).update(t, extra_scroll)
+        // Add right stick scrolling (positive Y in UI coords = scroll down)
+        let stick_scroll = crate::gamepad::right_stick_scroll();
+        (if self.horizontal { &mut self.x_scroller } else { &mut self.y_scroller }).update(t, extra_scroll + stick_scroll * 0.08)
     }
 
     pub fn contains(&self, touch: &Touch) -> bool {

@@ -534,14 +534,6 @@ impl Main {
             }
         });
         self.scenes.last_mut().unwrap().update(&mut self.tm)?;
-
-        // Handle gamepad B-key back: pop sub-scene if not in main scene
-        if crate::gamepad::take_back_pressed() && self.scenes.len() > 1 {
-            self.scenes.pop();
-            self.tm.seek_to(self.times.pop().unwrap());
-            self.scenes.last_mut().unwrap().enter(&mut self.tm, self.target_chooser.choose())?;
-        }
-
         Ok(())
     }
 

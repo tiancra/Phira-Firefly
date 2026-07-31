@@ -1884,6 +1884,10 @@ impl Scene for GameScene {
     }
 
     fn next_scene(&mut self, tm: &mut TimeManager) -> NextScene {
+        // Handle gamepad B-key back (only when nav is enabled, i.e., paused or not playing)
+        if self.nav_enabled() && crate::gamepad::take_back_pressed() && !self.should_exit && self.next_scene.is_none() {
+            self.should_exit = true;
+        }
         if self.should_exit || self.next_scene.is_some() {
             #[cfg(target_os = "windows")]
             windows_ime::enable();

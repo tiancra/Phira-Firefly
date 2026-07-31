@@ -100,6 +100,7 @@ impl GamepadInput {
         let mut menu_down = false;
 
         let mut left_stick = Vec2::ZERO;
+        let mut right_stick = Vec2::ZERO;
         let mut a_down = false;
         let mut b_down = false;
         let mut x_down = false;
@@ -160,6 +161,11 @@ impl GamepadInput {
                 left_stick = vec2(raw_stick.x, -raw_stick.y).clamp_length_max(1.0);
             }
 
+            let raw_rstick = vec2(gp.value(Axis::RightStickX), gp.value(Axis::RightStickY));
+            if raw_rstick.length_squared() > NAV_DEADZONE * NAV_DEADZONE {
+                right_stick = vec2(raw_rstick.x, -raw_rstick.y).clamp_length_max(1.0);
+            }
+
             a_down |= gp.is_pressed(Button::South);
             b_down |= gp.is_pressed(Button::East);
             x_down |= gp.is_pressed(Button::West);
@@ -207,6 +213,7 @@ impl GamepadInput {
         self.home_was_down = home_down;
 
         nav.left_stick = left_stick;
+        nav.right_stick = right_stick;
         nav.dpad_dir = dpad_dir_from_buttons(dpad_up, dpad_down, dpad_left, dpad_right);
         nav.skip_combo = lb && rb && lt_trigger && rt_trigger;
 
@@ -281,6 +288,7 @@ fn dpad_dir_from_buttons(up: bool, down: bool, left: bool, right: bool) -> Vec2 
 #[derive(Default, Clone, Copy)]
 pub struct NavInput {
     pub left_stick: Vec2,
+    pub right_stick: Vec2,
     pub dpad_dir: Vec2,
     pub a_pressed: bool,
     pub b_pressed: bool,
@@ -442,6 +450,11 @@ pub fn poll_global() {
 
 pub fn nav_input_static() -> NavInput {
     LAST_NAV_INPUT.with(|it| *it.borrow())
+}
+
+/// Get right stick Y for scrolling (positive = scroll down in UI coords)
+pub fn right_stick_scroll() -> f32 {
+    LAST_NAV_INPUT.with(|it| it.borrow().right_stick.y)
 }
 
 pub fn raw_state_static() -> GamepadRawState {

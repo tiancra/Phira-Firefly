@@ -2852,6 +2852,10 @@ impl Scene for SongScene {
         if !self.tr_start.is_nan() {
             return NextScene::None;
         }
+        // Handle gamepad B-key back
+        if prpr::gamepad::take_back_pressed() && self.next_scene.is_none() {
+            self.next_scene = Some(NextScene::PopWithResult(Box::new(false)));
+        }
         if let Some(scene) = self.next_scene.take().or_else(|| self.sf.next_scene(tm.now() as _)) {
             *self.background.lock().unwrap() = None;
             if let Some(music) = &mut self.preview {

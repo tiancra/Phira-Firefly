@@ -587,12 +587,13 @@ impl Main {
         targets: &[crate::ui::FocusTarget],
         nav_state: &crate::gamepad::NavState,
         input: crate::gamepad::NavInput,
-        _ui: &mut Ui,
+        ui: &mut Ui,
     ) {
         if input.a_pressed {
             if let Some(target) = nav_state.current_target(targets) {
                 let center = target.rect.center();
-                crate::gamepad::push_nav_touch(center);
+                let global = ui.to_global((center.x, center.y));
+                crate::gamepad::push_nav_touch(vec2(global.0, global.1));
             }
         }
 

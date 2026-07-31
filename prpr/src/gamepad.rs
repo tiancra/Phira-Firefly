@@ -4,6 +4,8 @@
 //! 用于 Drag/Flick，菜单键触发暂停。
 //!
 //! 手柄导航系统：左摇杆在非游玩界面遍历可点击控件，A 确认、B 返回、X 联机。
+//! 支持 PS / Xbox 360 / Xbox One / Switch 等常见协议手柄。
+//! gilrs 已将不同手柄的按键统一映射为标准 Button / Axis 枚举。
 
 use macroquad::prelude::*;
 use std::cell::RefCell;
@@ -30,14 +32,16 @@ pub struct GamepadInput {
     menu_down: bool,
     #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos"))))]
     sticks: [Option<Vec2>; 2],
-    #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos"))))]
-    last_left_stick: Vec2,
+    // Navigation state
     #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos"))))]
     a_was_down: bool,
     #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos"))))]
     b_was_down: bool,
     #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos"))))]
     x_was_down: bool,
+    // Retry timer for gilrs reinit
+    #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos"))))]
+    retry_timer: f32,
 }
 
 impl Default for GamepadInput {
@@ -55,10 +59,10 @@ impl GamepadInput {
                 buttons: Default::default(),
                 menu_down: false,
                 sticks: [None; 2],
-                last_left_stick: Vec2::ZERO,
                 a_was_down: false,
                 b_was_down: false,
                 x_was_down: false,
+                retry_timer: 0.0,
             }
         }
         #[cfg(not(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos")))))]
@@ -67,121 +71,60 @@ impl GamepadInput {
         }
     }
 
-    pub fn poll(&mut self) -> GamepadFrame {
-        #[cfg(not(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos")))))]
-        {
-            return GamepadFrame::default();
-        }
-        #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos"))))]
-        {
-            let mut frame = GamepadFrame::default();
-            let Some(gilrs) = self.gilrs.as_mut() else {
-                return frame;
-            };
-
-            while gilrs.next_event().is_some() {}
-
-            const DEADZONE: f32 = 0.25;
-            const STICK_IDS: [u64; 2] = [u64::MAX - 2000, u64::MAX - 2001];
-            const STICK_AXES: [(Axis, Axis); 2] = [(Axis::LeftStickX, Axis::LeftStickY), (Axis::RightStickX, Axis::RightStickY)];
-            const HIT_BUTTONS: [Button; 12] = [
-                Button::South,
-                Button::East,
-                Button::North,
-                Button::West,
-                Button::LeftTrigger,
-                Button::LeftTrigger2,
-                Button::RightTrigger,
-                Button::RightTrigger2,
-                Button::DPadUp,
-                Button::DPadDown,
-                Button::DPadLeft,
-                Button::DPadRight,
-            ];
-
-            let mut current = std::collections::HashSet::new();
-            let mut menu_down = false;
-
-            for (_, gp) in gilrs.gamepads() {
-                for &btn in &HIT_BUTTONS {
-                    if gp.is_pressed(btn) {
-                        current.insert(btn);
-                    }
-                }
-                if gp.value(Axis::LeftZ) > 0.5 {
-                    current.insert(Button::LeftTrigger2);
-                }
-                if gp.value(Axis::RightZ) > 0.5 {
-                    current.insert(Button::RightTrigger2);
-                }
-
-                if gp.is_pressed(Button::Start) || gp.is_pressed(Button::Select) || gp.is_pressed(Button::Mode) {
-                    menu_down = true;
-                }
-
-                for (i, &(ax_x, ax_y)) in STICK_AXES.iter().enumerate() {
-                    let raw = vec2(gp.value(ax_x), gp.value(ax_y));
-                    let active = raw.length_squared() > DEADZONE * DEADZONE;
-                    if active {
-                        let pos = raw.clamp_length_max(1.0);
-                        if self.sticks[i].is_none() {
-                            frame.touches.push(Touch {
-                                id: STICK_IDS[i],
-                                phase: TouchPhase::Started,
-                                position: pos,
-                                time: f64::NEG_INFINITY,
-                            });
-                        }
-                        frame.touches.push(Touch {
-                            id: STICK_IDS[i],
-                            phase: TouchPhase::Moved,
-                            position: pos,
-                            time: f64::NEG_INFINITY,
-                        });
-                        self.sticks[i] = Some(pos);
-                    } else if let Some(last) = self.sticks[i].take() {
-                        frame.touches.push(Touch {
-                            id: STICK_IDS[i],
-                            phase: TouchPhase::Ended,
-                            position: last,
-                            time: f64::NEG_INFINITY,
-                        });
-                    }
-                }
-            }
-
-            if menu_down && !self.menu_down {
-                frame.menu_pressed = true;
-            }
-            self.menu_down = menu_down;
-
-            for btn in &current {
-                if !self.buttons.contains(btn) {
-                    frame.key_delta += 1;
-                    frame.keys_down += 1;
-                }
-            }
-            for btn in &self.buttons {
-                if !current.contains(btn) {
-                    frame.key_delta -= 1;
-                }
-            }
-            self.buttons = current;
-
-            frame
-        }
-    }
-
-    /// Returns the left stick direction for navigation (if active)
-    /// and the button press states (A, B, X rising edges)
-    /// Also detects LB+RB+LT+RT combo for TRACK SKIP
+    /// Poll gamepad and return both gameplay frame and navigation input.
+    /// Merged into one pass to ensure consistent state.
     #[cfg(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos"))))]
-    pub fn nav_input(&mut self) -> NavInput {
+    pub fn poll(&mut self, dt: f32) -> (GamepadFrame, NavInput) {
+        // Retry gilrs initialization if it failed
+        if self.gilrs.is_none() {
+            self.retry_timer += dt;
+            if self.retry_timer >= 2.0 {
+                self.retry_timer = 0.0;
+                if let Ok(g) = Gilrs::new() {
+                    self.gilrs = Some(g);
+                }
+            }
+            return (GamepadFrame::default(), NavInput::default());
+        }
+
+        let mut frame = GamepadFrame::default();
+        let mut nav = NavInput::default();
         let Some(gilrs) = self.gilrs.as_mut() else {
-            return NavInput::default();
+            return (frame, nav);
         };
 
-        const DEADZONE: f32 = 0.3;
+        // Process all pending events
+        while gilrs.next_event().is_some() {}
+
+        const DEADZONE: f32 = 0.25;
+        const NAV_DEADZONE: f32 = 0.3;
+        const STICK_IDS: [u64; 2] = [u64::MAX - 2000, u64::MAX - 2001];
+        const STICK_AXES: [(Axis, Axis); 2] = [(Axis::LeftStickX, Axis::LeftStickY), (Axis::RightStickX, Axis::RightStickY)];
+
+        // gilrs normalizes all controllers (PS, Xbox, Switch) to these buttons:
+        //   South = A/Cross/B(bottom), East = B/Circle/A(right),
+        //   West = X/Square/Y(left),  North = Y/Triangle/X(top)
+        //   LeftTrigger = LB/L1/L,    RightTrigger = RB/R1/R
+        //   LeftTrigger2 = LT/L2/ZL,  RightTrigger2 = RT/R2/ZR
+        const HIT_BUTTONS: [Button; 12] = [
+            Button::South,
+            Button::East,
+            Button::North,
+            Button::West,
+            Button::LeftTrigger,
+            Button::LeftTrigger2,
+            Button::RightTrigger,
+            Button::RightTrigger2,
+            Button::DPadUp,
+            Button::DPadDown,
+            Button::DPadLeft,
+            Button::DPadRight,
+        ];
+
+        let mut current = std::collections::HashSet::new();
+        let mut menu_down = false;
+
+        // Nav state
         let mut left_stick = Vec2::ZERO;
         let mut a_down = false;
         let mut b_down = false;
@@ -192,9 +135,60 @@ impl GamepadInput {
         let mut rt = false;
 
         for (_, gp) in gilrs.gamepads() {
-            let raw = vec2(gp.value(Axis::LeftStickX), gp.value(Axis::LeftStickY));
-            if raw.length_squared() > DEADZONE * DEADZONE {
-                left_stick = raw.clamp_length_max(1.0);
+            // --- Gameplay button state ---
+            for &btn in &HIT_BUTTONS {
+                if gp.is_pressed(btn) {
+                    current.insert(btn);
+                }
+            }
+            // Analog triggers as digital for gameplay
+            if gp.value(Axis::LeftZ) > 0.5 {
+                current.insert(Button::LeftTrigger2);
+            }
+            if gp.value(Axis::RightZ) > 0.5 {
+                current.insert(Button::RightTrigger2);
+            }
+
+            // Menu
+            if gp.is_pressed(Button::Start) || gp.is_pressed(Button::Select) || gp.is_pressed(Button::Mode) {
+                menu_down = true;
+            }
+
+            // --- Stick touches for gameplay (Drag/Flick) ---
+            for (i, &(ax_x, ax_y)) in STICK_AXES.iter().enumerate() {
+                let raw = vec2(gp.value(ax_x), gp.value(ax_y));
+                let active = raw.length_squared() > DEADZONE * DEADZONE;
+                if active {
+                    let pos = raw.clamp_length_max(1.0);
+                    if self.sticks[i].is_none() {
+                        frame.touches.push(Touch {
+                            id: STICK_IDS[i],
+                            phase: TouchPhase::Started,
+                            position: pos,
+                            time: f64::NEG_INFINITY,
+                        });
+                    }
+                    frame.touches.push(Touch {
+                        id: STICK_IDS[i],
+                        phase: TouchPhase::Moved,
+                        position: pos,
+                        time: f64::NEG_INFINITY,
+                    });
+                    self.sticks[i] = Some(pos);
+                } else if let Some(last) = self.sticks[i].take() {
+                    frame.touches.push(Touch {
+                        id: STICK_IDS[i],
+                        phase: TouchPhase::Ended,
+                        position: last,
+                        time: f64::NEG_INFINITY,
+                    });
+                }
+            }
+
+            // --- Navigation input (all from same gilrs state) ---
+            let raw_stick = vec2(gp.value(Axis::LeftStickX), gp.value(Axis::LeftStickY));
+            if raw_stick.length_squared() > NAV_DEADZONE * NAV_DEADZONE {
+                left_stick = raw_stick.clamp_length_max(1.0);
             }
             a_down |= gp.is_pressed(Button::South);
             b_down |= gp.is_pressed(Button::East);
@@ -205,27 +199,43 @@ impl GamepadInput {
             rt |= gp.value(Axis::RightZ) > 0.5;
         }
 
-        let a_pressed = a_down && !self.a_was_down;
-        let b_pressed = b_down && !self.b_was_down;
-        let x_pressed = x_down && !self.x_was_down;
+        // Menu rising edge
+        if menu_down && !self.menu_down {
+            frame.menu_pressed = true;
+        }
+        self.menu_down = menu_down;
 
+        // Gameplay key delta
+        for btn in &current {
+            if !self.buttons.contains(btn) {
+                frame.key_delta += 1;
+                frame.keys_down += 1;
+            }
+        }
+        for btn in &self.buttons {
+            if !current.contains(btn) {
+                frame.key_delta -= 1;
+            }
+        }
+        self.buttons = current;
+
+        // Nav rising edges
+        nav.a_pressed = a_down && !self.a_was_down;
+        nav.b_pressed = b_down && !self.b_was_down;
+        nav.x_pressed = x_down && !self.x_was_down;
         self.a_was_down = a_down;
         self.b_was_down = b_down;
         self.x_was_down = x_down;
-        self.last_left_stick = left_stick;
 
-        NavInput {
-            left_stick,
-            a_pressed,
-            b_pressed,
-            x_pressed,
-            skip_combo: lb && rb && lt && rt,
-        }
+        nav.left_stick = left_stick;
+        nav.skip_combo = lb && rb && lt && rt;
+
+        (frame, nav)
     }
 
     #[cfg(not(all(not(target_arch = "wasm32"), not(any(target_os = "android", target_os = "ios", target_env = "ohos")))))]
-    pub fn nav_input(&mut self) -> NavInput {
-        NavInput::default()
+    pub fn poll(&mut self, _dt: f32) -> (GamepadFrame, NavInput) {
+        (GamepadFrame::default(), NavInput::default())
     }
 }
 
@@ -352,15 +362,17 @@ pub fn last_frame() -> GamepadFrame {
     LAST_FRAME.with(|it| it.borrow().clone())
 }
 
+/// Poll the global gamepad: processes events, updates gameplay frame and navigation input.
+/// Must be called every frame.
 pub fn poll_global() {
+    let dt = macroquad::prelude::get_frame_time();
     GAMEPAD.with(|it| {
         let mut guard = it.borrow_mut();
-        let frame = guard.poll();
+        let (frame, nav) = guard.poll(dt);
         LAST_FRAME.with(|f| {
             *f.borrow_mut() = frame.clone();
         });
         push_pending(frame);
-        let nav = guard.nav_input();
         LAST_NAV_INPUT.with(|n| {
             *n.borrow_mut() = nav;
         });

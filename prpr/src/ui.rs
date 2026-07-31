@@ -186,6 +186,7 @@ impl RectButton {
     }
 
     pub fn set(&mut self, ui: &mut Ui, rect: Rect) {
+        register_focus_target(rect, FocusType::Button, format!("rb_{:p}", self as *mut _));
         let mat = nalgebra_to_glm(&ui.transform) * ui.gl_transform;
         let tr = |x: f32, y: f32| {
             let pos = mat * vec4(x, y, 0., 1.);

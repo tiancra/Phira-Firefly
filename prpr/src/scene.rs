@@ -568,9 +568,10 @@ impl Main {
                 if let Some(target) = nav_state.current_target(&targets) {
                     ui.draw_focus_frame(target.rect, nav_state.phase);
                 }
-
-                self.handle_nav_actions(&targets, &nav_state, gamepad_input, &mut ui);
             }
+
+            // Always handle A/B/X nav actions (B back/exit works even without focus targets)
+            self.handle_nav_actions(&targets, &nav_state, gamepad_input, &mut ui);
 
             BILLBOARD.with(|it| {
                 let mut guard = it.borrow_mut();
@@ -626,6 +627,7 @@ impl Main {
         input: crate::gamepad::NavInput,
         ui: &mut Ui,
     ) {
+        // A: click focused target
         if input.a_pressed {
             if let Some(target) = nav_state.current_target(targets) {
                 let center = target.rect.center();
@@ -634,12 +636,27 @@ impl Main {
             }
         }
 
+        // B: back / exit
         if input.b_pressed {
-            let has_back = targets.iter().any(|t| matches!(t.focus_type, crate::ui::FocusType::Back));
-            if has_back {
-                crate::gamepad::push_nav_back();
+            if self.scenes.len() <= 1 {
+                // Main scene: show exit confirmation dialog
+                if !DIALOG.with(|d| d.borrow().is_some()) {
+                    let confirm_exit = crate::ui::Dialog::plain(
+                        "退出 Phira-Firefly",
+                        "确定要退出 Phira-Firefly 吗？",
+                    ).buttons(vec!["是".to_string(), "否".to_string()])
+                    .listener(move |_dlg, pos| {
+                        if pos == 0 {
+                            // Exit
+                            std::process::exit(0);
+                        }
+                        false
+                    });
+                    confirm_exit.show();
+                }
             } else {
-                self.scenes.last_mut().unwrap().next_scene(&mut self.tm);
+                // Sub-scene: pop it
+                crate::gamepad::push_nav_back();
             }
         }
 

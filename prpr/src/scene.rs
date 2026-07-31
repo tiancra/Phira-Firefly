@@ -501,6 +501,7 @@ impl Main {
             return Ok(());
         }
 
+        crate::gamepad::poll_global();
         crate::ui::clear_focus_targets();
 
         let mut ui = Ui::new(painter, self.viewport);

@@ -318,6 +318,9 @@ impl NavState {
 thread_local! {
     static PENDING: RefCell<GamepadFrame> = RefCell::default();
     static NAV_STATE: RefCell<NavState> = RefCell::new(NavState::new());
+    static GAMEPAD: RefCell<GamepadInput> = RefCell::new(GamepadInput::new());
+    static LAST_FRAME: RefCell<GamepadFrame> = RefCell::default();
+    static LAST_NAV_INPUT: RefCell<NavInput> = RefCell::new(NavInput::default());
 }
 
 pub fn push_pending(frame: GamepadFrame) {
@@ -332,6 +335,29 @@ pub fn push_pending(frame: GamepadFrame) {
 
 pub fn take_pending() -> GamepadFrame {
     PENDING.with(|it| std::mem::take(&mut *it.borrow_mut()))
+}
+
+pub fn last_frame() -> GamepadFrame {
+    LAST_FRAME.with(|it| it.borrow().clone())
+}
+
+pub fn poll_global() {
+    GAMEPAD.with(|it| {
+        let mut guard = it.borrow_mut();
+        let frame = guard.poll();
+        LAST_FRAME.with(|f| {
+            *f.borrow_mut() = frame.clone();
+        });
+        push_pending(frame);
+        let nav = guard.nav_input();
+        LAST_NAV_INPUT.with(|n| {
+            *n.borrow_mut() = nav;
+        });
+    });
+}
+
+pub fn nav_input_static() -> NavInput {
+    LAST_NAV_INPUT.with(|it| *it.borrow())
 }
 
 pub fn get_nav_state() -> NavState {
@@ -350,17 +376,6 @@ pub fn reset_nav_focus() {
     NAV_STATE.with(|it| {
         it.borrow_mut().focus_index = 0;
     });
-}
-
-thread_local! {
-    static GAMEPAD: RefCell<GamepadInput> = RefCell::new(GamepadInput::new());
-}
-
-pub fn nav_input_static() -> NavInput {
-    GAMEPAD.with(|it| {
-        let mut guard = it.borrow_mut();
-        guard.nav_input()
-    })
 }
 
 pub fn push_nav_touch(pos: Vec2) {

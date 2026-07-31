@@ -455,17 +455,24 @@ impl Main {
         }
         crate::gamepad::poll_global();
 
-        // --- Gamepad test entry detection: LB+RB hold 3s or F9 key ---
+        // --- Gamepad test entry detection ---
         {
             let nav_enabled = self.scenes.last().map(|s| s.nav_enabled()).unwrap_or(false)
                 && !DIALOG.with(|it| it.borrow().is_some());
-            if nav_enabled {
+            let f9_pressed = is_key_pressed(KeyCode::F9);
+
+            // F9 works in any state, LB+RB only in non-gameplay
+            if f9_pressed {
+                self.gp_test_timer = 0.0;
+                self.times.push(self.tm.now());
+                GamepadTestScene::new().enter(&mut self.tm, self.target_chooser.choose())?;
+                self.scenes.push(Box::new(GamepadTestScene::new()));
+            } else if nav_enabled {
                 let raw = crate::gamepad::raw_state_static();
                 let both_pressed = raw.lb && raw.rb;
-                let f9_pressed = is_key_pressed(KeyCode::F9);
-                if both_pressed || f9_pressed {
+                if both_pressed {
                     self.gp_test_timer += macroquad::prelude::get_frame_time();
-                    if self.gp_test_timer >= 3.0 || f9_pressed {
+                    if self.gp_test_timer >= 3.0 {
                         self.gp_test_timer = 0.0;
                         self.times.push(self.tm.now());
                         GamepadTestScene::new().enter(&mut self.tm, self.target_chooser.choose())?;

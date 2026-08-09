@@ -251,7 +251,7 @@ impl Scene for EndingScene {
         cam.render_target = self.target;
         let sr = ui.screen_rect();
         set_camera(&cam);
-        draw_background(*self.background);
+        draw_background(*self.background, ui.viewport);
 
         fn ran(t: f32, l: f32, r: f32) -> f32 {
             ((t - l) / (r - l)).clamp(0., 1.)

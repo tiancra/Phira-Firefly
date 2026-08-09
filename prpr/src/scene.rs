@@ -16,7 +16,7 @@ mod loading;
 pub use loading::{BasicPlayer, LoadingScene, SaveFn, UpdateFn, UploadFn};
 
 use crate::{
-    ext::{draw_image, screen_aspect, LocalTask, SafeTexture, ScaleType},
+    ext::{screen_aspect, LocalTask, SafeTexture},
     judge::Judge,
     time::TimeManager,
     ui::{BillBoard, Dialog, Message, MessageHandle, MessageKind, TextPainter, Ui},
@@ -639,8 +639,18 @@ impl Main {
         input: crate::gamepad::NavInput,
         ui: &mut Ui,
     ) {
-        // A: click focused target
+        // A: click focused target, or trigger dialog-mapped A action when a dialog is open
         if input.a_pressed {
+            let mut handled = false;
+            DIALOG.with(|d| {
+                let mut guard = d.borrow_mut();
+                if let Some(dialog) = guard.as_mut() {
+                    handled = dialog.handle_gamepad_button('A');
+                }
+            });
+            if handled {
+                return;
+            }
             if let Some(target) = nav_state.current_target(targets) {
                 let center = target.rect.center();
                 // Convert global UI coords to screen pixels using viewport
@@ -653,15 +663,21 @@ impl Main {
             }
         }
 
-        // B: back or cancel dialog
+        // B: dialog-mapped B action, or cancel dialog / back
         if input.b_pressed {
-            let has_dialog = DIALOG.with(|d| d.borrow().is_some());
-            if has_dialog {
-                // B cancels dialog
+            let mut handled_dialog = false;
+            DIALOG.with(|d| {
+                let mut guard = d.borrow_mut();
+                if let Some(dialog) = guard.as_mut() {
+                    handled_dialog = dialog.handle_gamepad_button('B');
+                }
+            });
+            if handled_dialog { return; }
+            if DIALOG.with(|d| d.borrow().is_some()) {
                 DIALOG.with(|d| *d.borrow_mut() = None);
-            } else {
-                crate::gamepad::push_nav_back();
+                return;
             }
+            crate::gamepad::push_nav_back();
         }
 
         // HOME/Mode: exit confirmation on main scene
@@ -682,15 +698,46 @@ impl Main {
         }
 
         if input.x_pressed {
-            crate::gamepad::push_nav_multilang();
+            // X may map to a dialog action (for 3-button dialogs); prefer dialog handling
+            let mut handled = false;
+            DIALOG.with(|d| {
+                let mut guard = d.borrow_mut();
+                if let Some(dialog) = guard.as_mut() {
+                    handled = dialog.handle_gamepad_button('X');
+                }
+            });
+            if handled { return; }
+            if !DIALOG.with(|d| d.borrow().is_some()) {
+                crate::gamepad::push_nav_multilang();
+            }
+        }
+
+        if input.y_pressed {
+            let mut handled = false;
+            DIALOG.with(|d| {
+                let mut guard = d.borrow_mut();
+                if let Some(dialog) = guard.as_mut() {
+                    handled = dialog.handle_gamepad_button('Y');
+                }
+            });
+            if handled { return; }
         }
     }
 }
 
-fn draw_background(tex: Texture2D) {
-    let asp = screen_aspect();
+fn draw_background(tex: Texture2D, viewport: (i32, i32, i32, i32)) {
+    let asp = viewport.2 as f32 / viewport.3 as f32;
     let top = 1. / asp;
-    draw_image(tex, Rect::new(-1., -top, 2., top * 2.), ScaleType::CropCenter);
+    draw_texture_ex(
+        tex,
+        -1.,
+        -top,
+        WHITE,
+        DrawTextureParams {
+            dest_size: Some(vec2(2., top * 2.)),
+            ..Default::default()
+        },
+    );
     draw_rectangle(-1., -top, 2., top * 2., Color::new(0., 0., 0., 0.3));
 }
 

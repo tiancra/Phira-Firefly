@@ -29,6 +29,8 @@ void main() {
     uv = texcoord;
 }"#;
 
+const MAX_BLOBS: usize = 14;
+
 const BLOB_FRAGMENT: &str = r#"#version 100
 precision mediump float;
 
@@ -38,11 +40,21 @@ uniform float time;
 uniform float aspect;
 uniform float energy;
 uniform float mode;
+uniform float blob_count;
 uniform vec4 color0;
 uniform vec4 color1;
 uniform vec4 color2;
 uniform vec4 color3;
 uniform vec4 color4;
+uniform vec4 color5;
+uniform vec4 color6;
+uniform vec4 color7;
+uniform vec4 color8;
+uniform vec4 color9;
+uniform vec4 color10;
+uniform vec4 color11;
+uniform vec4 color12;
+uniform vec4 color13;
 
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
@@ -64,58 +76,56 @@ vec4 color_for(int i) {
     if (i == 1) return color1;
     if (i == 2) return color2;
     if (i == 3) return color3;
-    return color4;
+    if (i == 4) return color4;
+    if (i == 5) return color5;
+    if (i == 6) return color6;
+    if (i == 7) return color7;
+    if (i == 8) return color8;
+    if (i == 9) return color9;
+    if (i == 10) return color10;
+    if (i == 11) return color11;
+    if (i == 12) return color12;
+    return color13;
 }
 
 void main() {
-    // 提取平均代表色作为暗部底色，减少纯黑背景与色块的割裂感
     vec3 avg_color = (color0.rgb + color1.rgb + color2.rgb + color3.rgb + color4.rgb) * 0.2;
 
     vec3 acc = vec3(0.0);
     float wsum = 0.0;
+    int count = int(clamp(blob_count, 1.0, 14.0));
 
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < count; ++i) {
         vec4 col = color_for(i);
         float fi = float(i);
-
-        // 每个色块有独立的漂移时间轴，整体速度更快
         float t = time * (0.10 + noise(vec2(fi, 0.0)) * 0.07);
 
-        // 用噪声生成平滑变化的中心位置
         vec2 center = vec2(
             noise(vec2(fi * 1.7, t)),
             noise(vec2(fi * 1.7 + 100.0, t))
         );
 
-        // 加入 Perlin 扰动，让色块边缘呈现流体感
         vec2 diff = uv - center;
         diff.x *= aspect;
 
-        // 增大队半径并增强边缘扭曲，使色块更容易交融
-        float radius = 0.38 + noise(vec2(fi, 1.0)) * 0.24;
-        radius += (noise(uv * 3.0 + t * 0.7 + fi) - 0.5) * 0.12;
-        // 全频段能量额外扩大色块，energy=1 时直径最大增加约 1/5 画面
-        radius += energy * 0.10;
+        float radius = 0.44 + noise(vec2(fi, 1.0)) * 0.28;
+        radius += (noise(uv * 3.0 + t * 0.7 + fi) - 0.5) * 0.16;
+        radius += energy * 0.14;
 
         float d = length(diff) / radius;
-        d += (noise(uv * 5.0 - t * 0.4 + fi * 2.0) - 0.5) * 0.28;
+        d += (noise(uv * 5.0 - t * 0.4 + fi * 2.0) - 0.5) * 0.24;
 
-        // 用指数衰减替代 smoothstep，边缘更柔和、混合更自然
         float w = exp(-d * d * 2.2);
         acc += col.rgb * w;
         wsum += w;
     }
 
-    // 加权平均与暗部底色融合，避免明显色块轮廓
-    vec3 blob_col = wsum > 0.001 ? acc / wsum : avg_color * 0.25;
-    float blend = clamp(wsum * 1.4, 0.0, 1.0);
-    vec3 col = mix(avg_color * 0.18, blob_col, blend);
+    vec3 blob_col = wsum > 0.001 ? acc / wsum : avg_color * 0.55;
+    float blend = clamp(wsum * 1.5 + 0.14, 0.0, 1.0);
+    vec3 col = mix(avg_color * (0.32 + (1.0 - mode) * 0.12), blob_col, blend);
+    col += (noise(uv * 7.0 + time * 0.08) - 0.5) * 0.05;
 
-    // 细微的纹理噪声，使背景更有机
-    col += (noise(uv * 7.0 + time * 0.08) - 0.5) * 0.02;
-
-    // 模式 2：低音能量驱动明暗呼吸；模式 1 保持较高基础亮度
-    float base = 1.0 - mode * 0.20;
+    float base = 1.0 + (1.0 - mode) * 0.26 - mode * 0.10;
     float amp = mode * 0.70;
     col *= base + energy * amp;
 
@@ -158,8 +168,9 @@ void main() {
         col = hsv2rgb(hsv);
     }
 
-    // 原曲背景暗度叠加（动态背景下大幅减弱，让整体更亮）
-    col *= 1.0 - dim * 0.08;
+    // 原曲背景暗度叠加。静态亮度模式下弱化暗度，让色块更明亮。
+    float final_dim = dim * (mode < 1.5 ? 0.03 : 0.08);
+    col *= 1.0 - final_dim;
 
     // 轻微暗角，保留更多亮度
     vec2 vuv = (uv - 0.5) * 1.4;
@@ -207,7 +218,8 @@ impl AudioSpectrum {
 pub struct DynamicBackground {
     mode: u8,
     dim: f32,
-    colors: [Color; 5],
+    colors: [Color; MAX_BLOBS],
+    blob_count: usize,
     blob_material: Material,
     composite_material: Material,
     blob_target: RenderTarget,
@@ -231,11 +243,17 @@ impl Clone for DynamicBackground {
                     ("aspect".to_owned(), UniformType::Float1),
                     ("energy".to_owned(), UniformType::Float1),
                     ("mode".to_owned(), UniformType::Float1),
+                    ("blob_count".to_owned(), UniformType::Float1),
                     ("color0".to_owned(), UniformType::Float4),
                     ("color1".to_owned(), UniformType::Float4),
                     ("color2".to_owned(), UniformType::Float4),
                     ("color3".to_owned(), UniformType::Float4),
                     ("color4".to_owned(), UniformType::Float4),
+                    ("color5".to_owned(), UniformType::Float4),
+                    ("color6".to_owned(), UniformType::Float4),
+                    ("color7".to_owned(), UniformType::Float4),
+                    ("color8".to_owned(), UniformType::Float4),
+                    ("color9".to_owned(), UniformType::Float4),
                 ],
                 ..Default::default()
             },
@@ -245,6 +263,7 @@ impl Clone for DynamicBackground {
             blob_material.set_uniform(&format!("color{i}"), c);
         }
         blob_material.set_uniform("mode", self.mode as f32);
+        blob_material.set_uniform("blob_count", self.blob_count as f32);
 
         let composite_material = load_material(
             VERTEX,
@@ -269,6 +288,7 @@ impl Clone for DynamicBackground {
             mode: self.mode,
             dim: self.dim,
             colors: self.colors,
+            blob_count: self.blob_count,
             blob_material,
             composite_material,
             blob_target,
@@ -301,15 +321,15 @@ impl DynamicBackground {
         anyhow::ensure!(viewport.2 > 0 && viewport.3 > 0, "invalid viewport size");
 
         let rgb = image.to_rgb8();
-        let palette = color_thief::get_palette(&rgb, color_thief::ColorFormat::Rgb, 10, 5).context("failed to extract color palette")?;
-        let mut colors = [BLACK; 5];
-        for (i, c) in palette.iter().enumerate().take(5) {
+        let palette = color_thief::get_palette(&rgb, color_thief::ColorFormat::Rgb, 14, 5).context("failed to extract color palette")?;
+        let mut colors = [BLACK; MAX_BLOBS];
+        for i in 0..MAX_BLOBS {
+            let index = if i < palette.len() { i } else { palette.len().max(1) - 1 };
+            let c = &palette[index];
             colors[i] = Color::from_rgba(c.r, c.g, c.b, 255);
         }
-        // 若代表色不足 5 个，用最后一个颜色补全
-        for i in palette.len()..5 {
-            colors[i] = colors[palette.len().max(1) - 1];
-        }
+
+        let blob_count = Self::blob_count_for(viewport);
 
         let blob_material = load_material(
             VERTEX,
@@ -320,11 +340,17 @@ impl DynamicBackground {
                     ("aspect".to_owned(), UniformType::Float1),
                     ("energy".to_owned(), UniformType::Float1),
                     ("mode".to_owned(), UniformType::Float1),
+                    ("blob_count".to_owned(), UniformType::Float1),
                     ("color0".to_owned(), UniformType::Float4),
                     ("color1".to_owned(), UniformType::Float4),
                     ("color2".to_owned(), UniformType::Float4),
                     ("color3".to_owned(), UniformType::Float4),
                     ("color4".to_owned(), UniformType::Float4),
+                    ("color5".to_owned(), UniformType::Float4),
+                    ("color6".to_owned(), UniformType::Float4),
+                    ("color7".to_owned(), UniformType::Float4),
+                    ("color8".to_owned(), UniformType::Float4),
+                    ("color9".to_owned(), UniformType::Float4),
                 ],
                 ..Default::default()
             },
@@ -334,6 +360,7 @@ impl DynamicBackground {
             blob_material.set_uniform(&format!("color{i}"), c);
         }
         blob_material.set_uniform("mode", mode as f32);
+        blob_material.set_uniform("blob_count", blob_count as f32);
 
         let composite_material = load_material(
             VERTEX,
@@ -358,6 +385,7 @@ impl DynamicBackground {
             mode,
             dim,
             colors,
+            blob_count,
             blob_material,
             composite_material,
             blob_target,
@@ -367,6 +395,13 @@ impl DynamicBackground {
             bass_smooth: 0.0,
             last_viewport: viewport,
         })
+    }
+
+    fn blob_count_for((_, _, w, h): (i32, i32, i32, i32)) -> usize {
+        let area = w as f32 * h as f32;
+        let scale = (area / 130_000.0).sqrt();
+        let count = (scale * 2.8).ceil() as usize;
+        count.clamp(7, MAX_BLOBS)
     }
 
     /// 将音乐文件解码为单声道数据，用于模式 2。
@@ -456,6 +491,20 @@ impl DynamicBackground {
             ..Default::default()
         });
 
+        if viewport != self.last_viewport {
+            let (blob_target, output_texture, output_pass) = Self::create_targets(viewport);
+            self.blob_target = blob_target;
+            self.output_texture = output_texture;
+            self.output_pass = output_pass;
+            self.last_viewport = viewport;
+        }
+
+        let blob_count = Self::blob_count_for(viewport);
+        if blob_count != self.blob_count {
+            self.blob_count = blob_count;
+            self.blob_material.set_uniform("blob_count", blob_count as f32);
+        }
+
         let mut gl = unsafe { get_internal_gl() };
         gl.flush();
         let old_pass = gl.quad_gl.get_active_render_pass();
@@ -490,8 +539,8 @@ impl DynamicBackground {
     fn create_targets(viewport: (i32, i32, i32, i32)) -> (RenderTarget, SafeTexture, RenderPass) {
         let (w, h) = (viewport.2 as u32, viewport.3 as u32);
         // 色块目标为视口 1/4，用线性放大实现模糊；至少 128x128 防止过度马赛克
-        let blob_w = (w / 4).max(128);
-        let blob_h = (h / 4).max(128);
+        let blob_w = (w / 3).max(128);
+        let blob_h = (h / 3).max(128);
 
         let blob_target = render_target(blob_w, blob_h);
         blob_target.texture.set_filter(FilterMode::Linear);

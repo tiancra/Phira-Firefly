@@ -294,6 +294,14 @@ impl Scene for MainScene {
     }
 
     fn update(&mut self, tm: &mut TimeManager) -> Result<()> {
+        if prpr::gamepad::take_multilang_pressed() && get_data().config.mp_enabled {
+            MP_PANEL.with(|it| {
+                if let Some(panel) = it.borrow_mut().as_mut() {
+                    panel.show(tm.real_time() as _);
+                }
+            });
+        }
+
         // Handle gamepad B-key back within MainScene pages
         if prpr::gamepad::take_back_pressed() && self.pages.len() > 1 && !self.state.fader.transiting() {
             if !self.pages.last_mut().unwrap().on_back_pressed(&mut self.state) {
@@ -694,6 +702,11 @@ impl Scene for MainScene {
             self.mp_btn.set(ui, r);
             let r = r.feather(-0.02);
             ui.fill_rect(r, (*self.mp_icon, r));
+
+            if prpr::gamepad::is_connected() {
+                let focus_rect = Rect::new(self.mp_btn_pos.x - r.w / 2., self.mp_btn_pos.y - r.h / 2., r.w, r.h);
+                prpr::ui::register_focus_target(focus_rect, prpr::ui::FocusType::Button, "mp_panel_toggle");
+            }
 
             MP_PANEL.with(|it| {
                 if let Some(panel) = it.borrow_mut().as_mut() {

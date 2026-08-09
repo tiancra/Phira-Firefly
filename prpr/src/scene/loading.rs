@@ -205,7 +205,7 @@ impl Scene for LoadingScene {
         let t = tm.now() as f32;
         cam.render_target = self.target;
         set_camera(&cam);
-        draw_background(*self.background);
+        draw_background(*self.background, ui.viewport);
 
         ui.alpha((t / FADE_IN_TIME).min(1.), |ui| {
             let dx = if t > self.finish_time {

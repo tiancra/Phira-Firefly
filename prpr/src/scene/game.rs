@@ -1769,11 +1769,20 @@ impl Scene for GameScene {
             .map(|it| if msaa { it.input() } else { it.output() })
             .or(res.camera.render_target);
         if let Some(dbg) = &mut res.dynamic_bg {
-            let vp = get_viewport();
+            let vp = ui.viewport;
             dbg.update(tm.now() as f32, vp, Some(self.music.position() as f32));
             // 同步 Resource 持有的背景纹理句柄，因为 DynamicBackground 的 Clone 会创建独立的输出纹理
             res.background = dbg.texture();
         }
+
+        push_camera_state();
+        self.gl.quad_gl.viewport(None);
+        set_camera(&Camera2D {
+            zoom: vec2(1., -(ui.viewport.2 as f32 / ui.viewport.3 as f32)),
+            ..Default::default()
+        });
+        draw_background(*res.background, ui.viewport);
+        pop_camera_state();
 
         push_camera_state();
         set_camera(&Camera2D {
@@ -1783,7 +1792,7 @@ impl Scene for GameScene {
             ..Default::default()
         });
         clear_background(BLACK);
-        draw_background(*res.background);
+        draw_background(*res.background, ui.viewport);
         pop_camera_state();
 
         let chart_target_vp = if res.chart_target.is_some() {

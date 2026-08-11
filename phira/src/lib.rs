@@ -258,8 +258,7 @@ async fn the_main() -> Result<()> {
 
     let font = FontArc::try_from_vec(load_file("font.ttf").await?)?;
     let mut painter = TextPainter::new(font.clone(), None);
-    let mut crash_painter = TextPainter::new(font.clone(), None);
-    let crash_logo = match load_texture("crashlogo.png").await {
+    let mut crash_logo: Option<Texture2D> = match load_texture("crashlogo.png").await {
         Ok(tex) => {
             info!("crash logo loaded: {}x{}", tex.width(), tex.height());
             Some(tex)
@@ -279,6 +278,9 @@ async fn the_main() -> Result<()> {
             }
         }
     };
+    let mut crash_font: Option<macroquad::text::Font> = load_file("font.ttf").await.ok().and_then(|bytes| {
+        macroquad::text::load_ttf_font_from_bytes(&bytes).ok()
+    });
 
     let mut main = Some(Main::new(Box::new(MainScene::new(font.clone()).await?), TimeManager::default(), None).await?);
 
@@ -385,7 +387,7 @@ async fn the_main() -> Result<()> {
                 clear_background(BLACK);
             } else {
                 // 再显示白色崩溃界面
-                crash::render_crash_screen(crash_logo, &mut crash_painter);
+                crash::render_crash_screen(crash_logo, crash_font);
             }
             next_frame().await;
             continue;
@@ -414,7 +416,15 @@ async fn the_main() -> Result<()> {
             Err(_) => {
                 crashed = true;
                 crash_start_time = get_time();
-                crash_painter = TextPainter::new(font.clone(), None);
+                crash_logo = load_texture("crashlogo.png").await.ok().or_else(|| {
+                    load_file("crashlogo.png").await.ok().map(|bytes| {
+                        let image = Image::from_file_with_format(&bytes, Some(ImageFormat::Png));
+                        Texture2D::from_image(&image)
+                    })
+                });
+                crash_font = load_file("font.ttf").await.ok().and_then(|bytes| {
+                    macroquad::text::load_ttf_font_from_bytes(&bytes).ok()
+                });
                 if let Some(m) = main.take() {
                     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         drop(m);
@@ -545,19 +555,15 @@ pub extern "C" fn quad_main() {
             crash::set_error(&err.to_string());
 
             // 尝试加载崩溃界面资源
-            let crash_logo = match load_texture("crashlogo.png").await {
-                Ok(tex) => Some(tex),
-                Err(_) => None,
-            };
-
-            // 尝试加载字体创建 TextPainter
-            let mut crash_painter = match load_file("font.ttf").await {
-                Ok(bytes) => match FontArc::try_from_vec(bytes) {
-                    Ok(font) => Some(TextPainter::new(font, None)),
-                    Err(_) => None,
-                },
-                Err(_) => None,
-            };
+            let crash_logo = load_texture("crashlogo.png").await.ok().or_else(|| {
+                load_file("crashlogo.png").await.ok().map(|bytes| {
+                    let image = Image::from_file_with_format(&bytes, Some(ImageFormat::Png));
+                    Texture2D::from_image(&image)
+                })
+            });
+            let crash_font = load_file("font.ttf").await.ok().and_then(|bytes| {
+                macroquad::text::load_ttf_font_from_bytes(&bytes).ok()
+            });
 
             // 崩溃渲染循环：先黑屏再显示崩溃界面
             let crash_start_time = get_time();
@@ -565,10 +571,8 @@ pub extern "C" fn quad_main() {
                 let elapsed = get_time() - crash_start_time;
                 if elapsed < 1.5 {
                     clear_background(BLACK);
-                } else if let Some(ref mut painter) = crash_painter {
-                    crash::render_crash_screen(crash_logo, painter);
                 } else {
-                    crash::render_crash_screen_fallback(crash_logo);
+                    crash::render_crash_screen(crash_logo, crash_font);
                 }
                 next_frame().await;
             }

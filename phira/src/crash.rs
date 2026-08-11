@@ -1,9 +1,5 @@
 use macroquad::prelude::*;
 use macroquad::text::{draw_text, measure_text};
-use prpr::{
-    ext::draw_text_aligned,
-    ui::{TextPainter, Ui},
-};
 use std::{sync::Mutex, time::SystemTime};
 
 pub struct CrashInfo {
@@ -103,7 +99,6 @@ pub fn set_panic_hook() {
     }));
 }
 
-/// 手动设置非 panic 导致的崩溃信息（如启动时资源加载失败）
 pub fn set_error(error_msg: &str) {
     let (code, message) = classify_panic(error_msg);
     let crash_info = CrashInfo {
@@ -118,90 +113,12 @@ pub fn set_error(error_msg: &str) {
     }
 }
 
-pub fn render_crash_screen(logo: Option<Texture2D>, painter: &mut TextPainter) {
-    clear_background(WHITE);
-
-    let mut ui = Ui::new(painter, None);
-    let top = ui.top;
-
-    push_camera_state();
-    set_camera(&ui.camera());
-
-    let info = CRASH_INFO.lock().unwrap();
-    let Some(info) = info.as_ref() else {
-        pop_camera_state();
-        return;
-    };
-
-    // Logo（最上方，保持比例，不裁切）
-    let _logo_bottom = if let Some(logo) = logo {
-        let logo_w = logo.width();
-        let logo_h = logo.height();
-        let max_ndc_w = 1.2;
-        let max_ndc_h = top * 0.90;
-        let logo_ndc_w = logo_w / (screen_width() / 2.0);
-        let logo_ndc_h = logo_h / (screen_width() / 2.0);
-        let scale = (max_ndc_w / logo_ndc_w).min(max_ndc_h / logo_ndc_h).min(1.0);
-        let ndc_w = logo_ndc_w * scale;
-        let ndc_h = logo_ndc_h * scale;
-        let x = -ndc_w / 2.0;
-        let y = -top * 0.5 - ndc_h / 2.0;
-        draw_texture_ex(
-            logo,
-            x,
-            y,
-            WHITE,
-            DrawTextureParams {
-                dest_size: Some(vec2(ndc_w, ndc_h)),
-                ..Default::default()
-            },
-        );
-        Some(y + ndc_h)
-    } else {
-        None
-    };
-
-    // 文字组固定在屏幕下半部分的1/4处，组内间隔小
-    let version_y = top * 0.40;
-    let error_y = version_y + 0.07;
-    let message_y = error_y + 0.09;
-
-    // PHIRA-FIREFLY {version}
-    let version = env!("CARGO_PKG_VERSION");
-    let version_text = format!("PHIRA-FIREFLY {}", version);
-    draw_text_aligned(&mut ui, &version_text, 0.0, version_y, (0.5, 0.5), 0.5, Color::new(0.0, 0.0, 0.0, 1.0));
-
-    // 红色呼吸效果（从 #F00 到 #F80）
-    let t = get_time();
-    let depth = ((t * 8.0).sin() as f32 * 0.5 + 0.5) * 8.0;
-    let g = depth / 8.0;
-    let red_color = Color::new(1.0, g, 0.0, 1.0);
-
-    // ERROR 错误代码
-    let title = format!("ERROR {}", info.code);
-    draw_text_aligned(&mut ui, &title, 0.0, error_y, (0.5, 0.5), 0.72, red_color);
-
-    // 错误信息（换行）
-    ui.text(&info.message)
-        .pos(0.0, message_y)
-        .anchor(0.5, 0.5)
-        .size(0.38)
-        .color(red_color)
-        .multiline()
-        .max_width(1.6)
-        .draw();
-
-    pop_camera_state();
-}
-
-/// 当 TextPainter/字体不可用时使用的备用崩溃界面渲染（使用 macroquad 默认字体）
-pub fn render_crash_screen_fallback(logo: Option<Texture2D>) {
+pub fn render_crash_screen(logo: Option<Texture2D>, font: Option<macroquad::text::Font>) {
     clear_background(WHITE);
 
     let sw = screen_width();
     let sh = screen_height();
 
-    // Logo（最上方，保持比例，不裁切）
     if let Some(logo) = logo {
         let logo_w = logo.width();
         let logo_h = logo.height();
@@ -229,37 +146,33 @@ pub fn render_crash_screen_fallback(logo: Option<Texture2D>) {
         return;
     };
 
-    // PHIRA-FIREFLY {version}
     let version_text = format!("PHIRA-FIREFLY {}", env!("CARGO_PKG_VERSION"));
     let version_size = sh * 0.035;
-    let version_dims = measure_text(&version_text, None, version_size as u16, 1.0);
+    let version_dims = measure_text(&version_text, font, version_size as u16, 1.0);
     draw_text(&version_text, (sw - version_dims.width) / 2.0, sh * 0.55, version_size, Color::new(0.0, 0.0, 0.0, 1.0));
 
-    // 红色呼吸效果
     let t = get_time();
     let depth = ((t * 8.0).sin() as f32 * 0.5 + 0.5) * 8.0;
     let g = depth / 8.0;
     let red_color = Color::new(1.0, g, 0.0, 1.0);
 
-    // ERROR 错误代码
     let title = format!("ERROR {}", info.code);
     let error_size = sh * 0.050;
-    let error_dims = measure_text(&title, None, error_size as u16, 1.0);
+    let error_dims = measure_text(&title, font, error_size as u16, 1.0);
     draw_text(&title, (sw - error_dims.width) / 2.0, sh * 0.65, error_size, red_color);
 
-    // 错误信息（自动换行）
     let message_size = sh * 0.025;
     let max_text_width = sw * 0.85;
     let line_height = message_size * 1.3;
     let mut cur_y = sh * 0.72;
-    for line in wrap_text(&info.message, message_size as u16, max_text_width) {
-        let dims = measure_text(&line, None, message_size as u16, 1.0);
+    for line in wrap_text(&info.message, font, message_size as u16, max_text_width) {
+        let dims = measure_text(&line, font, message_size as u16, 1.0);
         draw_text(&line, (sw - dims.width) / 2.0, cur_y, message_size, red_color);
         cur_y += line_height;
     }
 }
 
-fn wrap_text(text: &str, font_size: u16, max_width: f32) -> Vec<String> {
+fn wrap_text(text: &str, font: Option<macroquad::text::Font>, font_size: u16, max_width: f32) -> Vec<String> {
     let mut lines = Vec::new();
     for paragraph in text.split('\n') {
         if paragraph.is_empty() {
@@ -269,7 +182,7 @@ fn wrap_text(text: &str, font_size: u16, max_width: f32) -> Vec<String> {
         let mut current_line = String::new();
         for ch in paragraph.chars() {
             let test = format!("{}{}", current_line, ch);
-            let w = measure_text(&test, None, font_size, 1.0).width;
+            let w = measure_text(&test, font, font_size, 1.0).width;
             if w > max_width && !current_line.is_empty() {
                 lines.push(current_line);
                 current_line = String::new();

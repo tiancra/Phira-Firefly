@@ -690,6 +690,8 @@ struct InlineInputState {
     cursor: usize,
     active: bool,
     confirmed: bool,
+    /// 本次输入是被取消（Esc / 取消）而不是确认的
+    cancelled: bool,
     show_at: f64, // 延迟显示的时间戳（等软键盘弹出后再显示输入框 UI）
     // 按键重复状态
     backspace_held: f64,  // Backspace 已按住时间
@@ -718,6 +720,7 @@ impl Default for InlineInputState {
             cursor: 0,
             active: false,
             confirmed: false,
+            cancelled: false,
             show_at: 0.,
             backspace_held: 0.,
             backspace_next: 0.,
@@ -741,6 +744,7 @@ static INLINE_INPUT: std::sync::Mutex<InlineInputState> = std::sync::Mutex::new(
     cursor: 0,
     active: false,
     confirmed: false,
+    cancelled: false,
     show_at: 0.,
     backspace_held: 0.,
     backspace_next: 0.,
@@ -768,6 +772,7 @@ pub fn activate_inline_input(id: impl Into<String>, rect: Option<Rect>, default:
     state.text = text;
     state.active = true;
     state.confirmed = false;
+    state.cancelled = false;
     // Android 上延迟显示，等软键盘弹出动画完成；其他平台无延迟
     #[cfg(target_os = "android")]
     { state.show_at = now + 0.3; }
@@ -821,6 +826,7 @@ pub fn cancel_inline_input() {
     if state.active {
         state.active = false;
         state.confirmed = false;
+        state.cancelled = true;
         drop(state);
         set_soft_keyboard(false);
     }
@@ -843,6 +849,18 @@ pub fn take_inline_result() -> Option<(String, String)> {
     if state.confirmed {
         state.confirmed = false;
         Some((state.id.clone(), state.text.clone()))
+    } else {
+        None
+    }
+}
+
+/// 取出被取消的输入框 id（用户按 Esc / 取消时返回）。与 [`take_inline_result`]
+/// 区分，调用方借此知道用户是取消了输入而不是还没提交。
+pub fn take_inline_cancelled() -> Option<String> {
+    let mut state = INLINE_INPUT.lock().unwrap();
+    if state.cancelled {
+        state.cancelled = false;
+        Some(state.id.clone())
     } else {
         None
     }
@@ -1240,6 +1258,7 @@ pub fn update_inline_input() {
     if is_key_pressed(KeyCode::Escape) {
         state.active = false;
         state.confirmed = false;
+        state.cancelled = true;
         drop(state);
         set_soft_keyboard(false);
         return;

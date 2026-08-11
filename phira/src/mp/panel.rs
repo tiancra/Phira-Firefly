@@ -239,6 +239,10 @@ impl MPPanel {
             return;
         };
         let addr = self.temp_mp_address.as_ref().unwrap_or(&get_data().config.mp_address).clone();
+        if addr.is_empty() {
+            show_message(mtl!("connect-no-server")).error();
+            return;
+        }
         self.connect_task = Some(Task::new(async move {
             let client = Client::new(TcpStream::connect(addr).await?).await?;
             client

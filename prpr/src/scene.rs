@@ -188,6 +188,12 @@ pub fn take_input() -> Option<(String, String)> {
     w.0.clone().zip(std::mem::take(&mut w.1))
 }
 
+/// 取出被取消的输入框 id。与 [`take_input`] 区分：取消时 `take_input` 永远返回
+/// `None`，调用方借此知道用户是取消了输入而不是还没提交。
+pub fn take_input_cancelled() -> Option<String> {
+    crate::ui::take_inline_cancelled()
+}
+
 pub fn return_input(id: String, text: String) {
     *INPUT_TEXT.lock().unwrap() = (Some(id), Some(text));
 }

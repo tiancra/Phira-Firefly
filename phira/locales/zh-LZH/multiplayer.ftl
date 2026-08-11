@@ -3,6 +3,7 @@ multiplayer = 多人同戲
 
 connect = 連接
 connect-must-login = 登入後方可入多人同戲
+connect-no-server = 請先添並擇多人同戲之伺服器
 connect-success = 連接功矣
 connect-failed = 連接敗矣
 connect-authenticate-failed = 鑑權敗矣

@@ -95,7 +95,9 @@ void main() {
     float wsum = 0.0;
     int count = int(clamp(blob_count, 1.0, 14.0));
 
-    for (int i = 0; i < count; ++i) {
+    // 使用常量上界循环 + break，避免 GLES 2.0 不允许的动态循环索引导致驱动崩溃
+    for (int i = 0; i < 14; ++i) {
+        if (i >= count) { break; }
         vec4 col = color_for(i);
         float fi = float(i);
         float t = time * (0.10 + noise(vec2(fi, 0.0)) * 0.07);
@@ -254,6 +256,10 @@ impl Clone for DynamicBackground {
                     ("color7".to_owned(), UniformType::Float4),
                     ("color8".to_owned(), UniformType::Float4),
                     ("color9".to_owned(), UniformType::Float4),
+                    ("color10".to_owned(), UniformType::Float4),
+                    ("color11".to_owned(), UniformType::Float4),
+                    ("color12".to_owned(), UniformType::Float4),
+                    ("color13".to_owned(), UniformType::Float4),
                 ],
                 ..Default::default()
             },
@@ -351,6 +357,10 @@ impl DynamicBackground {
                     ("color7".to_owned(), UniformType::Float4),
                     ("color8".to_owned(), UniformType::Float4),
                     ("color9".to_owned(), UniformType::Float4),
+                    ("color10".to_owned(), UniformType::Float4),
+                    ("color11".to_owned(), UniformType::Float4),
+                    ("color12".to_owned(), UniformType::Float4),
+                    ("color13".to_owned(), UniformType::Float4),
                 ],
                 ..Default::default()
             },

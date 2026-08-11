@@ -86,11 +86,15 @@ pub fn set_panic_hook() {
             panic_msg
         };
 
+        // 捕获调用栈并随日志保存，便于在无崩溃界面文字的情况下定位崩溃点
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        let log_detail = format!("{}\n\n调用栈:\n{}", detailed, backtrace);
+
         let (code, message) = classify_panic(&detailed);
         let crash_info = CrashInfo {
             code: code.to_string(),
             message: message.to_string(),
-            panic_info: detailed,
+            panic_info: log_detail,
             timestamp: format!("{:?}", SystemTime::now()),
         };
         write_crash_log(&crash_info);
@@ -159,16 +163,15 @@ pub fn render_crash_screen(logo: Option<Texture2D>, font: Option<macroquad::text
 
     // 即使 CRASH_INFO 尚未写入（极端情况），也必须保证崩溃界面有文字，
     // 避免只绘制 logo 后提前 return 导致"有图无字"。
-    let (code, message, panic_info) = {
+    let (code, message) = {
         let guard = CRASH_INFO.lock().unwrap();
         match guard.as_ref() {
-            Some(i) => (i.code.clone(), i.message.clone(), i.panic_info.clone()),
+            Some(i) => (i.code.clone(), i.message.clone()),
             None => {
                 error!("CRASH_INFO is empty when rendering crash screen, using fallback text");
                 (
                     "0010".to_owned(),
                     "无法预计的游戏程序失败".to_owned(),
-                    String::new(),
                 )
             }
         }
@@ -230,30 +233,6 @@ pub fn render_crash_screen(logo: Option<Texture2D>, font: Option<macroquad::text
             },
         );
         cur_y += line_height;
-    }
-
-    // 显示真实 panic 详情（消息+代码位置），便于定位崩溃点
-    if !panic_info.is_empty() {
-        let panic_size = sh * 0.020;
-        let panic_height = panic_size * 1.25;
-        cur_y += sh * 0.015;
-        let panic_lines = wrap_text(&panic_info, font, panic_size as u16, max_text_width);
-        for line in panic_lines.iter().take(8) {
-            let dims = measure_text(line, Some(font), panic_size as u16, 1.0);
-            draw_text_ex(
-                line,
-                (sw - dims.width) / 2.0,
-                cur_y,
-                TextParams {
-                    font,
-                    font_size: panic_size as u16,
-                    font_scale: 1.0,
-                    color: Color::new(0.25, 0.25, 0.25, 1.0),
-                    ..Default::default()
-                },
-            );
-            cur_y += panic_height;
-        }
     }
 }
 

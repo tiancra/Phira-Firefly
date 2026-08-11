@@ -18,7 +18,7 @@ const ERR_AUDIO: &str = "0002";
 const ERR_RESOURCE: &str = "0003";
 const ERR_MEMORY: &str = "0004";
 const ERR_NETWORK: &str = "0005";
-const ERR_UNKNOWN: &str = "0999";
+const ERR_UNKNOWN: &str = "0010";
 
 pub fn set_log_path(path: &str) {
     if let Ok(mut guard) = CRASH_LOG_PATH.lock() {
@@ -166,8 +166,8 @@ pub fn render_crash_screen(logo: Option<Texture2D>, font: Option<macroquad::text
             None => {
                 error!("CRASH_INFO is empty when rendering crash screen, using fallback text");
                 (
-                    "0999".to_owned(),
-                    "无法获取崩溃详情，请查看 crash.log 日志。".to_owned(),
+                    "0010".to_owned(),
+                    "无法预计的游戏程序失败".to_owned(),
                 )
             }
         }

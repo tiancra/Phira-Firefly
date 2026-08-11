@@ -119,14 +119,13 @@ pub fn set_error(error_msg: &str) {
 }
 
 pub fn render_crash_screen(logo: Option<Texture2D>, painter: &mut TextPainter) {
+    clear_background(WHITE);
+
     let mut ui = Ui::new(painter, None);
     let top = ui.top;
 
     push_camera_state();
     set_camera(&ui.camera());
-
-    // 全屏白色背景
-    ui.fill_rect(Rect::new(-1.0, -top, 2.0, 2.0 * top), WHITE);
 
     let info = CRASH_INFO.lock().unwrap();
     let Some(info) = info.as_ref() else {
@@ -248,8 +247,38 @@ pub fn render_crash_screen_fallback(logo: Option<Texture2D>) {
     let error_dims = measure_text(&title, None, error_size as u16, 1.0);
     draw_text(&title, (sw - error_dims.width) / 2.0, sh * 0.65, error_size, red_color);
 
-    // 错误信息
+    // 错误信息（自动换行）
     let message_size = sh * 0.025;
-    let message_dims = measure_text(&info.message, None, message_size as u16, 1.0);
-    draw_text(&info.message, (sw - message_dims.width) / 2.0, sh * 0.72, message_size, red_color);
+    let max_text_width = sw * 0.85;
+    let line_height = message_size * 1.3;
+    let mut cur_y = sh * 0.72;
+    for line in wrap_text(&info.message, message_size as u16, max_text_width) {
+        let dims = measure_text(&line, None, message_size as u16, 1.0);
+        draw_text(&line, (sw - dims.width) / 2.0, cur_y, message_size, red_color);
+        cur_y += line_height;
+    }
+}
+
+fn wrap_text(text: &str, font_size: u16, max_width: f32) -> Vec<String> {
+    let mut lines = Vec::new();
+    for paragraph in text.split('\n') {
+        if paragraph.is_empty() {
+            lines.push(String::new());
+            continue;
+        }
+        let mut current_line = String::new();
+        for ch in paragraph.chars() {
+            let test = format!("{}{}", current_line, ch);
+            let w = measure_text(&test, None, font_size, 1.0).width;
+            if w > max_width && !current_line.is_empty() {
+                lines.push(current_line);
+                current_line = String::new();
+            }
+            current_line.push(ch);
+        }
+        if !current_line.is_empty() {
+            lines.push(current_line);
+        }
+    }
+    lines
 }

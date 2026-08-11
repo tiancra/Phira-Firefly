@@ -414,6 +414,7 @@ async fn the_main() -> Result<()> {
             Err(_) => {
                 crashed = true;
                 crash_start_time = get_time();
+                crash_painter = TextPainter::new(font.clone(), None);
                 if let Some(m) = main.take() {
                     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         drop(m);

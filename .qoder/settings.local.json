@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(which rustc rustup cargo 2>/dev/null; ls /root/.cargo/bin/ 2>/dev/null; ls /root/.rustup/ 2>/dev/null)",
+      "Read(//root/.cargo/**)"
+    ]
+  }
+}

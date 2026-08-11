@@ -145,7 +145,7 @@ pub fn render_crash_screen(logo: Option<Texture2D>, painter: &mut TextPainter) {
         let ndc_w = logo_ndc_w * scale;
         let ndc_h = logo_ndc_h * scale;
         let x = -ndc_w / 2.0;
-        let y = -top * 0.75;
+        let y = -top * 0.5 - ndc_h / 2.0;
         draw_texture_ex(
             logo,
             x,
@@ -211,7 +211,7 @@ pub fn render_crash_screen_fallback(logo: Option<Texture2D>) {
         let w = logo_w * scale;
         let h = logo_h * scale;
         let x = (sw - w) / 2.0;
-        let y = sh * 0.10;
+        let y = sh * 0.25 - h / 2.0;
         draw_texture_ex(
             logo,
             x,

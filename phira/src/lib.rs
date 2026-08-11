@@ -416,12 +416,13 @@ async fn the_main() -> Result<()> {
             Err(_) => {
                 crashed = true;
                 crash_start_time = get_time();
-                crash_logo = load_texture("crashlogo.png").await.ok().or_else(|| {
-                    load_file("crashlogo.png").await.ok().map(|bytes| {
+                crash_logo = load_texture("crashlogo.png").await.ok();
+                if crash_logo.is_none() {
+                    crash_logo = load_file("crashlogo.png").await.ok().map(|bytes| {
                         let image = Image::from_file_with_format(&bytes, Some(ImageFormat::Png));
                         Texture2D::from_image(&image)
-                    })
-                });
+                    });
+                }
                 crash_font = load_file("font.ttf").await.ok().and_then(|bytes| {
                     macroquad::text::load_ttf_font_from_bytes(&bytes).ok()
                 });
@@ -555,12 +556,13 @@ pub extern "C" fn quad_main() {
             crash::set_error(&err.to_string());
 
             // 尝试加载崩溃界面资源
-            let crash_logo = load_texture("crashlogo.png").await.ok().or_else(|| {
-                load_file("crashlogo.png").await.ok().map(|bytes| {
+            let mut crash_logo = load_texture("crashlogo.png").await.ok();
+            if crash_logo.is_none() {
+                crash_logo = load_file("crashlogo.png").await.ok().map(|bytes| {
                     let image = Image::from_file_with_format(&bytes, Some(ImageFormat::Png));
                     Texture2D::from_image(&image)
-                })
-            });
+                });
+            }
             let crash_font = load_file("font.ttf").await.ok().and_then(|bytes| {
                 macroquad::text::load_ttf_font_from_bytes(&bytes).ok()
             });

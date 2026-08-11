@@ -9,7 +9,7 @@ use macroquad::prelude::*;
 use prpr::{
     core::{ParticleEmitter, ResourcePack, NOTE_WIDTH_RATIO_BASE},
     ext::{create_audio_manger, poll_future, semi_black, LocalTask, RectExt, SafeTexture, ScaleType},
-    fs::{self, FileSystem},
+    fs,
     scene::{show_error, BasicPlayer, GameMode, LoadingScene, NextScene},
     time::TimeManager,
     ui::{DRectButton, Slider, Ui},

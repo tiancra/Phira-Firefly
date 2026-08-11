@@ -1,6 +1,7 @@
 use macroquad::prelude::*;
 use macroquad::text::{draw_text_ex, measure_text, TextParams};
 use std::{sync::Mutex, time::SystemTime};
+use tracing::error;
 
 pub struct CrashInfo {
     pub code: String,
@@ -156,9 +157,20 @@ pub fn render_crash_screen(logo: Option<Texture2D>, font: Option<macroquad::text
         );
     }
 
-    let info = CRASH_INFO.lock().unwrap();
-    let Some(info) = info.as_ref() else {
-        return;
+    // 即使 CRASH_INFO 尚未写入（极端情况），也必须保证崩溃界面有文字，
+    // 避免只绘制 logo 后提前 return 导致"有图无字"。
+    let (code, message) = {
+        let guard = CRASH_INFO.lock().unwrap();
+        match guard.as_ref() {
+            Some(i) => (i.code.clone(), i.message.clone()),
+            None => {
+                error!("CRASH_INFO is empty when rendering crash screen, using fallback text");
+                (
+                    "0999".to_owned(),
+                    "无法获取崩溃详情，请查看 crash.log 日志。".to_owned(),
+                )
+            }
+        }
     };
 
     let version_text = format!("PHIRA-FIREFLY {}", env!("CARGO_PKG_VERSION"));
@@ -182,7 +194,7 @@ pub fn render_crash_screen(logo: Option<Texture2D>, font: Option<macroquad::text
     let g = depth / 8.0;
     let red_color = Color::new(1.0, g, 0.0, 1.0);
 
-    let title = format!("ERROR {}", info.code);
+    let title = format!("ERROR {}", code);
     let error_size = sh * 0.050;
     let error_dims = measure_text(&title, Some(font), error_size as u16, 1.0);
     draw_text_ex(
@@ -202,7 +214,7 @@ pub fn render_crash_screen(logo: Option<Texture2D>, font: Option<macroquad::text
     let max_text_width = sw * 0.85;
     let line_height = message_size * 1.3;
     let mut cur_y = sh * 0.72;
-    for line in wrap_text(&info.message, font, message_size as u16, max_text_width) {
+    for line in wrap_text(&message, font, message_size as u16, max_text_width) {
         let dims = measure_text(&line, Some(font), message_size as u16, 1.0);
         draw_text_ex(
             &line,

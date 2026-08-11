@@ -437,7 +437,11 @@ async fn the_main() -> Result<()> {
                         Texture2D::from_image(&image)
                     });
                 }
-                crash_font = load_crash_font().await;
+                // 优先复用启动时已加载的崩溃字体（其图集在崩溃前已正常上传 GPU）。
+                // 仅当其为空时才重新加载，避免崩溃后 load_file 失败回退到可能失效的默认位图字体。
+                if crash_font.is_none() {
+                    crash_font = load_crash_font().await;
+                }
                 if let Some(m) = main.take() {
                     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         drop(m);

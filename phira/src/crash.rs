@@ -1,5 +1,5 @@
 use macroquad::prelude::*;
-use macroquad::text::{draw_text, measure_text};
+use macroquad::text::{draw_text_ex, measure_text, TextParams};
 use std::{sync::Mutex, time::SystemTime};
 
 pub struct CrashInfo {
@@ -113,8 +113,23 @@ pub fn set_error(error_msg: &str) {
     }
 }
 
+/// 重置被崩溃污染的 GL 状态。
+///
+/// Android 上游玩中崩溃时，GL 状态会残留游戏的相机矩阵 / 离屏 FBO / 视口 / 裁剪区域。
+/// 若不重置，后续 clear 与绘制会进入离屏纹理或被错误投影变换，最终屏幕一片空白。
+/// 因此每次绘制崩溃界面（以及崩溃后的黑屏阶段）前都必须先调用本函数恢复默认渲染状态。
+pub fn reset_gl_state() {
+    set_default_camera();
+    unsafe { get_internal_gl() }.quad_gl.viewport(None);
+    unsafe { get_internal_gl() }.quad_gl.scissor(None);
+}
+
 pub fn render_crash_screen(logo: Option<Texture2D>, font: Option<macroquad::text::Font>) {
+    reset_gl_state();
     clear_background(WHITE);
+
+    // font 为 None（如 font.ttf 缺失）时回退到宏内置字体（TextParams::default 的 Font(0)）
+    let font = font.unwrap_or_default();
 
     let sw = screen_width();
     let sh = screen_height();
@@ -148,8 +163,19 @@ pub fn render_crash_screen(logo: Option<Texture2D>, font: Option<macroquad::text
 
     let version_text = format!("PHIRA-FIREFLY {}", env!("CARGO_PKG_VERSION"));
     let version_size = sh * 0.035;
-    let version_dims = measure_text(&version_text, font, version_size as u16, 1.0);
-    draw_text(&version_text, (sw - version_dims.width) / 2.0, sh * 0.55, version_size, Color::new(0.0, 0.0, 0.0, 1.0));
+    let version_dims = measure_text(&version_text, Some(font), version_size as u16, 1.0);
+    draw_text_ex(
+        &version_text,
+        (sw - version_dims.width) / 2.0,
+        sh * 0.55,
+        TextParams {
+            font,
+            font_size: version_size as u16,
+            font_scale: 1.0,
+            color: Color::new(0.0, 0.0, 0.0, 1.0),
+            ..Default::default()
+        },
+    );
 
     let t = get_time();
     let depth = ((t * 8.0).sin() as f32 * 0.5 + 0.5) * 8.0;
@@ -158,21 +184,43 @@ pub fn render_crash_screen(logo: Option<Texture2D>, font: Option<macroquad::text
 
     let title = format!("ERROR {}", info.code);
     let error_size = sh * 0.050;
-    let error_dims = measure_text(&title, font, error_size as u16, 1.0);
-    draw_text(&title, (sw - error_dims.width) / 2.0, sh * 0.65, error_size, red_color);
+    let error_dims = measure_text(&title, Some(font), error_size as u16, 1.0);
+    draw_text_ex(
+        &title,
+        (sw - error_dims.width) / 2.0,
+        sh * 0.65,
+        TextParams {
+            font,
+            font_size: error_size as u16,
+            font_scale: 1.0,
+            color: red_color,
+            ..Default::default()
+        },
+    );
 
     let message_size = sh * 0.025;
     let max_text_width = sw * 0.85;
     let line_height = message_size * 1.3;
     let mut cur_y = sh * 0.72;
     for line in wrap_text(&info.message, font, message_size as u16, max_text_width) {
-        let dims = measure_text(&line, font, message_size as u16, 1.0);
-        draw_text(&line, (sw - dims.width) / 2.0, cur_y, message_size, red_color);
+        let dims = measure_text(&line, Some(font), message_size as u16, 1.0);
+        draw_text_ex(
+            &line,
+            (sw - dims.width) / 2.0,
+            cur_y,
+            TextParams {
+                font,
+                font_size: message_size as u16,
+                font_scale: 1.0,
+                color: red_color,
+                ..Default::default()
+            },
+        );
         cur_y += line_height;
     }
 }
 
-fn wrap_text(text: &str, font: Option<macroquad::text::Font>, font_size: u16, max_width: f32) -> Vec<String> {
+fn wrap_text(text: &str, font: macroquad::text::Font, font_size: u16, max_width: f32) -> Vec<String> {
     let mut lines = Vec::new();
     for paragraph in text.split('\n') {
         if paragraph.is_empty() {
@@ -182,7 +230,7 @@ fn wrap_text(text: &str, font: Option<macroquad::text::Font>, font_size: u16, ma
         let mut current_line = String::new();
         for ch in paragraph.chars() {
             let test = format!("{}{}", current_line, ch);
-            let w = measure_text(&test, font, font_size, 1.0).width;
+            let w = measure_text(&test, Some(font), font_size, 1.0).width;
             if w > max_width && !current_line.is_empty() {
                 lines.push(current_line);
                 current_line = String::new();

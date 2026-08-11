@@ -188,6 +188,20 @@ mod dir {
     }
 }
 
+/// 加载崩溃界面字体。优先使用 font.ttf，缺失时回退到随包自带的其他 TTF 字体，
+/// 确保即使主字体缺失，崩溃界面也能以非位图字体正常显示。
+async fn load_crash_font() -> Option<macroquad::text::Font> {
+    for name in ["font.ttf", "bold.ttf", "halva.ttf", "phigros.ttf"] {
+        if let Ok(bytes) = load_file(name).await {
+            if let Ok(font) = macroquad::text::load_ttf_font_from_bytes(&bytes) {
+                info!("crash font loaded: {name}");
+                return Some(font);
+            }
+        }
+    }
+    None
+}
+
 async fn the_main() -> Result<()> {
     log::register();
     #[cfg(target_env = "ohos")]
@@ -278,9 +292,7 @@ async fn the_main() -> Result<()> {
             }
         }
     };
-    let mut crash_font: Option<macroquad::text::Font> = load_file("font.ttf").await.ok().and_then(|bytes| {
-        macroquad::text::load_ttf_font_from_bytes(&bytes).ok()
-    });
+    let mut crash_font: Option<macroquad::text::Font> = load_crash_font().await;
 
     let mut main = Some(Main::new(Box::new(MainScene::new(font.clone()).await?), TimeManager::default(), None).await?);
 
@@ -381,6 +393,8 @@ async fn the_main() -> Result<()> {
         last_frame_start = frame_start as f32;
 
         if crashed {
+            // 先恢复默认渲染状态，避免崩溃残留的 FBO/相机/视口把黑屏与崩溃界面渲染到离屏纹理（Android 白屏根因）
+            crash::reset_gl_state();
             let elapsed = get_time() - crash_start_time;
             if elapsed < 1.5 {
                 // 先黑屏 1.5 秒
@@ -423,9 +437,7 @@ async fn the_main() -> Result<()> {
                         Texture2D::from_image(&image)
                     });
                 }
-                crash_font = load_file("font.ttf").await.ok().and_then(|bytes| {
-                    macroquad::text::load_ttf_font_from_bytes(&bytes).ok()
-                });
+                crash_font = load_crash_font().await;
                 if let Some(m) = main.take() {
                     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         drop(m);
@@ -563,13 +575,12 @@ pub extern "C" fn quad_main() {
                     Texture2D::from_image(&image)
                 });
             }
-            let crash_font = load_file("font.ttf").await.ok().and_then(|bytes| {
-                macroquad::text::load_ttf_font_from_bytes(&bytes).ok()
-            });
+            let crash_font = load_crash_font().await;
 
             // 崩溃渲染循环：先黑屏再显示崩溃界面
             let crash_start_time = get_time();
             loop {
+                crash::reset_gl_state();
                 let elapsed = get_time() - crash_start_time;
                 if elapsed < 1.5 {
                     clear_background(BLACK);

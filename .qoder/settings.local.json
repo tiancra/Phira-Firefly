@@ -2,7 +2,16 @@
   "permissions": {
     "allow": [
       "Bash(which rustc rustup cargo 2>/dev/null; ls /root/.cargo/bin/ 2>/dev/null; ls /root/.rustup/ 2>/dev/null)",
-      "Read(//root/.cargo/**)"
+      "Read(//root/.cargo/**)",
+      "Bash(ls /root/Phira-Firefly/assets/ 2>/dev/null | head -50)",
+      "Bash(find /root/Phira-Firefly -maxdepth 5 -iname \"*offsettrial*\" -o -iname \"*offset_trial*\" -o -iname \"*offset-trial*\" 2>/dev/null | grep -v target | grep -v .git)",
+      "Bash(find /root/Phira-Firefly -maxdepth 3 -name \"inner.rs\" -not -path \"*/target/*\" 2>/dev/null; echo \"---\"; ls /root/Phira-Firefly/assets/background.jpg 2>/dev/null; echo \"exit:$?\")",
+      "Bash(find / -path \"*/prpr-macroquad*/src/quad.rs\" -o -path \"*/macroquad*/src/texture.rs\" -o -path \"*/prpr-miniquad*/src/native/android*\" 2>/dev/null | head -20)",
+      "Bash(find / -path \"*/prpr-macroquad*\" -name \"*.rs\" 2>/dev/null | head -20; echo \"---\"; find / -path \"*/prpr-miniquad*/native*\" -name \"*.rs\" 2>/dev/null | head -20)",
+      "Bash(find / -path \"*prpr-macroquad*\" 2>/dev/null | head -20; echo \"---\"; find / -path \"*prpr-miniquad*\" 2>/dev/null | head -20)",
+      "Bash(find / -path \"*cargo*git*macroquad*\" -name \"*.rs\" 2>/dev/null | head -5; echo \"---\"; find / -path \"*cargo*git*miniquad*\" -name \"android*\" 2>/dev/null | head -5; echo \"---\"; find / -path \"*cargo/registry*\" -name \"macroquad*\" 2>/dev/null | head -5)",
+      "Bash(cat ~/.netrc 2>/dev/null; git config --list 2>/dev/null | grep -i credential; ls /root/.config/gh/ 2>/dev/null)",
+      "Read(//root/**)"
     ]
   }
 }

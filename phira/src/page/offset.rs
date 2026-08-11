@@ -1,6 +1,6 @@
 prpr_l10n::tl_file!("cali");
 
-use std::{borrow::Cow, path::Path};
+use std::borrow::Cow;
 
 use super::{Page, SharedState};
 use crate::{get_data, get_data_mut, save_data};
@@ -131,7 +131,7 @@ impl Page for OffsetPage {
         if self.trial_btn.touch(touch, t) {
             let _ = self.cali.pause();
             self.trial_task = Some(Box::pin(async move {
-                let mut fs = fs::fs_from_file(Path::new("assets/offsettrial"))?;
+                let mut fs = fs::fs_from_assets("offsettrial/")?;
                 let mut info = fs::load_info(fs.as_mut()).await?;
                 let mut config = get_data().config.clone();
                 config.mods = Default::default();

@@ -254,7 +254,9 @@ pub fn render_crash_screen(logo: Option<Texture2D>, font: Option<macroquad::text
     }
 
     // 点击/触摸屏幕切换显示真实崩溃详情（panic 消息 + 调用栈），便于无电脑时直接在手机上查看
-    if is_mouse_button_pressed(MouseButton::Left)
+    let touch_started = touches().iter().any(|t| t.phase == TouchPhase::Started);
+    if touch_started
+        || is_mouse_button_pressed(MouseButton::Left)
         || is_mouse_button_pressed(MouseButton::Right)
         || is_key_pressed(KeyCode::Space)
     {
@@ -282,6 +284,33 @@ pub fn render_crash_screen(logo: Option<Texture2D>, font: Option<macroquad::text
                     },
                 );
                 cur_y += panic_height;
+            }
+        } else {
+            // panic_info 为空（CRASH_INFO 未被 panic 钩子填充）时也给出可见反馈
+            let info_size = sh * 0.022;
+            let info_height = info_size * 1.35;
+            cur_y += sh * 0.012;
+            let empty_lines = [
+                "未捕获到崩溃详情（CRASH_INFO 为空）".to_owned(),
+                format!("错误代码: {}", code),
+                message.clone(),
+                "详情仅写入 crash.log，请复现后按提示查看日志。".to_owned(),
+            ];
+            for line in empty_lines.iter() {
+                let dims = measure_text(line, Some(font), info_size as u16, 1.0);
+                draw_text_ex(
+                    line,
+                    (sw - dims.width) / 2.0,
+                    cur_y,
+                    TextParams {
+                        font,
+                        font_size: info_size as u16,
+                        font_scale: 1.0,
+                        color: Color::new(0.3, 0.3, 0.3, 1.0),
+                        ..Default::default()
+                    },
+                );
+                cur_y += info_height;
             }
         }
     } else {

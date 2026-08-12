@@ -16,6 +16,8 @@ pub struct CrashInfo {
 
 pub static CRASH_INFO: Mutex<Option<CrashInfo>> = Mutex::new(None);
 pub static CRASH_LOG_PATH: Mutex<String> = Mutex::new(String::new());
+/// crash.log 文件内容缓存，供崩溃界面在 CRASH_INFO 为空时兜底展示。
+static CRASH_LOG_CACHE: Mutex<String> = Mutex::new(String::new());
 
 const ERR_RENDER: &str = "0001";
 const ERR_AUDIO: &str = "0002";
@@ -132,6 +134,45 @@ pub fn set_error(error_msg: &str) {
     write_crash_log(&crash_info);
     if let Ok(mut guard) = CRASH_INFO.lock() {
         *guard = Some(crash_info);
+    }
+}
+
+/// 从 `catch_unwind` 捕获的 panic payload 中直接提取崩溃信息并写入日志/CRASH_INFO。
+/// 作为 panic 钩子的兜底：即使钩子因某种原因未填充 CRASH_INFO，崩溃界面也能拿到详情。
+pub fn capture_panic(payload: Box<dyn std::any::Any + Send>) {
+    let msg = if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "Unknown panic".to_string()
+    };
+    let (code, message) = classify_panic(&msg);
+    let crash_info = CrashInfo {
+        code: code.to_string(),
+        message: message.to_string(),
+        panic_info: msg,
+        timestamp: format!("{:?}", SystemTime::now()),
+    };
+    write_crash_log(&crash_info);
+    if let Ok(mut guard) = CRASH_INFO.lock() {
+        *guard = Some(crash_info);
+    }
+}
+
+/// 把 crash.log 文件内容读入缓存，供崩溃界面在 CRASH_INFO 为空时兜底展示。
+pub fn refresh_log_cache() {
+    let path = {
+        let guard = CRASH_LOG_PATH.lock().unwrap();
+        if guard.is_empty() {
+            "crash.log".to_owned()
+        } else {
+            guard.clone()
+        }
+    };
+    let content = std::fs::read_to_string(&path).unwrap_or_default();
+    if let Ok(mut guard) = CRASH_LOG_CACHE.lock() {
+        *guard = content;
     }
 }
 
@@ -260,7 +301,12 @@ pub fn render_crash_screen(logo: Option<Texture2D>, font: Option<macroquad::text
         || is_mouse_button_pressed(MouseButton::Right)
         || is_key_pressed(KeyCode::Space)
     {
-        SHOW_CRASH_DETAIL.fetch_xor(true, Ordering::Relaxed);
+        let new_state = !SHOW_CRASH_DETAIL.load(Ordering::Relaxed);
+        SHOW_CRASH_DETAIL.store(new_state, Ordering::Relaxed);
+        if new_state {
+            // 每次展开时重新读取 crash.log，保证展示的是最新内容
+            refresh_log_cache();
+        }
     }
 
     if SHOW_CRASH_DETAIL.load(Ordering::Relaxed) {
@@ -286,20 +332,14 @@ pub fn render_crash_screen(logo: Option<Texture2D>, font: Option<macroquad::text
                 cur_y += panic_height;
             }
         } else {
-            // panic_info 为空（CRASH_INFO 未被 panic 钩子填充）时也给出可见反馈
-            let info_size = sh * 0.022;
-            let info_height = info_size * 1.35;
-            cur_y += sh * 0.012;
-            let empty_lines = [
-                "未捕获到崩溃详情（CRASH_INFO 为空）".to_owned(),
-                format!("错误代码: {}", code),
-                message.clone(),
-                "详情仅写入 crash.log，请复现后按提示查看日志。".to_owned(),
-            ];
-            for line in empty_lines.iter() {
-                let dims = measure_text(line, Some(font), info_size as u16, 1.0);
+        // panic_info 为空（CRASH_INFO 未被填充）时，兜底读取 crash.log 内容展示在屏幕上
+        let info_size = sh * 0.020;
+        let info_height = info_size * 1.35;
+        cur_y += sh * 0.012;
+        let mut draw_line = |text: &str| {
+                let dims = measure_text(text, Some(font), info_size as u16, 1.0);
                 draw_text_ex(
-                    line,
+                    text,
                     (sw - dims.width) / 2.0,
                     cur_y,
                     TextParams {
@@ -311,6 +351,19 @@ pub fn render_crash_screen(logo: Option<Texture2D>, font: Option<macroquad::text
                     },
                 );
                 cur_y += info_height;
+            };
+            draw_line("未捕获到 CRASH_INFO，以下为 crash.log 内容：");
+            draw_line(&format!("错误代码: {}", code));
+            let log_cache = CRASH_LOG_CACHE.lock().unwrap().clone();
+            if log_cache.is_empty() {
+                draw_line("crash.log 为空或无权限读取（请确认应用已写入过崩溃记录）");
+            } else {
+                for line in wrap_text(&log_cache, font, info_size as u16, max_text_width)
+                    .into_iter()
+                    .take(22)
+                {
+                    draw_line(&line);
+                }
             }
         }
     } else {

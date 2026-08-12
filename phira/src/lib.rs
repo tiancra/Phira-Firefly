@@ -427,9 +427,12 @@ async fn the_main() -> Result<()> {
                 error!("uncaught error: {err:?}");
                 show_error(err);
             }
-            Err(_) => {
+            Err(payload) => {
                 crashed = true;
                 crash_start_time = get_time();
+                // 兜底：直接从 panic payload 提取崩溃详情写入 CRASH_INFO + crash.log，
+                // 避免 panic 钩子因故未填充时崩溃界面拿不到任何信息。
+                crash::capture_panic(payload);
                 crash_logo = load_texture("crashlogo.png").await.ok();
                 if crash_logo.is_none() {
                     crash_logo = load_file("crashlogo.png").await.ok().map(|bytes| {

@@ -327,7 +327,8 @@ impl DynamicBackground {
         anyhow::ensure!(viewport.2 > 0 && viewport.3 > 0, "invalid viewport size");
 
         let rgb = image.to_rgb8();
-        let palette = color_thief::get_palette(&rgb, color_thief::ColorFormat::Rgb, 14, 5).context("failed to extract color palette")?;
+        // color-thief 的 quality 参数范围必须是 1..=10，之前误传 14 会在 Android 上触发断言崩溃
+        let palette = color_thief::get_palette(&rgb, color_thief::ColorFormat::Rgb, 10, 5).context("failed to extract color palette")?;
         let mut colors = [BLACK; MAX_BLOBS];
         for i in 0..MAX_BLOBS {
             let index = if i < palette.len() { i } else { palette.len().max(1) - 1 };

@@ -64,10 +64,23 @@ pub fn classify_panic(info: &str) -> (&'static str, &'static str) {
 }
 
 pub fn write_crash_log(info: &CrashInfo) {
-    let log = format!("[{}]\n错误代码: {}\n错误描述: {}\n崩溃信息: {}\n", info.timestamp, info.code, info.message, info.panic_info);
+    // 追加写入而非覆盖：保留每次崩溃记录，避免后续崩溃覆盖掉之前的日志
+    let log = format!(
+        "========== 崩溃记录 ==========\n[{}]\n错误代码: {}\n错误描述: {}\n崩溃信息: {}\n\n",
+        info.timestamp, info.code, info.message, info.panic_info
+    );
     let path = CRASH_LOG_PATH.lock().unwrap();
     let path = if path.is_empty() { "crash.log".to_owned() } else { path.clone() };
-    let _ = std::fs::write(&path, log);
+    use std::io::Write;
+    match std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        Ok(mut file) => {
+            let _ = file.write_all(log.as_bytes());
+        }
+        Err(_) => {
+            // 打开失败（如目录不可写）时退回覆盖写入
+            let _ = std::fs::write(&path, log);
+        }
+    }
 }
 
 pub fn set_panic_hook() {

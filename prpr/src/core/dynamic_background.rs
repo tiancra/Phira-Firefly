@@ -32,7 +32,7 @@ void main() {
 const MAX_BLOBS: usize = 14;
 
 const BLOB_FRAGMENT: &str = r#"#version 100
-precision mediump float;
+precision highp float;
 
 varying vec2 uv;
 
@@ -135,7 +135,7 @@ void main() {
 }"#;
 
 const COMPOSITE_FRAGMENT: &str = r#"#version 100
-precision mediump float;
+precision highp float;
 
 varying vec2 uv;
 

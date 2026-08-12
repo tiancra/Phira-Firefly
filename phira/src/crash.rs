@@ -1,7 +1,11 @@
 use macroquad::prelude::*;
 use macroquad::text::{draw_text_ex, measure_text, TextParams};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{sync::Mutex, time::SystemTime};
 use tracing::error;
+
+/// 崩溃界面是否展开显示 panic 详情（点击/触摸屏幕切换）。
+static SHOW_CRASH_DETAIL: AtomicBool = AtomicBool::new(false);
 
 pub struct CrashInfo {
     pub code: String,
@@ -176,15 +180,16 @@ pub fn render_crash_screen(logo: Option<Texture2D>, font: Option<macroquad::text
 
     // 即使 CRASH_INFO 尚未写入（极端情况），也必须保证崩溃界面有文字，
     // 避免只绘制 logo 后提前 return 导致"有图无字"。
-    let (code, message) = {
+    let (code, message, panic_info) = {
         let guard = CRASH_INFO.lock().unwrap();
         match guard.as_ref() {
-            Some(i) => (i.code.clone(), i.message.clone()),
+            Some(i) => (i.code.clone(), i.message.clone(), i.panic_info.clone()),
             None => {
                 error!("CRASH_INFO is empty when rendering crash screen, using fallback text");
                 (
                     "0010".to_owned(),
                     "无法预计的游戏程序失败".to_owned(),
+                    String::new(),
                 )
             }
         }
@@ -246,6 +251,56 @@ pub fn render_crash_screen(logo: Option<Texture2D>, font: Option<macroquad::text
             },
         );
         cur_y += line_height;
+    }
+
+    // 点击/触摸屏幕切换显示真实崩溃详情（panic 消息 + 调用栈），便于无电脑时直接在手机上查看
+    if is_mouse_button_pressed(MouseButton::Left)
+        || is_mouse_button_pressed(MouseButton::Right)
+        || is_key_pressed(KeyCode::Space)
+    {
+        SHOW_CRASH_DETAIL.fetch_xor(true, Ordering::Relaxed);
+    }
+
+    if SHOW_CRASH_DETAIL.load(Ordering::Relaxed) {
+        if !panic_info.is_empty() {
+            let panic_size = sh * 0.018;
+            let panic_height = panic_size * 1.2;
+            cur_y += sh * 0.012;
+            let panic_lines = wrap_text(&panic_info, font, panic_size as u16, max_text_width);
+            for line in panic_lines.iter().take(14) {
+                let dims = measure_text(line, Some(font), panic_size as u16, 1.0);
+                draw_text_ex(
+                    line,
+                    (sw - dims.width) / 2.0,
+                    cur_y,
+                    TextParams {
+                        font,
+                        font_size: panic_size as u16,
+                        font_scale: 1.0,
+                        color: Color::new(0.3, 0.3, 0.3, 1.0),
+                        ..Default::default()
+                    },
+                );
+                cur_y += panic_height;
+            }
+        }
+    } else {
+        // 默认干净界面，仅显示一行轻提示
+        let hint = "点击屏幕查看崩溃详情";
+        let hint_size = sh * 0.022;
+        let hint_dims = measure_text(hint, Some(font), hint_size as u16, 1.0);
+        draw_text_ex(
+            hint,
+            (sw - hint_dims.width) / 2.0,
+            sh * 0.90,
+            TextParams {
+                font,
+                font_size: hint_size as u16,
+                font_scale: 1.0,
+                color: Color::new(0.55, 0.55, 0.55, 1.0),
+                ..Default::default()
+            },
+        );
     }
 }
 

@@ -60,8 +60,8 @@ objc2-uniform-type-identifiers = "0.3.2"
 macroquad = { git = "https://github.com/Mivik/prpr-macroquad", rev = "b2eab29", default-features = false }
 miniquad = { git = "https://github.com/Mivik/prpr-miniquad", rev = "0c525a3" }
 phira = { path = "phira", default-features = false }
-phira-mp-client = { path = "../phira-mp/phira-mp-client" }
-phira-mp-common = { path = "../phira-mp/phira-mp-common" }
+phira-mp-client = { git = "https://github.com/tiancra/phira-mp", branch = "main" }
+phira-mp-common = { git = "https://github.com/tiancra/phira-mp", branch = "main" }
 prpr = { path = "prpr", default-features = false }
 prpr-avc = { path = "prpr-avc" }
 prpr-l10n = { path = "prpr-l10n" }

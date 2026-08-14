@@ -6,7 +6,7 @@ TARGETS=(
     "x86_64-pc-windows-gnu"
     "x86_64-pc-windows-msvc"
 )
-BASE_URL="https://github.com/TeamFlos/prpr-avc-ffmpeg/releases/latest/download"
+BASE_URL="https://github.com/TeamFlos/prpr-avc-ffmpeg/releases/download/20260408_v0"
 
 for target in "${TARGETS[@]}"; do
     DEST_DIR="static-lib/$target"

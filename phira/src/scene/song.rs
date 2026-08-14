@@ -944,8 +944,8 @@ impl SongScene {
                         }
                         judges.extend(judge.judgements.borrow_mut().drain(..).map(|it| JudgeEvent {
                             time: it.0 as f32,
-                            line_id: it.1,
-                            note_id: it.2,
+                            line_id: it.1 as i32,
+                            note_id: it.2 as i32,
                             judgement: {
                                 use phira_mp_common::Judgement::*;
                                 use prpr::judge::Judgement as OJ;

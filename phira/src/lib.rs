@@ -38,7 +38,7 @@ use prpr::{
     Main,
 };
 use prpr_l10n::{set_prefered_locale, GLOBAL, LANGS};
-use scene::MainScene;
+use scene::BootScene;
 use std::{
     collections::VecDeque,
     sync::{mpsc, Mutex},
@@ -294,7 +294,7 @@ async fn the_main() -> Result<()> {
     };
     let mut crash_font: Option<macroquad::text::Font> = load_crash_font().await;
 
-    let mut main = Some(Main::new(Box::new(MainScene::new(font.clone()).await?), TimeManager::default(), None).await?);
+    let mut main = Some(Main::new(Box::new(BootScene::new(font.clone()).await?), TimeManager::default(), None).await?);
 
     #[cfg(target_os = "windows")]
     {

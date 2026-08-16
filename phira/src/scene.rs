@@ -9,6 +9,9 @@ pub use chapter::ChapterScene;
 pub(crate) mod event;
 pub use event::EventScene;
 
+pub(crate) mod boot;
+pub use boot::BootScene;
+
 mod main;
 pub use main::{MainScene, BGM_VOLUME_UPDATED, MP_PANEL};
 

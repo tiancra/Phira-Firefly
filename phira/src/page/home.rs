@@ -40,6 +40,14 @@ use tracing::{info, warn};
 const BOARD_SWITCH_TIME: f32 = 4.;
 const BOARD_TRANSIT_TIME: f32 = 1.2;
 
+/// 主界面划入：返回 (偏移, 渐显 alpha)，dir 决定方向（1 秒 Out Sine）。
+#[inline]
+fn entry_anim(t: f32, dir: f32) -> (f32, f32) {
+    let p = crate::scene::boot::boot_entry_progress(t, 1.0);
+    let eased = (p * std::f32::consts::PI / 2.).sin();
+    ((1. - eased) * dir * 0.5, eased)
+}
+
 type BoldFontUpdateTask = Task<Result<Option<(FontArc, String)>>>;
 
 pub struct HomePage {
@@ -250,6 +258,11 @@ impl HomePage {
 
     fn render_not_char(&mut self, ui: &mut Ui, s: &mut SharedState) {
         let t = s.t;
+        // 主界面右侧按钮组从右侧划入并渐显（向左移动）
+        let (off, alpha) = entry_anim(t, -1.);
+        let old_alpha = ui.alpha;
+        ui.alpha = old_alpha * alpha;
+        ui.dx(off);
 
         let pad = 0.04;
         // play button
@@ -341,6 +354,8 @@ impl HomePage {
                 });
             });
         });
+        ui.dx(-off);
+        ui.alpha = old_alpha;
     }
 }
 
@@ -591,6 +606,11 @@ impl Page for HomePage {
         let rt = s.rt;
 
         let cp = self.char_screen_p.now(rt);
+        // 主界面左侧元素从右侧划入并渐显
+        let (off, alpha) = entry_anim(t, 1.);
+        let old_alpha = ui.alpha;
+        ui.alpha = old_alpha * alpha;
+        ui.dx(off);
         s.render_fader(ui, |ui| {
             let r = Rect::new(-1. + 0.14 * cp, -ui.top + 0.12, 1., 1.7);
             if let Some(illu) = &self.char_illu {
@@ -684,12 +704,19 @@ impl Page for HomePage {
                 gl.pop_model_matrix();
             }
         });
+        ui.dx(-off);
+        ui.alpha = old_alpha;
 
         ui.alpha(1. - cp, |ui| {
             self.render_not_char(ui, s);
         });
 
         s.fader.roll_back();
+        // 主界面右上元素从左侧划入并渐显
+        let (off, alpha) = entry_anim(t, -1.);
+        let old_alpha = ui.alpha;
+        ui.alpha = old_alpha * alpha;
+        ui.dx(off);
         s.render_fader(ui, |ui| {
             let rad = 0.05;
             let ct = (0.92, -ui.top + 0.08);
@@ -738,6 +765,8 @@ impl Page for HomePage {
                 self.beian_btn.set(ui, r);
             }
         });
+        ui.dx(-off);
+        ui.alpha = old_alpha;
 
         self.login.render(ui, t);
         self.sf.render(ui, t);

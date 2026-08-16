@@ -64,6 +64,9 @@ pub struct MainScene {
 
     pages: Vec<Box<dyn Page>>,
 
+    /// 是否为启动阶段（由 BootScene 接管音频，BGM 由 `start_boot_bgm` 控制）
+    boot: bool,
+
     import_task: Option<Task<Result<(LocalChart, ParseWarnings)>>>,
 
     mp_btn: RectButton,
@@ -154,6 +157,8 @@ impl MainScene {
 
             pages: Vec::new(),
 
+            boot: true,
+
             import_task: None,
 
             mp_btn: RectButton::new(),
@@ -189,6 +194,13 @@ impl MainScene {
     pub fn take_imported_respack() -> Option<ResPackItem> {
         RESPACK_ITEM.with(|it| it.borrow_mut().take())
     }
+
+    /// 启动阶段由 BootScene 在点击时调用：主界面 BGM 在给定秒数内渐入至最大。
+    pub(crate) fn start_boot_bgm(&mut self, fade_time: f64) {
+        if let Some(bgm) = &mut self.bgm {
+            let _ = bgm.fade_in(fade_time);
+        }
+    }
 }
 
 impl Scene for MainScene {
@@ -197,7 +209,10 @@ impl Scene for MainScene {
     }
 
     fn enter(&mut self, tm: &mut TimeManager, _target: Option<RenderTarget>) -> Result<()> {
-        if let Some(bgm) = &mut self.bgm {
+        if self.boot {
+            // 启动阶段：BGM 已由 BootScene 的 start_boot_bgm 控制，不再自动播放
+            self.boot = false;
+        } else if let Some(bgm) = &mut self.bgm {
             let _ = bgm.fade_in(1.3);
         }
         self.state.update(tm);

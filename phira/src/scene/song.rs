@@ -1023,40 +1023,14 @@ impl SongScene {
                 historic_best: record.map_or(0, |it| it.score as u32),
             });
             let upload_fn: Option<UploadFn> = Some(Arc::new(move |data: Vec<u8>| {
+                // 完全绕开原版的 /play/upload 成绩上传（诊断用：判断是否与安卓连接冲突）
+                let _ = data;
                 Task::new(async move {
-                    #[derive(Serialize)]
-                    #[serde(rename_all = "camelCase")]
-                    struct Req {
-                        chart: i32,
-                        token: String,
-                        chart_updated: Option<DateTime<Utc>>,
-                    }
-                    #[derive(Deserialize)]
-                    #[serde(rename_all = "camelCase")]
-                    struct Resp {
-                        id: i32,
-                        exp_delta: f64,
-                        new_best: bool,
-                        improvement: u32,
-                        new_rks: f32,
-                    }
-                    let resp: Resp = recv_raw(Client::post(
-                        "/play/upload",
-                        &Req {
-                            chart: id.unwrap(),
-                            token: STANDARD.encode(data),
-                            chart_updated,
-                        },
-                    ))
-                    .await?
-                    .json()
-                    .await?;
-                    RECORD_ID.store(resp.id, Ordering::Relaxed);
                     Ok(RecordUpdateState {
-                        best: resp.new_best,
-                        improvement: resp.improvement,
-                        gain_exp: resp.exp_delta as f32,
-                        new_rks: Some(resp.new_rks),
+                        best: false,
+                        improvement: 0,
+                        gain_exp: 0.,
+                        new_rks: None,
                     })
                 })
             }));

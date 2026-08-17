@@ -132,18 +132,47 @@ impl BootScene {
     }
 
     fn render_warning(&self, ui: &mut Ui, alpha: f32) {
-        ui.text("警告：游戏前详阅")
-            .pos(0., -0.40)
+        let screen = ui.screen_rect();
+        let title_size = 0.6;
+        let body_size = 0.4;
+        let gap = 0.15;
+        let max_width = 1.7;
+
+        // 测量正文在基准字号下的高度（世界坐标），用于动态适配屏幕比例
+        let body_h = ui
+            .text(WARNING_TEXT)
+            .pos(0., 0.)
             .anchor(0.5, 0.5)
-            .size(0.6)
+            .size(body_size)
+            .max_width(max_width)
+            .multiline()
+            .h_center()
+            .measure()
+            .h;
+
+        // 警告块总高（标题 + 间隔 + 正文），按屏幕高度（2*top，随屏幕比例变化）缩放，
+        // 使不同屏幕比例下文字都能完整显示。坐标系中屏幕宽度固定为 2，高度 = 2 * height/width，
+        // 因此横屏（top 小）可用高度小，需缩小字号避免文字超出屏幕。
+        let block_h = title_size + gap + body_h;
+        let usable = screen.h * 0.86; // 上下各留 7% 边距
+        let scale = (usable / block_h).min(1.0);
+
+        // 标题与正文整体垂直居中于屏幕
+        let title_y = (-block_h * 0.5 + title_size * 0.5) * scale;
+        let body_y = (block_h * 0.5 - body_h * 0.5) * scale;
+
+        ui.text("警告：游戏前详阅")
+            .pos(0., title_y)
+            .anchor(0.5, 0.5)
+            .size(title_size * scale)
             .color(semi_white(0.95 * alpha))
             .no_baseline()
             .draw_using(&BOLD_FONT);
         ui.text(WARNING_TEXT)
-            .pos(0., 0.0)
+            .pos(0., body_y)
             .anchor(0.5, 0.5)
-            .size(0.4)
-            .max_width(1.7)
+            .size(body_size * scale)
+            .max_width(max_width)
             .multiline()
             .h_center()
             .color(semi_white(0.9 * alpha))
@@ -269,9 +298,8 @@ impl Scene for BootScene {
             };
             // 模糊遮罩（半透明暗色遮罩）
             ui.fill_rect(screen, semi_black(0.5 * overlay_alpha));
-            // boot.png（小一点，居中偏上），带小幅放大/缩小循环
-            let pulse = 1.0 + 0.04 * (elapsed * 3.0).sin();
-            self.draw_tex_centered(ui, &self.boot, overlay_alpha, 0.7 * pulse);
+            // boot.png（小一点，居中偏上），固定大小
+            self.draw_tex_centered(ui, &self.boot, overlay_alpha, 0.7);
             // 点击提示
             ui.text("点击屏幕开始")
                 .pos(0., 0.5)

@@ -288,6 +288,15 @@ impl MPPanel {
             show_message(mtl!("select-chart-not-now")).error();
             return;
         }
+        // 切换到在线谱面：清除之前选择的本地谱面分享状态，
+        // 避免开始游戏时仍错误地加载旧的本地谱面（download/{uuid}）。
+        self.local_chart = None;
+        self.pending_download = None;
+        self.syncing = None;
+        self.local_download_cancel = None;
+        self.host_started = false;
+        self.local_ready = false;
+        self.stop_serving();
         self.task = Some(Task::new(async move {
             client.select_online_chart(id).await.with_context(|| mtl!("select-chart-failed"))?;
             Ok(())
@@ -839,12 +848,22 @@ impl MPPanel {
         }
         if self.need_upload && self.entered {
             let id = RECORD_ID.load(Ordering::Relaxed);
-            if id != -1 {
+            // 单人房间中游玩期间一旦连接断连/重连，服务端可能已在 Playing 状态清理掉房间
+            // （on_user_leave -> user.room = None），此时再上报成绩会得到 "no room" 报错。
+            // 因此若已不在房间，则跳过成绩上报。
+            let in_room = self
+                .client
+                .as_ref()
+                .is_some_and(|it| it.blocking_state().is_some());
+            if in_room {
                 let client = self.clone_client();
-                self.task = Some(Task::new(async move { client.played(id).await }));
-            } else {
-                let client = self.clone_client();
-                self.task = Some(Task::new(async move { client.abort().await }));
+                self.task = Some(Task::new(async move {
+                    if id != -1 {
+                        client.played(id).await
+                    } else {
+                        client.abort().await
+                    }
+                }));
             }
             self.need_upload = false;
         }

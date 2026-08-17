@@ -33,9 +33,8 @@ pub fn basic_client_builder() -> ClientBuilder {
         }
     });
     let mut builder = reqwest::ClientBuilder::new().redirect(policy);
-    if get_data().accept_invalid_cert {
-        builder = builder.danger_accept_invalid_certs(true);
-    }
+    // 强制接受无效证书：官方服务器证书在部分设备上校验失败，且无法取得证书文件
+    builder = builder.danger_accept_invalid_certs(true);
     builder
 }
 

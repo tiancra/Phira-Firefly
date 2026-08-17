@@ -423,7 +423,6 @@ struct GeneralList {
     #[cfg(not(target_env = "ohos"))]
     lowq_btn: DRectButton,
     prefer_reduced_motion_btn: DRectButton,
-    insecure_btn: DRectButton,
     enable_anys_btn: DRectButton,
     anys_gateway_btn: DRectButton,
     watch_tutorial_btn: DRectButton,
@@ -460,7 +459,6 @@ impl GeneralList {
             #[cfg(not(target_env = "ohos"))]
             lowq_btn: DRectButton::new(),
             prefer_reduced_motion_btn: DRectButton::new(),
-            insecure_btn: DRectButton::new(),
             enable_anys_btn: DRectButton::new(),
             anys_gateway_btn: DRectButton::new(),
             watch_tutorial_btn: DRectButton::new(),
@@ -550,10 +548,6 @@ impl GeneralList {
         if self.prefer_reduced_motion_btn.touch(touch, t) {
             data.prefer_reduced_motion ^= true;
             PREFER_REDUCED_MOTION.store(data.prefer_reduced_motion, Ordering::Relaxed);
-            return Ok(Some(true));
-        }
-        if self.insecure_btn.touch(touch, t) {
-            data.accept_invalid_cert ^= true;
             return Ok(Some(true));
         }
         if self.enable_anys_btn.touch(touch, t) {
@@ -673,10 +667,6 @@ impl GeneralList {
         }
         ui.dy(0.04);
         h += 0.04;
-        item! {
-            render_title(ui, tl!("item-insecure"), Some(tl!("item-insecure-sub")));
-            render_switch(ui, rr, t, &mut self.insecure_btn, data.accept_invalid_cert);
-        }
         item! {
             render_title(ui, tl!("item-enable-anys"), Some(tl!("item-enable-anys-sub")));
             render_switch(ui, rr, t, &mut self.enable_anys_btn, data.enable_anys);

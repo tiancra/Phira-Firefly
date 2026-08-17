@@ -58,8 +58,6 @@ reqwest = { workspace = true, default-features = false, features = [
     "stream",
     "gzip",
     "charset",
-    "http2",
-    "system-proxy",
     "rustls",
     "query",
 ] }

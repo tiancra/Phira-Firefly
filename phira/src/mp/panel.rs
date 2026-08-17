@@ -376,7 +376,12 @@ impl MPPanel {
     fn check_download(&mut self, next: bool) {
         let id = self.chart_id.unwrap();
         self.download_next = next;
-        self.download_task = Some(Task::new(async move { Ptr::new(id).fetch().await }));
+        // 拉取谱面信息加超时兜底，避免在 Android 等环境下因网络卡住导致无限转圈
+        self.download_task = Some(Task::new(async move {
+            tokio::time::timeout(std::time::Duration::from_secs(15), Ptr::new(id).fetch())
+                .await
+                .map_err(|_| anyhow!("拉取谱面信息超时"))?
+        }));
     }
 
     fn post_download(&mut self) {

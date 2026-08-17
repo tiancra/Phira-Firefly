@@ -14,7 +14,7 @@ use prpr::{
     core::{Smooth, Tweenable},
     ext::{poll_future, semi_black, semi_white, LocalTask, RectExt, SafeTexture},
     info::ChartInfo,
-    scene::{request_input, return_input, show_error, show_message, take_input, GameMode, NextScene},
+    scene::{request_input, return_input, show_error, show_message, take_input, GameMode, MpResult, NextScene, mp_reset_result, mp_take_result},
     task::Task,
     time::TimeManager,
     ui::{DRectButton, DrawText},
@@ -318,6 +318,15 @@ impl MPPanel {
         ALLOWED.contains(&host)
     }
 
+    /// 判断当前连接的服务器是否为可上报真实成绩的服务器（域名包含 mp.tianstudio.top / mp.ratzen.top）。
+    fn server_is_tianstudio(&self) -> bool {
+        let addr = self
+            .temp_mp_address
+            .as_ref()
+            .unwrap_or(&get_data().config.mp_address);
+        addr.contains("mp.tianstudio.top") || addr.contains("mp.ratzen.top")
+    }
+
     /// 从谱面库中选择本地谱面（无在线 id）进行分享。
     /// 生成随机 UUID，把本地谱面目录复制到 `download/{uuid}`，并发送 `SelectLocalChart`。
     pub fn select_local_chart(&mut self, local_path: String, name: String) {
@@ -558,9 +567,15 @@ impl MPPanel {
                 }
             }
             if client.ping_fail_count() >= 2 && self.connect_task.is_none() {
-                warn!("lost connection, reconnecting…");
-                show_message(mtl!("reconnect")).warn();
-                self.connect();
+                // 本地谱面传输期间（上传/下载）心跳可能因大帧传输短暂超时，
+                // 此时不要自动重连，避免中断正在进行的谱面传输。
+                if self.serving.is_some() || self.syncing.is_some() {
+                    // 仍在传输本地谱面，跳过自动重连
+                } else {
+                    warn!("lost connection, reconnecting…");
+                    show_message(mtl!("reconnect")).warn();
+                    self.connect();
+                }
             }
         }
         true
@@ -649,6 +664,7 @@ impl MPPanel {
                 if !self.game_start_consumed {
                     self.game_start_consumed = true;
                     RECORD_ID.store(-1, Ordering::Relaxed);
+                    mp_reset_result();
                     self.need_upload = true;
                     self.entered = false;
                     // 本地谱面分享：从本地 download/{uuid} 加载（无在线 id）
@@ -848,6 +864,11 @@ impl MPPanel {
         }
         if self.need_upload && self.entered {
             let id = RECORD_ID.load(Ordering::Relaxed);
+            // 取本局真实成绩（本地/在线谱面均可），用于游戏结束的成绩展示
+            let result = mp_take_result();
+            // 仅当连接的服务器包含 mp.tianstudio.top 时才上传真实成绩，
+            // 其它服务器保持默认行为（放弃游戏）。
+            let upload_score = self.server_is_tianstudio();
             // 单人房间中游玩期间一旦连接断连/重连，服务端可能已在 Playing 状态清理掉房间
             // （on_user_leave -> user.room = None），此时再上报成绩会得到 "no room" 报错。
             // 因此若已不在房间，则跳过成绩上报。
@@ -858,8 +879,14 @@ impl MPPanel {
             if in_room {
                 let client = self.clone_client();
                 self.task = Some(Task::new(async move {
-                    if id != -1 {
-                        client.played(id).await
+                    if upload_score {
+                        if let Some(r) = result {
+                            client
+                                .played(id, r.score, r.accuracy, r.full_combo, r.max_combo, r.perfect, r.good, r.bad, r.miss)
+                                .await
+                        } else {
+                            client.abort().await
+                        }
                     } else {
                         client.abort().await
                     }

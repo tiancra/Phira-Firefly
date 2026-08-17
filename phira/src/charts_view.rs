@@ -198,6 +198,13 @@ impl ChartsView {
             return Ok(true);
         }
         if self.scroll.touch(touch, t) {
+            // 手指拖动滚动时：清除所有谱面项的长按状态，
+            // 避免滚动过程中因时间累积误触发长按菜单。
+            if let Some(charts) = &mut self.charts {
+                for item in charts.iter_mut() {
+                    item.long_touch.reset();
+                }
+            }
             return Ok(true);
         }
         if !self.scroll.contains(touch) {

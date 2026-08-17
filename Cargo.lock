@@ -3313,7 +3313,7 @@ dependencies = [
 
 [[package]]
 name = "phira"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -3376,7 +3376,7 @@ dependencies = [
 
 [[package]]
 name = "phira-main"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "phira",
  "winres",
@@ -3406,7 +3406,6 @@ dependencies = [
 [[package]]
 name = "phira-mp-client"
 version = "0.1.0"
-source = "git+https://github.com/tiancra/phira-mp?branch=main#b1968862cfb0a1dd2bd8d1d6384902cecb8348cd"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3422,7 +3421,6 @@ dependencies = [
 [[package]]
 name = "phira-mp-common"
 version = "0.1.0"
-source = "git+https://github.com/tiancra/phira-mp?branch=main#b1968862cfb0a1dd2bd8d1d6384902cecb8348cd"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -3438,7 +3436,6 @@ dependencies = [
 [[package]]
 name = "phira-mp-macros"
 version = "0.1.0"
-source = "git+https://github.com/tiancra/phira-mp?branch=main#b1968862cfb0a1dd2bd8d1d6384902cecb8348cd"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3580,7 +3577,7 @@ dependencies = [
 
 [[package]]
 name = "prpr"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "anyhow",
  "async-trait",

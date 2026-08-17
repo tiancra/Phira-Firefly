@@ -7,7 +7,7 @@ mod ending;
 pub use ending::{EndingScene, RecordUpdateState};
 
 mod game;
-pub use game::{GameMode, GameScene, SimpleRecord};
+pub use game::{GameMode, GameScene, MpResult, SimpleRecord, mp_reset_result, mp_take_result};
 
 mod gamepad_test;
 pub use gamepad_test::GamepadTestScene;

@@ -636,9 +636,15 @@ impl Judge {
                     } else {
                         // prevent extra judgements
                         if matches!(note.judge, JudgeStatus::NotJudged) {
-                            // keep the note after bad judgement
-                            line.notes[id as usize].judge = JudgeStatus::PreJudge;
-                            judgements.push((Judgement::Bad, line_id, id, None));
+                            if t > note.time {
+                                // 过晚点击：不再记 Bad，直接判定为 Miss 并消除音符
+                                line.notes[id as usize].judge = JudgeStatus::Judged;
+                                judgements.push((Judgement::Miss, line_id, id, None));
+                            } else {
+                                // 过早点击：保留音符，记 Bad（音符仍在，可再次点击）
+                                line.notes[id as usize].judge = JudgeStatus::PreJudge;
+                                judgements.push((Judgement::Bad, line_id, id, None));
+                            }
                         }
                     }
                 } else {

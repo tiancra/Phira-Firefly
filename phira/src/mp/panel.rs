@@ -705,10 +705,15 @@ impl MPPanel {
                     self.chart_id = None; // 本地谱面无在线 id，置空在线 chart_id
                 }
             } else {
-                // 离开本地谱面分享阶段（进入游玩/选谱等）：重置本地谱面按钮状态
+                // 离开本地谱面分享阶段（进入游玩/选谱等）：重置本地谱面相关状态，
+                // 避免本地谱面游玩结束后残留状态导致切换到在线谱面时卡在转圈/无法开始。
                 self.host_started = false;
                 self.local_ready = false;
                 self.local_download_cancel = None;
+                self.local_chart = None;
+                self.pending_download = None;
+                self.syncing = None;
+                self.stop_serving();
             }
         }
         // 处理服务端下发的 LocalChart 本地谱面同步事件

@@ -69,6 +69,8 @@ static MESSAGES_TX: Mutex<Option<mpsc::Sender<bool>>> = Mutex::new(None);
 static AA_TX: Mutex<Option<mpsc::Sender<i32>>> = Mutex::new(None);
 static DATA_PATH: Mutex<Option<String>> = Mutex::new(None);
 static CACHE_DIR: Mutex<Option<String>> = Mutex::new(None);
+#[cfg(target_os = "android")]
+static STARTUP_ARGS: Mutex<Option<(Option<String>, Option<String>, Option<String>)>> = Mutex::new(None);
 pub static mut DATA: Option<Data> = None;
 
 #[cfg(target_env = "ohos")]
@@ -301,6 +303,21 @@ async fn the_main() -> Result<()> {
 
     let mut main = Some(Main::new(Box::new(BootScene::new(font.clone()).await?), TimeManager::default(), None).await?);
 
+    #[cfg(target_os = "android")]
+    {
+        // 处理来自深链接（phira://）的多人启动参数
+        if let Some((join, create, server)) = STARTUP_ARGS.lock().unwrap().take() {
+            use crate::scene::MP_PANEL;
+            let join_room: Option<phira_mp_common::RoomId> = join.and_then(|s| s.try_into().ok());
+            let create_room: Option<phira_mp_common::RoomId> = create.and_then(|s| s.try_into().ok());
+            MP_PANEL.with(|it| {
+                if let Some(panel) = it.borrow_mut().as_mut() {
+                    panel.handle_startup_args(join_room, create_room, server);
+                }
+            });
+        }
+    }
+
     #[cfg(target_os = "windows")]
     {
         // 处理启动参数
@@ -410,6 +427,19 @@ async fn the_main() -> Result<()> {
             }
             next_frame().await;
             continue;
+        }
+
+        // 处理深链接（phira://）启动参数，app 运行中也生效
+        #[cfg(target_os = "android")]
+        if let Some((join, create, server)) = STARTUP_ARGS.lock().unwrap().take() {
+            use crate::scene::MP_PANEL;
+            let join_room: Option<phira_mp_common::RoomId> = join.and_then(|s| s.try_into().ok());
+            let create_room: Option<phira_mp_common::RoomId> = create.and_then(|s| s.try_into().ok());
+            MP_PANEL.with(|it| {
+                if let Some(panel) = it.borrow_mut().as_mut() {
+                    panel.handle_startup_args(join_room, create_room, server);
+                }
+            });
         }
 
         let frame_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<()> {
@@ -706,6 +736,36 @@ pub extern "C" fn Java_quad_1native_QuadNative_setInputText(mut env: EnvUnowned,
         _ => String::new(),
     };
     INPUT_TEXT.lock().unwrap().1 = Some(text);
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "C" fn Java_quad_1native_QuadNative_setStartupArgs(mut env: EnvUnowned, _class: JClass, join: JString, create: JString, server: JString) {
+    let join = if join.is_null() {
+        None
+    } else {
+        match env.with_env_no_catch(|e| join.try_to_string(e)).into_outcome() {
+            Outcome::Ok(v) => Some(v),
+            _ => None,
+        }
+    };
+    let create = if create.is_null() {
+        None
+    } else {
+        match env.with_env_no_catch(|e| create.try_to_string(e)).into_outcome() {
+            Outcome::Ok(v) => Some(v),
+            _ => None,
+        }
+    };
+    let server = if server.is_null() {
+        None
+    } else {
+        match env.with_env_no_catch(|e| server.try_to_string(e)).into_outcome() {
+            Outcome::Ok(v) => Some(v),
+            _ => None,
+        }
+    };
+    *STARTUP_ARGS.lock().unwrap() = Some((join, create, server));
 }
 
 #[cfg(not(all(target_os = "android", feature = "aa")))]

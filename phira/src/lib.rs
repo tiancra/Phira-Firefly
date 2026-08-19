@@ -49,7 +49,7 @@ use tracing::{error, info};
 use jni::{
     objects::{JClass, JString},
     sys::jint,
-    EnvUnowned,
+    EnvUnowned, Outcome,
 };
 
 #[cfg(target_os = "android")]
@@ -641,14 +641,20 @@ pub extern "C" fn Java_quad_1native_QuadNative_prprActivityOnDestroy(_env: EnvUn
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "C" fn Java_quad_1native_QuadNative_setDataPath(mut env: EnvUnowned, _class: JClass, path: JString) {
-    let s = env.with_env(|env| path.try_to_string(env)).unwrap_or_default();
+    let s = match env.with_env_no_catch(|env| path.try_to_string(env)).into_outcome() {
+        Outcome::Ok(s) => s,
+        _ => String::new(),
+    };
     *DATA_PATH.lock().unwrap() = Some(s);
 }
 
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "C" fn Java_quad_1native_QuadNative_setTempDir(mut env: EnvUnowned, _class: JClass, path: JString) {
-    let path = env.with_env(|env| path.try_to_string(env)).unwrap_or_default();
+    let path = match env.with_env_no_catch(|env| path.try_to_string(env)).into_outcome() {
+        Outcome::Ok(s) => s,
+        _ => String::new(),
+    };
     std::env::set_var("TMPDIR", path.clone());
     *CACHE_DIR.lock().unwrap() = Some(path);
 }
@@ -663,7 +669,10 @@ pub extern "C" fn Java_quad_1native_QuadNative_setDpi(_env: EnvUnowned, _class: 
 #[no_mangle]
 pub extern "C" fn Java_quad_1native_QuadNative_setChosenFile(mut env: EnvUnowned, _class: JClass, file: JString) {
     use prpr::scene::CHOSEN_FILE;
-    let file = env.with_env(|env| file.try_to_string(env)).unwrap_or_default();
+    let file = match env.with_env_no_catch(|env| file.try_to_string(env)).into_outcome() {
+        Outcome::Ok(s) => s,
+        _ => String::new(),
+    };
     CHOSEN_FILE.lock().unwrap().1 = Some(file);
 }
 
@@ -687,7 +696,10 @@ pub extern "C" fn Java_quad_1native_QuadNative_markImportRespack(_env: EnvUnowne
 #[no_mangle]
 pub extern "C" fn Java_quad_1native_QuadNative_setInputText(mut env: EnvUnowned, _class: JClass, text: JString) {
     use prpr::scene::INPUT_TEXT;
-    let text = env.with_env(|env| text.try_to_string(env)).unwrap_or_default();
+    let text = match env.with_env_no_catch(|env| text.try_to_string(env)).into_outcome() {
+        Outcome::Ok(s) => s,
+        _ => String::new(),
+    };
     INPUT_TEXT.lock().unwrap().1 = Some(text);
 }
 

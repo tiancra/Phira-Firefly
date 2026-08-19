@@ -18,8 +18,8 @@ jobs:
     - uses: actions/checkout@v4.2.2
     
     - run: |
-        sudo apt-get update
-        sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libasound2-dev libssl-dev pkg-config
+        # Android 交叉编译（cargo ndk）不需要 GTK/WebKit 等桌面库，
+        # 跳过 apt-get，避免 apt-get update 卡住拖慢/失败构建。
         # For compatibility of release v0.6.7 and stable channel of Rust
         sed -i 's/#!\[feature(local_key_cell_methods)\]//g' prpr/src/lib.rs
         

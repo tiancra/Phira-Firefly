@@ -3406,7 +3406,6 @@ dependencies = [
 [[package]]
 name = "phira-mp-client"
 version = "0.1.0"
-source = "git+https://github.com/tiancra/phira-mp?branch=main#546f455810c204296b8121429d1011e1bd260319"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3422,7 +3421,6 @@ dependencies = [
 [[package]]
 name = "phira-mp-common"
 version = "0.1.0"
-source = "git+https://github.com/tiancra/phira-mp?branch=main#546f455810c204296b8121429d1011e1bd260319"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -3438,7 +3436,6 @@ dependencies = [
 [[package]]
 name = "phira-mp-macros"
 version = "0.1.0"
-source = "git+https://github.com/tiancra/phira-mp?branch=main#546f455810c204296b8121429d1011e1bd260319"
 dependencies = [
  "proc-macro2",
  "quote",

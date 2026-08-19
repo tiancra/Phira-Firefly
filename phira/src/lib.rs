@@ -139,7 +139,12 @@ mod dir {
                 .map(|tmpdir| tmpdir.trim_end_matches("/cache").to_string() + "/files")
         });
         let base = base.unwrap_or_else(|| ".".to_string());
-        let s = format!("{}/{}", base, s);
+        // 绝对路径（如 CACHE_DIR）直接使用，避免被错误拼到 DATA_PATH 下
+        let s = if std::path::Path::new(s).is_absolute() {
+            s.to_string()
+        } else {
+            format!("{}/{}", base, s)
+        };
         let path = std::path::Path::new(&s);
         if !path.exists() {
             std::fs::create_dir_all(path)?;

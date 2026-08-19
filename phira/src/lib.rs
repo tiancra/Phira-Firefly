@@ -640,14 +640,15 @@ pub extern "C" fn Java_quad_1native_QuadNative_prprActivityOnDestroy(_env: EnvUn
 
 #[cfg(target_os = "android")]
 #[no_mangle]
-pub extern "C" fn Java_quad_1native_QuadNative_setDataPath(_env: EnvUnowned, _class: JClass, path: JString) {
-    *DATA_PATH.lock().unwrap() = Some(path.to_string());
+pub extern "C" fn Java_quad_1native_QuadNative_setDataPath(mut env: EnvUnowned, _class: JClass, path: JString) {
+    let s = env.with_env(|env| path.try_to_string(env)).unwrap_or_default();
+    *DATA_PATH.lock().unwrap() = Some(s);
 }
 
 #[cfg(target_os = "android")]
 #[no_mangle]
-pub extern "C" fn Java_quad_1native_QuadNative_setTempDir(_env: EnvUnowned, _class: JClass, path: JString) {
-    let path = path.to_string();
+pub extern "C" fn Java_quad_1native_QuadNative_setTempDir(mut env: EnvUnowned, _class: JClass, path: JString) {
+    let path = env.with_env(|env| path.try_to_string(env)).unwrap_or_default();
     std::env::set_var("TMPDIR", path.clone());
     *CACHE_DIR.lock().unwrap() = Some(path);
 }
@@ -660,9 +661,10 @@ pub extern "C" fn Java_quad_1native_QuadNative_setDpi(_env: EnvUnowned, _class: 
 
 #[cfg(target_os = "android")]
 #[no_mangle]
-pub extern "C" fn Java_quad_1native_QuadNative_setChosenFile(_env: EnvUnowned, _class: JClass, file: JString) {
+pub extern "C" fn Java_quad_1native_QuadNative_setChosenFile(mut env: EnvUnowned, _class: JClass, file: JString) {
     use prpr::scene::CHOSEN_FILE;
-    CHOSEN_FILE.lock().unwrap().1 = Some(file.to_string());
+    let file = env.with_env(|env| file.try_to_string(env)).unwrap_or_default();
+    CHOSEN_FILE.lock().unwrap().1 = Some(file);
 }
 
 #[cfg(target_os = "android")]
@@ -683,9 +685,10 @@ pub extern "C" fn Java_quad_1native_QuadNative_markImportRespack(_env: EnvUnowne
 
 #[cfg(target_os = "android")]
 #[no_mangle]
-pub extern "C" fn Java_quad_1native_QuadNative_setInputText(_env: EnvUnowned, _class: JClass, text: JString) {
+pub extern "C" fn Java_quad_1native_QuadNative_setInputText(mut env: EnvUnowned, _class: JClass, text: JString) {
     use prpr::scene::INPUT_TEXT;
-    INPUT_TEXT.lock().unwrap().1 = Some(text.to_string());
+    let text = env.with_env(|env| text.try_to_string(env)).unwrap_or_default();
+    INPUT_TEXT.lock().unwrap().1 = Some(text);
 }
 
 #[cfg(not(all(target_os = "android", feature = "aa")))]

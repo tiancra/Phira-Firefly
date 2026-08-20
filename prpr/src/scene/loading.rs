@@ -100,6 +100,7 @@ impl LoadingScene {
         upload_fn: Option<UploadFn>,
         update_fn: Option<UpdateFn>,
         save_fn: Option<SaveFn>,
+        xcsim: bool,
 
         preloaded: Option<(SafeTexture, SafeTexture, Color)>,
     ) -> Result<Self> {
@@ -142,6 +143,7 @@ impl LoadingScene {
             upload_fn,
             update_fn,
             save_fn,
+            xcsim,
         ));
         let charter = Regex::new(r"\[!:[0-9]+:([^:]*)\]").unwrap().replace_all(&info.charter, "$1").to_string();
 

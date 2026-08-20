@@ -678,6 +678,7 @@ impl MPPanel {
                             None,
                             None,
                             false,
+                            false,
                         )?;
                     } else {
                         let id = self.chart_id.unwrap();
@@ -689,6 +690,7 @@ impl MPPanel {
                             self.client.as_ref().map(Arc::clone),
                             None,
                             None,
+                            false,
                             false,
                         )?;
                     }
@@ -776,7 +778,7 @@ impl MPPanel {
                                 } else {
                                     None
                                 }
-                            })?);
+                            }, false)?);
                         } else {
                             self.post_download();
                         }

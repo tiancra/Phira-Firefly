@@ -42,7 +42,7 @@ use prpr::{
     },
     fs::{self},
     info::ChartInfo,
-    judge::{icon_index, Judge},
+    judge::{icon_index, icon_index_xcsim, Judge},
     scene::{
         request_file, request_input, return_file, return_input, show_error, show_message, take_file, take_input, BasicPlayer, GameMode, LoadingScene,
         LocalSceneTask, NextScene, RecordUpdateState, SaveFn, Scene, SimpleRecord, UpdateFn, UploadFn,
@@ -316,6 +316,7 @@ pub struct SongScene {
     entity: Option<Chart>,
     info: BriefChartInfo,
     local_path: Option<String>,
+    xcsim: bool,
 
     downloading: Option<Downloading>,
     loading_last: f32,
@@ -387,6 +388,11 @@ pub struct SongScene {
 
     uploader_btn: RectButton,
 
+    // XC-SIM 上传者信息（从 XC-SIM 服务器获取，与 Phira 的 UserManager 无关）。
+    xcsim_uploader_name: Option<String>,
+    xcsim_uploader_avatar: Option<SafeTexture>,
+    xcsim_uploader_task: Option<Task<Result<Option<(String, Option<image::DynamicImage>)>>>>,
+
     sf: SFader,
     fade_start: f32,
 
@@ -416,8 +422,21 @@ pub struct SongScene {
 
 impl SongScene {
     pub fn new(mut chart: ChartItem, local_path: Option<String>, icons: Arc<Icons>, rank_icons: [SafeTexture; 8], mods: Mods) -> Self {
+        // 从 local_path 自动识别 XC-SIM 谱面（存储在 `xcsim/` 目录下），
+        // 这样即使在本地分区打开 XC-SIM 谱面也会按 XC-SIM 规则游玩。
+        let xcsim = local_path.as_deref().map_or(false, |p| p.starts_with("xcsim/"));
+        Self::new_xcsim(chart, local_path, icons, rank_icons, mods, xcsim)
+    }
+
+    /// Same as [`SongScene::new`], but fetch the chart from the XC-SIM server.
+    pub fn new_xcsim(mut chart: ChartItem, local_path: Option<String>, icons: Arc<Icons>, rank_icons: [SafeTexture; 8], mods: Mods, xcsim: bool) -> Self {
         if let Some(path) = &local_path {
-            if let Some(id) = path.strip_prefix("download/") {
+            // XC-SIM 谱面在 `xcsim/` 目录下，官方谱面在 `download/` 目录下。
+            if let Some(id) = path
+                .strip_prefix("xcsim/")
+                .or_else(|| path.strip_prefix("download/xcsim/"))
+                .or_else(|| path.strip_prefix("download/"))
+            {
                 chart.info.id = Some(id.parse().unwrap());
             }
         }
@@ -430,8 +449,13 @@ impl SongScene {
                 texture: chart.illu.texture.clone(),
                 notify: Arc::default(),
                 task: Some(Task::new({
+                    let xcsim = xcsim;
                     async move {
-                        let chart = Ptr::<Chart>::new(id).load().await?;
+                        let chart = if xcsim {
+                            crate::client::xcsim::get_chart(id).await?.ok_or_else(|| Error::msg("chart not found"))?
+                        } else {
+                            Ptr::<Chart>::new(id).load().await?
+                        };
                         let image = chart.illustration.load_image().await?;
                         Ok((image, None))
                     }
@@ -448,7 +472,7 @@ impl SongScene {
             .find(|it| Some(&it.local_path) == local_path.as_ref())
             .and_then(|it| it.record.clone())
             .or_else(|| local_path.as_ref().and_then(|path| get_data().local_records.get(path).cloned().flatten()));
-        let fetch_best_task = if get_data().me.is_some() {
+        let fetch_best_task = if get_data().me.is_some() && !xcsim {
             chart.info.id.map(|id| Task::new(Client::best_record(id)))
         } else {
             None
@@ -456,6 +480,27 @@ impl SongScene {
         let id = chart.info.id;
         let offline_mode = get_data().config.offline_mode;
         let icon_star = icons.star.clone();
+        // XC-SIM 上传者信息从 XC-SIM 服务器获取（GET /user/{id}），同时拉取头像。
+        let xcsim_uploader_task = if xcsim {
+            chart.info.uploader.as_ref().map(|u| {
+                let uid = u.id;
+                Task::new(async move {
+                    let user = crate::client::xcsim::get_user(uid).await?;
+                    let user = match user {
+                        Some(user) => user,
+                        None => return Ok(None),
+                    };
+                    let name = user.name;
+                    let avatar = match &user.avatar {
+                        Some(avatar) => image::load_from_memory(&avatar.fetch().await?).ok(),
+                        None => None,
+                    };
+                    Ok(Some((name, avatar)))
+                })
+            })
+        } else {
+            None
+        };
         Self {
             illu,
 
@@ -471,6 +516,7 @@ impl SongScene {
             preview: None,
             preview_task: Some(Task::new({
                 let local_path = local_path.clone();
+                let xcsim = xcsim;
                 async move {
                     if let Some(path) = local_path {
                         let mut fs = fs_from_path(&path)?;
@@ -480,7 +526,11 @@ impl SongScene {
                             Some((info.preview_start, info.preview_end.unwrap_or(info.preview_start + 15.))),
                         )
                     } else {
-                        let chart = Ptr::<Chart>::new(id.unwrap()).fetch().await?;
+                        let chart = if xcsim {
+                            crate::client::xcsim::get_chart(id.unwrap()).await?.ok_or_else(|| Error::msg("chart not found"))?
+                        } else {
+                            Ptr::<Chart>::new(id.unwrap()).fetch().await?
+                        };
                         with_effects(AudioClip::decode(chart.preview.fetch().await?.to_vec())?, None)
                     }
                 }
@@ -488,12 +538,15 @@ impl SongScene {
 
             load_task: if offline_mode {
                 None
+            } else if xcsim {
+                id.map(|it| Task::new(async move { crate::client::xcsim::get_chart(it).await }))
             } else {
                 id.map(|it| Task::new(async move { Ptr::new(it).fetch_opt().await }))
             },
             entity: None,
             info: chart.info,
             local_path,
+            xcsim,
 
             downloading: None,
             loading_last: 0.,
@@ -553,7 +606,8 @@ impl SongScene {
 
             should_update: Arc::default(),
 
-            my_rating_task: if offline_mode {
+            my_rating_task: if offline_mode || xcsim {
+                // XC-SIM 谱面不能评分，不拉取评分状态。
                 None
             } else {
                 id.map(|id| {
@@ -577,6 +631,10 @@ impl SongScene {
             scene_task: None,
 
             uploader_btn: RectButton::new(),
+
+            xcsim_uploader_name: None,
+            xcsim_uploader_avatar: None,
+            xcsim_uploader_task,
 
             sf: SFader::new(),
             fade_start: 0.,
@@ -612,16 +670,27 @@ impl SongScene {
             return Ok(());
         };
         self.loading_last = 0.;
-        self.downloading = Some(Self::global_start_download(chart, entity, self.local_path.clone())?);
+        self.downloading = Some(Self::global_start_download(chart, entity, self.local_path.clone(), self.xcsim)?);
         Ok(())
     }
 
-    pub fn global_start_download(chart: BriefChartInfo, entity: Chart, local_path: Option<String>) -> Result<Downloading> {
+    pub fn global_start_download(chart: BriefChartInfo, entity: Chart, local_path: Option<String>, xcsim: bool) -> Result<Downloading> {
         let progress = Arc::new(Mutex::new(None));
         let prog_wk = Arc::downgrade(&progress);
         let status = Arc::new(Mutex::new(tl!("dl-status-fetch")));
         let status_shared = Arc::clone(&status);
         let atomicity = Arc::new(Mutex::new(()));
+        let download_token = if xcsim {
+            if let Some(token) = crate::client::xcsim::XC_SIM_CLIENT_TOKEN.load().as_ref() {
+                Some(token.clone())
+            } else {
+                None
+            }
+        } else if let Some(token) = CLIENT_TOKEN.load().as_ref() {
+            Some(token.clone())
+        } else {
+            None
+        };
         Ok(Downloading {
             info: chart.clone(),
             local_path,
@@ -638,11 +707,12 @@ impl SongScene {
                     let dir = prpr::dir::Dir::new(path)?;
 
                     let chart = chart;
-                    async fn download(mut file: impl Write, url: &str, prog_wk: &Weak<Mutex<Option<f32>>>) -> Result<()> {
+                    let download_token = download_token;
+                    async fn download(mut file: impl Write, url: &str, token: Option<String>, prog_wk: &Weak<Mutex<Option<f32>>>) -> Result<()> {
                         let Some(prog) = prog_wk.upgrade() else { return Ok(()) };
                         *prog.lock().unwrap() = None;
                         let req = basic_client_builder().build().unwrap().get(url);
-                        let req = if let Some(token) = CLIENT_TOKEN.load().as_ref() {
+                        let req = if let Some(token) = token {
                             req.header("Authorization", format!("Bearer {token}"))
                         } else {
                             req
@@ -668,7 +738,7 @@ impl SongScene {
 
                     *status.lock().unwrap() = tl!("dl-status-chart");
                     let mut bytes = Vec::new();
-                    download(Cursor::new(&mut bytes), &entity.file.url, &prog_wk).await?;
+                    download(Cursor::new(&mut bytes), &entity.file.url, download_token.clone(), &prog_wk).await?;
                     *status.lock().unwrap() = tl!("dl-status-extract");
                     if prog_wk.strong_count() != 0 {
                         unzip_into(Cursor::new(bytes), &dir, false)?;
@@ -691,11 +761,20 @@ impl SongScene {
                         tokio::fs::remove_dir_all(&path).await?;
                     }
 
-                    let local_path = format!("download/{}", chart.id.unwrap());
+                    // XC-SIM 谱面存到独立目录 data/charts/xcsim，与官方同 ID 谱面区分开。
+                    let local_path = if xcsim {
+                        format!("xcsim/{}", chart.id.unwrap())
+                    } else {
+                        format!("download/{}", chart.id.unwrap())
+                    };
                     let to_path = format!("{}/{local_path}", dir::charts()?);
                     let to_path = Path::new(&to_path);
                     {
                         let _guard = atomicity.lock().unwrap();
+                        // 确保父目录存在，否则重命名会报 os error 3（找不到路径）。
+                        if let Some(parent) = to_path.parent() {
+                            std::fs::create_dir_all(parent)?;
+                        }
                         if to_path.exists() {
                             if to_path.is_file() {
                                 std::fs::remove_file(to_path)?;
@@ -724,7 +803,8 @@ impl SongScene {
     }
 
     fn load_ldb(&mut self) {
-        if get_data().config.offline_mode {
+        // XC-SIM 谱面不参与排行榜。
+        if get_data().config.offline_mode || self.xcsim {
             return;
         }
         let Some(id) = self.info.id else { return };
@@ -774,7 +854,8 @@ impl SongScene {
         if self.local_path.as_ref().is_some_and(|it| !it.starts_with(':')) {
             self.menu_options.push("delete");
         }
-        if self.info.id.is_some() {
+        // XC-SIM 谱面不能评分。
+        if self.info.id.is_some() && !self.xcsim {
             self.menu_options.push("rate");
         }
         if let Some(local_path) = &self.local_path {
@@ -837,8 +918,17 @@ impl SongScene {
                     .find(|it| it.local_path == *local_path)
                     .is_some_and(|it| it.info.has_unlock && !it.played_unlock));
 
-        self.scene_task =
-            Self::global_launch(self.info.id, local_path, self.mods, mode, None, Some(self.background.clone()), self.record.clone(), is_unlock)?;
+        self.scene_task = Self::global_launch(
+            self.info.id,
+            local_path,
+            self.mods,
+            mode,
+            None,
+            Some(self.background.clone()),
+            self.record.clone(),
+            is_unlock,
+            self.xcsim,
+        )?;
 
         Ok(())
     }
@@ -854,6 +944,7 @@ impl SongScene {
         background_output: Option<Arc<Mutex<Option<SafeTexture>>>>,
         record: Option<SimpleRecord>,
         is_unlock: bool,
+        xcsim: bool,
     ) -> Result<LocalSceneTask> {
         let mut fs = fs_from_path(local_path)?;
         let can_rated = id.is_some() || local_path.starts_with(':');
@@ -1038,7 +1129,7 @@ impl SongScene {
                 #[cfg(not(feature = "video"))]
                 {
                     warn!("this build does not support unlock video.");
-                    LoadingScene::new(mode, info, config, fs, player, upload_fn, update_fn, save_fn, Some(preload))
+                    LoadingScene::new(mode, info, config, fs, player, upload_fn, update_fn, save_fn, xcsim, Some(preload))
                         .await
                         .map(|it| NextScene::Overlay(Box::new(it)))
                 }
@@ -1055,7 +1146,7 @@ impl SongScene {
                         .map(|it| NextScene::Overlay(Box::new(it)))
                 }
             } else {
-                LoadingScene::new(mode, info, config, fs, player, upload_fn, update_fn, save_fn, Some(preload))
+                LoadingScene::new(mode, info, config, fs, player, upload_fn, update_fn, save_fn, xcsim, Some(preload))
                     .await
                     .map(|it| NextScene::Overlay(Box::new(it)))
             }
@@ -1216,7 +1307,8 @@ impl SongScene {
                 }};
             }
             let mw = width - pad * 3.;
-            if self.info.id.is_some() {
+            // XC-SIM 谱面不提供「在网站中打开」（其链接指向 phira.moe，对 XC-SIM 无效）。
+            if self.info.id.is_some() && !self.xcsim {
                 let r = Rect::new(0.03, 0., mw, 0.12).nonuniform_feather(-0.03, -0.01);
                 self.open_web_btn.render_text(ui, r, rt, ttl!("open-in-web"), 0.6, true);
                 dy!(r.h + 0.04);
@@ -1224,9 +1316,32 @@ impl SongScene {
             if let Some(uploader) = &self.info.uploader {
                 let c = 0.06;
                 let s = 0.05;
-                let r = ui.avatar(c, c, s, rt, UserManager::opt_avatar(uploader.id, &self.icons.user));
-                self.uploader_btn.set(ui, Rect::new(c - s, c - s, s * 2., s * 2.));
-                if let Some((name, color)) = UserManager::name_and_color(uploader.id) {
+                // XC-SIM 上传者头像从 XC-SIM 服务器获取（避免同 ID 撞到 Phira 用户头像）。
+                let r = ui.avatar(
+                    c,
+                    c,
+                    s,
+                    rt,
+                    if self.xcsim {
+                        match &self.xcsim_uploader_avatar {
+                            Some(tex) => Ok(Some(tex.clone())),
+                            None => Err(self.icons.user.clone()),
+                        }
+                    } else {
+                        UserManager::opt_avatar(uploader.id, &self.icons.user)
+                    },
+                );
+                // XC-SIM 上传者是 XC-SIM 账号，点击头像不做任何跳转。
+                if !self.xcsim {
+                    self.uploader_btn.set(ui, Rect::new(c - s, c - s, s * 2., s * 2.));
+                }
+                // XC-SIM 上传者名称从 XC-SIM 服务器获取。
+                let name_color: Option<(String, Color)> = if self.xcsim {
+                    self.xcsim_uploader_name.as_ref().map(|name| (name.clone(), semi_white(1.)))
+                } else {
+                    UserManager::name_and_color(uploader.id)
+                };
+                if let Some((name, color)) = name_color {
                     ui.text(name)
                         .pos(r.right() + 0.02, r.center().y)
                         .anchor(0., 0.5)
@@ -1276,9 +1391,14 @@ impl SongScene {
             item(tl!("info-difficulty"), format!("{} ({:.1})", self.info.level, self.info.difficulty).into());
             item(tl!("info-desc"), self.info.intro.as_str().into());
             if let Some(entity) = &self.entity {
-                item(tl!("info-rating"), entity.rating.map_or(Cow::Borrowed("NaN"), |r| format!("{:.2} / 5.00", r * 5.).into()));
-                item(
-                    tl!("info-type"),
+                // XC-SIM 谱面不显示评分信息。
+                if !self.xcsim {
+                    item(tl!("info-rating"), entity.rating.map_or(Cow::Borrowed("NaN"), |r| format!("{:.2} / 5.00", r * 5.).into()));
+                }
+                // XC-SIM 谱面的种类固定显示为「XC-SIM」。
+                let type_text = if self.xcsim {
+                    "XC-SIM".to_owned()
+                } else {
                     format!(
                         "{}{}",
                         if entity.reviewed { tl!("reviewed") } else { tl!("unreviewed") },
@@ -1288,8 +1408,8 @@ impl SongScene {
                             (false, _) => ttl!("chart-unstable"),
                         }
                     )
-                    .into(),
-                );
+                };
+                item(tl!("info-type"), type_text.into());
                 item(tl!("info-tags"), entity.tags.iter().map(|it| format!("#{it}")).join(" ").into());
             }
             if let Some(id) = self.info.id {
@@ -1547,7 +1667,8 @@ impl Scene for SongScene {
             Err(res) => res,
             Ok(rec) => {
                 self.fade_start = tm.now() as f32 + fade_in_time().unwrap_or_default();
-                if self.my_rate_score == Some(0) && thread_rng().gen_ratio(2, 5) {
+                // XC-SIM 谱面不能评分，游玩结束不弹评分弹窗。
+                if !self.xcsim && self.my_rate_score == Some(0) && thread_rng().gen_ratio(2, 5) {
                     self.rate_dialog.enter(tm.real_time() as _);
                 }
                 if let Some(record) = &mut self.record {
@@ -1719,7 +1840,7 @@ impl Scene for SongScene {
                         if self.info_scroll.touch(touch, t) {
                             return Ok(true);
                         }
-                        if self.uploader_btn.touch(touch) {
+                        if !self.xcsim && self.uploader_btn.touch(touch) {
                             button_hit();
                             self.sf.goto(
                                 t,
@@ -1727,7 +1848,7 @@ impl Scene for SongScene {
                             );
                             return Ok(true);
                         }
-                        if self.open_web_btn.touch(touch, rt) {
+                        if !self.xcsim && self.open_web_btn.touch(touch, rt) {
                             open_url(&format!("https://phira.moe/chart/{}", self.info.id.unwrap()))?;
                             return Ok(true);
                         }
@@ -1800,7 +1921,7 @@ impl Scene for SongScene {
                 return Ok(true);
             }
         }
-        if self.info.id.is_some() && self.ldb_btn.touch(touch) {
+        if self.info.id.is_some() && !self.xcsim && self.ldb_btn.touch(touch) {
             button_hit();
             self.side_content = SideContent::Leaderboard;
             self.side_enter_time = tm.real_time() as _;
@@ -1945,6 +2066,18 @@ impl Scene for SongScene {
                     }
                 }
                 self.load_task = None;
+            }
+        }
+        if let Some(task) = &mut self.xcsim_uploader_task {
+            if let Some(res) = task.take() {
+                match res {
+                    Ok(Some((name, avatar))) => {
+                        self.xcsim_uploader_name = Some(name);
+                        self.xcsim_uploader_avatar = avatar.map(|it| SafeTexture::from(it).with_mipmap());
+                    }
+                    _ => {}
+                }
+                self.xcsim_uploader_task = None;
             }
         }
         if let Some(task) = &mut self.preview_task {
@@ -2614,12 +2747,20 @@ impl Scene for SongScene {
             // bottom bar
             let s = 0.25;
             let r = Rect::new(-0.94, ui.top - s - 0.06, s, s);
-            let icon = self.record.as_ref().map_or(0, |it| icon_index(it.score as _, it.full_combo));
+            let icon = self.record.as_ref().map_or(0, |it| {
+                if self.xcsim {
+                    icon_index_xcsim(it.score as _)
+                } else {
+                    icon_index(it.score as _, it.full_combo)
+                }
+            });
             ui.fill_rect(r, (*self.rank_icons[icon], r, ScaleType::Fit));
             let score = self.record.as_ref().map(|it| it.score).unwrap_or_default();
             let accuracy = self.record.as_ref().map(|it| it.accuracy).unwrap_or_default();
+            // XC-SIM 分数固定显示 8 位，官方/本地谱面显示 7 位。
+            let score_text = if self.xcsim { format!("{score:08}") } else { format!("{score:07}") };
             let r = ui
-                .text(format!("{score:07}"))
+                .text(score_text)
                 .pos(r.right() + 0.01, r.center().y)
                 .anchor(0., 1.)
                 .size(1.2)
@@ -2631,7 +2772,7 @@ impl Scene for SongScene {
                 .color(semi_white(0.7))
                 .draw();
 
-            if self.info.id.is_some() {
+            if self.info.id.is_some() && !self.xcsim {
                 let h = 0.09;
                 let mut r = Rect::new(r.x, r.y - h, h, h);
                 ui.fill_rect(r, (*self.icons.ldb, r, ScaleType::Fit));

@@ -1,5 +1,6 @@
 
 login = Login
+xcsim-login-title = Login to XC-SIM account
 login-sub = Login to access Phira's online features! (Charts, events, multiplayer, etc.)
 back-login = Back to Login
 register = Register
@@ -26,6 +27,9 @@ action-failed = { $action ->
 }
 
 email-sent = Please check your inbox for an activation email from Phira.
+
+xcsim-login-dialog-title = XC-SIM charts cannot upload scores
+xcsim-login-dialog-content = At the copyright holder's request, scores from playing XC-SIM charts in Phira-Firefly cannot be uploaded. For the full experience, please download XC-SIM to play.
 
 tutorial-title = Tutorial
 tutorial-content = Would you like to play the tutorial?

@@ -6,6 +6,7 @@ use crate::{
     client::{recv_raw, Chart, ChartRef, ChartRefChartInfo, Client, Collection, CollectionUpdate, LocalCollection},
     dir, get_data, get_data_mut,
     icons::Icons,
+    login::Login,
     page::{favorites::FAV_PAGE_RESULT, ChartItem, ChartType, Illustration},
     popup::Popup,
     rate::RateDialog,
@@ -61,6 +62,7 @@ enum ChartListType {
     Special,
     Unstable,
     Popular,
+    XcSim,
 }
 
 struct ChartList {
@@ -71,6 +73,7 @@ impl ChartList {
     fn new(ty: ChartListType, icons: Arc<Icons>, rank_icons: [SafeTexture; 8]) -> Self {
         let mut view = ChartsView::new(icons, rank_icons);
         view.can_refresh = ty != ChartListType::Local;
+        view.require_xcsim_login = ty == ChartListType::XcSim;
         Self { ty, view }
     }
 }
@@ -160,6 +163,10 @@ pub struct LibraryPage {
     export_task: Option<mpsc::Receiver<Result<()>>>,
     export_progress: Arc<AtomicU32>,
     export_total: usize,
+
+    login_btn: DRectButton,
+    login: Login,
+    xcsim_logout: Arc<AtomicBool>,
 }
 
 impl LibraryPage {
@@ -174,7 +181,8 @@ impl LibraryPage {
                 (new_list(ChartListType::Special), || ttl!("chart-special")),
                 (new_list(ChartListType::Unstable), || ttl!("chart-unstable")),
                 (new_list(ChartListType::Popular), || tl!("popular")),
-            ] as [(ChartList, TitleFn); 5]),
+                (new_list(ChartListType::XcSim), || tl!("xcsim")),
+            ] as [(ChartList, TitleFn); 6]),
 
             current_page: 0,
             online_total_page: 0,
@@ -246,6 +254,10 @@ impl LibraryPage {
             export_task: None,
             export_progress: Arc::default(),
             export_total: 0,
+
+            login_btn: DRectButton::new(),
+            login: Login::new_xcsim(),
+            xcsim_logout: Arc::default(),
         })
     }
 }
@@ -264,12 +276,16 @@ impl LibraryPage {
             show_message(tl!("offline-mode")).error();
             return;
         }
-        if get_data().me.is_none() {
-            show_error(anyhow!(tl!("must-login")));
-            return;
-        }
-        if !check_read_tos_and_policy(false, false) {
-            return;
+        let chosen = self.tabs.selected().ty;
+        // XC-SIM has its own account system and does not require a Phira login to browse.
+        if chosen != ChartListType::XcSim {
+            if get_data().me.is_none() {
+                show_error(anyhow!(tl!("must-login")));
+                return;
+            }
+            if !check_read_tos_and_policy(false, false) {
+                return;
+            }
         }
         self.tabs.selected_mut().view.reset_scroll();
         self.tabs.selected_mut().view.clear();
@@ -288,6 +304,16 @@ impl LibraryPage {
                 order.to_owned()
             }
         };
+        let division = self.tags.division;
+        if chosen == ChartListType::XcSim {
+            self.online_task = Some(Task::new(async move {
+                let (remote_charts, count) = crate::client::xcsim::query_charts(&search, &order, &division, page).await?;
+                let total_page = if count == 0 { 0 } else { (count - 1) / PAGE_NUM + 1 };
+                let charts: Vec<_> = remote_charts.iter().map(ChartDisplayItem::from_remote).collect();
+                Ok((charts, remote_charts, total_page))
+            }));
+            return;
+        }
         let tags = self
             .tags
             .tags
@@ -296,9 +322,7 @@ impl LibraryPage {
             .cloned()
             .chain(self.tags.unwanted.as_ref().unwrap().tags().iter().map(|it| format!("-{it}")))
             .join(",");
-        let division = self.tags.division;
         let rating_range = format!("{},{}", self.rating.rate.score as f32 / 10., self.rating.rate_upper.as_ref().unwrap().score as f32 / 10.);
-        let chosen = self.tabs.selected().ty;
         let popular = chosen == ChartListType::Popular;
         let typ = match chosen {
             ChartListType::Ranked => 0,
@@ -671,6 +695,9 @@ impl Page for LibraryPage {
 
     fn touch(&mut self, touch: &Touch, s: &mut SharedState) -> Result<bool> {
         let t = s.t;
+        if self.login.touch(touch, t) {
+            return Ok(true);
+        }
         if self.sync_fav_task.is_some()
             || self.export_task.is_some()
             || self.multi_create_fav_task.is_some()
@@ -767,7 +794,7 @@ impl Page for LibraryPage {
                     return Ok(true);
                 }
             }
-            ChartListType::Ranked | ChartListType::Special | ChartListType::Unstable => {
+            ChartListType::Ranked | ChartListType::Special | ChartListType::Unstable | ChartListType::XcSim => {
                 if !self.search_str.is_empty() && self.search_clr_btn.touch(touch) {
                     button_hit();
                     self.search_str.clear();
@@ -815,6 +842,14 @@ impl Page for LibraryPage {
             self.need_show_order_meta_menu = true;
             return Ok(true);
         }
+        if self.tabs.selected().ty == ChartListType::XcSim && self.login_btn.touch(touch, t) {
+            if crate::client::xcsim::is_logged_in() {
+                confirm_dialog(tl!("xcsim-logout"), tl!("xcsim-logout-confirm"), self.xcsim_logout.clone());
+            } else {
+                self.login.enter(t);
+            }
+            return Ok(true);
+        }
         Ok(false)
     }
 
@@ -840,6 +875,11 @@ impl Page for LibraryPage {
 
         self.tags.update(t);
         self.rating.update(t);
+        self.login.update(t)?;
+        if self.xcsim_logout.swap(false, Ordering::SeqCst) {
+            crate::client::xcsim::logout();
+            show_message(tl!("xcsim-logged-out")).ok();
+        }
 
         let is_local = self.tabs.selected().ty == ChartListType::Local;
         if self.tabs.changed() {
@@ -1503,6 +1543,20 @@ impl Page for LibraryPage {
                     self.order_meta_menu.show(ui, t, Rect::new(r.x, r.bottom() + 0.02, 0.35, 0.2));
                 }
 
+                // XC-SIM 分区登录按钮：未登录显示「登录」，登录后显示玩家名，宽度随文字自适应。
+                if chosen == ChartListType::XcSim {
+                    let xcsim_logged_in = crate::client::xcsim::is_logged_in();
+                    let label: String = if xcsim_logged_in {
+                        get_data().xcsim_name.clone().unwrap_or_else(|| tl!("xcsim-login").into_owned())
+                    } else {
+                        tl!("xcsim-login").into_owned()
+                    };
+                    let tw = ui.text(&label).size(0.5).measure().w;
+                    r.w = tw + 0.16;
+                    r.x -= r.w + 0.02;
+                    self.login_btn.render_text(ui, r, t, &label, 0.5, xcsim_logged_in);
+                }
+
                 let empty = self.search_str.is_empty();
                 r.w = 0.53;
                 r.x -= r.w + 0.02;
@@ -1586,6 +1640,7 @@ impl Page for LibraryPage {
         self.manage_fav_menu.render(ui, t, 1.);
         self.tags.render(ui, t);
         self.rating.render(ui, t);
+        self.login.render(ui, t);
         Ok(())
     }
 

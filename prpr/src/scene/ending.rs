@@ -6,7 +6,7 @@ use crate::{
     core::{BOLD_FONT, PGR_FONT},
     ext::{create_audio_manger, rect_shadow, semi_black, semi_white, RectExt, SafeTexture, ScaleType},
     info::ChartInfo,
-    judge::{icon_index, PlayResult},
+    judge::{icon_index, icon_index_xcsim, PlayResult},
     scene::show_message,
     task::Task,
     time::TimeManager,
@@ -304,7 +304,11 @@ impl Scene for EndingScene {
                 .color(semi_white(0.7))
                 .draw();
 
-            let icon = &self.icons[icon_index(res.score, res.max_combo == res.num_of_notes)];
+            let icon = &self.icons[if res.xcsim {
+                icon_index_xcsim(res.score)
+            } else {
+                icon_index(res.score, res.max_combo == res.num_of_notes)
+            }];
             let p = ran(t, 1.7, 2.4).powi(2);
             let r = Rect::new(0.75, br.center().y, 0., 0.).feather(0.13 + (1. - p) * 0.05);
             ui.fill_rect(r, (**icon, r, ScaleType::Fit, semi_white(p)));
@@ -313,9 +317,11 @@ impl Scene for EndingScene {
             let lf = -0.48 + (1.2 - y) / 1.9 * 0.4;
             let mut x = lf;
             let p = ran(t, 0.9, 2.6);
-            let mut digits = Vec::with_capacity(7);
+            // XC-SIM 分数为 8 位，官方/本地为 7 位。
+            let ndigits = if res.xcsim { 8 } else { 7 };
+            let mut digits = Vec::with_capacity(ndigits);
             let mut s = res.score;
-            for _ in 0..7 {
+            for _ in 0..ndigits {
                 digits.push(s % 10);
                 s /= 10;
             }
@@ -325,7 +331,7 @@ impl Scene for EndingScene {
             let h = sr.h;
             ui.scissor(Rect::new(-1., y, 2., h + 0.01), |ui| {
                 for (i, d) in digits.into_iter().enumerate() {
-                    let p = (p * (1. + (0.16 * (6 - i) as f32).powi(2))).min(1.);
+                    let p = (p * (1. + (0.16 * (ndigits - 1 - i) as f32).powi(2))).min(1.);
                     let p = 1. - (1. - p).powi(3);
                     let mut p = d as f32 + (1. - p) * 7.;
                     if p > 10. {
@@ -402,14 +408,31 @@ impl Scene for EndingScene {
             let mut x = -0.26 + (1.2 - y) / 1.9 * 0.4;
             let lf = x;
             let s = 0.64;
-            for (id, title) in ["PERFECT", "GOOD", "BAD", "MISS"].into_iter().enumerate() {
+            // XC-SIM：从上到下为 Perfect+ / Perfect / Good / Bad / Miss；官方/本地为 Perfect / Good / Bad / Miss。
+            let titles: &[&str] = if res.xcsim {
+                &["PERFECT+", "PERFECT", "GOOD", "BAD", "MISS"]
+            } else {
+                &["PERFECT", "GOOD", "BAD", "MISS"]
+            };
+            for (id, title) in titles.iter().copied().enumerate() {
                 ui.text(title)
                     .pos(x, y)
                     .anchor(1., 0.)
                     .color(semi_white(0.6))
                     .size(s)
                     .draw_using(&BOLD_FONT);
-                let r = if self.detail_mode && id != 3 {
+                let count = if res.xcsim {
+                    match id {
+                        0 => res.shiny_perfect,
+                        1 => res.counts[0] - res.shiny_perfect,
+                        2 => res.counts[1],
+                        3 => res.counts[2],
+                        _ => res.counts[3],
+                    }
+                } else {
+                    res.counts[id]
+                };
+                let r = if !res.xcsim && self.detail_mode && id != 3 {
                     let r = ui
                         .text(format!("-{}", res.early_kind[id]))
                         .pos(x + 0.03, y)
@@ -422,7 +445,7 @@ impl Scene for EndingScene {
                         .color(Color::from_hex_rgb(0xffab91))
                         .draw_using(&BOLD_FONT)
                 } else {
-                    ui.text(res.counts[id].to_string()).pos(x + 0.06, y).size(s).draw_using(&BOLD_FONT)
+                    ui.text(count.to_string()).pos(x + 0.06, y).size(s).draw_using(&BOLD_FONT)
                 };
                 let dy = r.h + 0.03;
                 y += dy;

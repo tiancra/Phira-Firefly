@@ -75,6 +75,9 @@ pub struct Login {
 
     show_tutorial_prompt: bool,
     start_tutorial: Arc<AtomicBool>,
+
+    /// When set, this dialog logs into the XC-SIM server instead of Phira.
+    xcsim: bool,
 }
 
 enum NextAction {
@@ -116,12 +119,40 @@ impl Login {
 
             show_tutorial_prompt: false,
             start_tutorial: Arc::default(),
+
+            xcsim: false,
+        }
+    }
+
+    /// Create a login dialog that authenticates against the XC-SIM server.
+    pub fn new_xcsim() -> Self {
+        Self {
+            xcsim: true,
+            ..Self::new()
         }
     }
 
     #[inline]
     fn start(&mut self, desc: &'static str, future: impl Future<Output = Result<Option<User>>> + Send + 'static) {
         self.task = Some((desc, Task::new(future)));
+    }
+
+    fn login_action(&mut self, email: String, pwd: String) {
+        if self.xcsim {
+            self.start("login", async move {
+                crate::client::xcsim::login(&email, &pwd).await?;
+                Ok(None)
+            });
+        } else {
+            self.start("login", async move {
+                Client::login(LoginParams::Password {
+                    email: &email,
+                    password: &pwd,
+                })
+                .await?;
+                Ok(Some(Client::get_me().await?))
+            });
+        }
     }
 
     pub fn enter(&mut self, t: f32) {
@@ -150,10 +181,17 @@ impl Login {
         if !(8..=32).contains(&pwd.len()) {
             return Some(tl!("pwd-length-req"));
         }
-        self.start("register", async move {
-            Client::register(&email, &name, &pwd).await?;
-            Ok(None)
-        });
+        if self.xcsim {
+            self.start("register", async move {
+                crate::client::xcsim::register(&email, &name, &pwd).await?;
+                Ok(None)
+            });
+        } else {
+            self.start("register", async move {
+                Client::register(&email, &name, &pwd).await?;
+                Ok(None)
+            });
+        }
         None
     }
 
@@ -201,23 +239,16 @@ impl Login {
                 return true;
             }
             if self.btn_login.touch(touch, t) {
-                if !check_read_tos_and_policy(true, true) {
+                if !self.xcsim && !check_read_tos_and_policy(true, true) {
                     self.after_accept_tos = Some(NextAction::Login);
                     return true;
                 }
                 let email = self.t_email.clone();
                 let pwd = self.t_pwd.clone();
-                self.start("login", async move {
-                    Client::login(LoginParams::Password {
-                        email: &email,
-                        password: &pwd,
-                    })
-                    .await?;
-                    Ok(Some(Client::get_me().await?))
-                });
+                self.login_action(email, pwd);
                 return true;
             }
-            if self.btn_forget_pwd.touch(touch) {
+            if !self.xcsim && self.btn_forget_pwd.touch(touch) {
                 button_hit();
                 let _ = open_url(&format!("{API_URL}/reset-password"));
             }
@@ -252,14 +283,7 @@ impl Login {
                 Some(NextAction::Login) => {
                     let email = self.t_email.clone();
                     let pwd = self.t_pwd.clone();
-                    self.start("login", async move {
-                        Client::login(LoginParams::Password {
-                            email: &email,
-                            password: &pwd,
-                        })
-                        .await?;
-                        Ok(Some(Client::get_me().await?))
-                    });
+                    self.login_action(email, pwd);
                 }
                 Some(NextAction::Register) => {
                     if let Some(error) = self.register() {
@@ -283,7 +307,11 @@ impl Login {
                         self.t_pwd.clear();
                         show_message(tl!("action-success", "action" => *action)).ok();
                         if *action == "register" {
-                            Dialog::simple(tl!("email-sent")).show();
+                            if !self.xcsim {
+                                Dialog::simple(tl!("email-sent")).show();
+                            } else {
+                                show_message(tl!("action-success", "action" => *action)).ok();
+                            }
                             self.t_reg_email.clear();
                             self.t_reg_name.clear();
                             self.t_reg_pwd.clear();
@@ -291,7 +319,10 @@ impl Login {
                         }
                         if *action == "login" {
                             self.dismiss(t);
-                            if !SHOWN_TUTORIAL_PROMPT.load(Ordering::SeqCst) {
+                            if self.xcsim {
+                                // XC-SIM 登录成功：提示该分区谱面无法上传成绩。
+                                Dialog::plain(tl!("xcsim-login-dialog-title"), tl!("xcsim-login-dialog-content")).show();
+                            } else if !SHOWN_TUTORIAL_PROMPT.load(Ordering::SeqCst) {
                                 self.show_tutorial_prompt = true;
                                 SHOWN_TUTORIAL_PROMPT.store(true, Ordering::SeqCst);
                             }
@@ -363,7 +394,8 @@ impl Login {
                         self.btn_reg.render_text(ui, r, t, tl!("register"), 0.66, false);
 
                         ui.dy(wr.h);
-                        let r = ui.text(tl!("login")).pos(wr.x + 0.045, wr.y + 0.037).size(1.1).draw_using(&BOLD_FONT);
+                        let title = if self.xcsim { tl!("xcsim-login-title") } else { tl!("login") };
+                        let r = ui.text(title).pos(wr.x + 0.045, wr.y + 0.037).size(1.1).draw_using(&BOLD_FONT);
                         let r = ui
                             .text(tl!("login-sub"))
                             .pos(r.x + 0.006, r.bottom() + 0.032)
@@ -378,14 +410,16 @@ impl Login {
                         r.y += r.h + 0.04;
                         self.input_pwd.render_input(ui, r, t, "*".repeat(self.t_pwd.len()), tl!("password"), 0.62);
 
-                        let r = ui
-                            .text(tl!("forget-password"))
-                            .pos(r.right() - 0.02, r.y + r.h + 0.02)
-                            .anchor(1., 0.)
-                            .size(0.4)
-                            .color(semi_white(0.6))
-                            .draw();
-                        self.btn_forget_pwd.set(ui, r.feather(0.02));
+                        if !self.xcsim {
+                            let r = ui
+                                .text(tl!("forget-password"))
+                                .pos(r.right() - 0.02, r.y + r.h + 0.02)
+                                .anchor(1., 0.)
+                                .size(0.4)
+                                .color(semi_white(0.6))
+                                .draw();
+                            self.btn_forget_pwd.set(ui, r.feather(0.02));
+                        }
 
                         let h = 0.09;
                         let pad = 0.05;

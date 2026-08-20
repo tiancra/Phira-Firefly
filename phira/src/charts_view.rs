@@ -109,6 +109,9 @@ pub struct ChartsView {
     movement: Option<(usize, usize)>,
 
     pub multi_select: Option<Vec<ChartRef>>,
+
+    /// When set, opening a not-yet-downloaded chart requires an XC-SIM login.
+    pub require_xcsim_login: bool,
 }
 
 impl ChartsView {
@@ -138,6 +141,8 @@ impl ChartsView {
             need_show_chart_menu: false,
             edit_move_state: None,
             movement: None,
+
+            require_xcsim_login: false,
 
             multi_select: None,
         }
@@ -216,25 +221,30 @@ impl ChartsView {
                 if let Some(chart) = &item.chart {
                     if item.btn.touch(touch, t) {
                         item.long_touch.reset();
-                        let handled_by_mp = MP_PANEL.with(|it| {
-                            if let Some(panel) = it.borrow_mut().as_mut() {
-                                if panel.in_room() {
-                                    if let Some(id) = chart.info.id {
-                                        panel.select_chart(id);
-                                        panel.show(rt);
-                                    } else {
-                                        // 本地谱面（无在线 id）：作为本地谱面分享选择，生成 UUID 并发送
-                                        panel.select_local_chart(
-                                            chart.local_path.clone().unwrap_or_default(),
-                                            chart.info.name.clone(),
-                                        );
-                                        panel.show(rt);
-                                    }
-                                    return true;
-                                }
-                            }
+                        let handled_by_mp = if self.require_xcsim_login {
+                            // XC-SIM 谱面不能加入多人游戏。
                             false
-                        });
+                        } else {
+                            MP_PANEL.with(|it| {
+                                if let Some(panel) = it.borrow_mut().as_mut() {
+                                    if panel.in_room() {
+                                        if let Some(id) = chart.info.id {
+                                            panel.select_chart(id);
+                                            panel.show(rt);
+                                        } else {
+                                            // 本地谱面（无在线 id）：作为本地谱面分享选择，生成 UUID 并发送
+                                            panel.select_local_chart(
+                                                chart.local_path.clone().unwrap_or_default(),
+                                                chart.info.name.clone(),
+                                            );
+                                            panel.show(rt);
+                                        }
+                                        return true;
+                                    }
+                                }
+                                false
+                            })
+                        };
                         if handled_by_mp {
                             button_hit_large();
                             continue;
@@ -274,27 +284,63 @@ impl ChartsView {
                         }
 
                         button_hit_large();
-                        let download_path = chart.info.id.map(|it| format!("download/{it}"));
-                        let scene = SongScene::new(
-                            chart.clone(),
-                            if let Some(path) = &chart.local_path {
-                                Some(path.clone())
+                        // XC-SIM 分区：下载（打开未下载谱面）需要先登录 XC-SIM 账号，与 Phira 账号无关。
+                        if self.require_xcsim_login && chart.local_path.is_none() && !crate::client::xcsim::is_logged_in() {
+                            show_message(tl!("xcsim-need-login")).error();
+                            continue;
+                        }
+                        // XC-SIM 谱面存放在独立目录 data/charts/xcsim，避免与官方同 ID 谱面冲突。
+                        let download_path = chart.info.id.map(|it| {
+                            if self.require_xcsim_login {
+                                format!("xcsim/{it}")
                             } else {
-                                let path = download_path.clone().unwrap();
-                                if Path::new(&format!("{}/{path}", dir::charts()?)).exists() {
-                                    Some(path)
+                                format!("download/{it}")
+                            }
+                        });
+                        let scene = if self.require_xcsim_login {
+                            SongScene::new_xcsim(
+                                chart.clone(),
+                                if let Some(path) = &chart.local_path {
+                                    Some(path.clone())
                                 } else {
-                                    None
-                                }
-                            },
-                            Arc::clone(&self.icons),
-                            self.rank_icons.clone(),
-                            chart
-                                .local_path
-                                .as_ref()
-                                .and_then(|path| get_data().charts.iter().find(|it| &it.local_path == path).map(|it| it.mods))
-                                .unwrap_or_default(),
-                        );
+                                    let path = download_path.clone().unwrap();
+                                    if Path::new(&format!("{}/{path}", dir::charts()?)).exists() {
+                                        Some(path)
+                                    } else {
+                                        None
+                                    }
+                                },
+                                Arc::clone(&self.icons),
+                                self.rank_icons.clone(),
+                                chart
+                                    .local_path
+                                    .as_ref()
+                                    .and_then(|path| get_data().charts.iter().find(|it| &it.local_path == path).map(|it| it.mods))
+                                    .unwrap_or_default(),
+                                true,
+                            )
+                        } else {
+                            SongScene::new(
+                                chart.clone(),
+                                if let Some(path) = &chart.local_path {
+                                    Some(path.clone())
+                                } else {
+                                    let path = download_path.clone().unwrap();
+                                    if Path::new(&format!("{}/{path}", dir::charts()?)).exists() {
+                                        Some(path)
+                                    } else {
+                                        None
+                                    }
+                                },
+                                Arc::clone(&self.icons),
+                                self.rank_icons.clone(),
+                                chart
+                                    .local_path
+                                    .as_ref()
+                                    .and_then(|path| get_data().charts.iter().find(|it| &it.local_path == path).map(|it| it.mods))
+                                    .unwrap_or_default(),
+                            )
+                        };
                         self.transit = Some(TransitState {
                             id: id as _,
                             rect: None,
@@ -564,6 +610,24 @@ impl ChartsView {
                                             .pos(r.x + 0.01, r.y + 0.01)
                                             .size(0.8 * r.w / cw)
                                             .color(c)
+                                            .draw();
+                                    }
+                                    // 在本地分区也标识 XC-SIM 谱面（存储在 `xcsim/` 目录）。
+                                    if chart
+                                        .local_path
+                                        .as_deref()
+                                        .is_some_and(|p| p.starts_with("xcsim/"))
+                                    {
+                                        let m = ui
+                                            .text("XC-SIM")
+                                            .pos(r.x + 0.01, r.y + 0.01)
+                                            .size(0.52 * r.w / cw)
+                                            .measure();
+                                        ui.fill_path(&m.feather(0.006).rounded(0.01), Color { a: 0.9, ..WHITE });
+                                        ui.text("XC-SIM")
+                                            .pos(r.x + 0.01, r.y + 0.01)
+                                            .size(0.52 * r.w / cw)
+                                            .color(BLACK)
                                             .draw();
                                     }
 

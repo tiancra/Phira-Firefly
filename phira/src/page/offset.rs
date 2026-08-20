@@ -142,7 +142,7 @@ impl Page for OffsetPage {
                     rks: it.rks,
                     historic_best: 0,
                 });
-                let scene = LoadingScene::new(GameMode::OffsetTrial, info, config, fs, player, None, None, None, Some(preload)).await?;
+                let scene = LoadingScene::new(GameMode::OffsetTrial, info, config, fs, player, None, None, None, false, Some(preload)).await?;
                 Ok(NextScene::Overlay(Box::new(scene)))
             }));
             return Ok(true);

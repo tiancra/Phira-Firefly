@@ -45,3 +45,9 @@ multi-select-all = 全选
 multi-select-invert = 反选
 
 fav-created = 收藏夹已创建
+
+xcsim = XC-SIM
+xcsim-login = 登录
+xcsim-logout = 退出XC-SIM账号
+xcsim-logout-confirm = 确定要退出 XC-SIM 账号吗？
+xcsim-logged-out = 已退出XC-SIM账号

@@ -192,7 +192,14 @@ impl File {
                 }
             }
         }
-        if let Some(token) = CLIENT_TOKEN.load().as_ref() {
+        // XC-SIM resources are served by the XC-SIM server and use its own token (if any).
+        if self.url.starts_with(&super::xcsim::xc_sim_base()) || self.url.starts_with(&super::xcsim::xc_sim_download_base()) {
+            if let Some(token) = super::xcsim::XC_SIM_CLIENT_TOKEN.load().as_ref() {
+                req.header("Authorization", format!("Bearer {token}"))
+            } else {
+                req
+            }
+        } else if let Some(token) = CLIENT_TOKEN.load().as_ref() {
             req.header("Authorization", format!("Bearer {token}"))
         } else {
             req

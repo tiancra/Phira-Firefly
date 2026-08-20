@@ -16,7 +16,7 @@ use crate::{
     fs::FileSystem,
     gamepad::GamepadFrame,
     info::{ChartFormat, ChartInfo},
-    judge::Judge,
+    judge::{Judge, Judgement},
     parse::{parse, parse_extra, parse_pec, parse_phigros, parse_rpe, LyricLine, LyricRole, LyricWord},
     task::Task,
     time::TimeManager,
@@ -195,6 +195,7 @@ pub struct GameScene {
     pub res: Resource,
     pub chart: Chart,
     pub judge: Judge,
+    pub xcsim: bool,
     pub gl: InternalGlContext<'static>,
     player: Option<BasicPlayer>,
     chart_bytes: Vec<u8>,
@@ -362,6 +363,7 @@ impl GameScene {
         upload_fn: Option<UploadFn>,
         update_fn: Option<UpdateFn>,
         save_fn: Option<SaveFn>,
+        xcsim: bool,
     ) -> Result<Self> {
         match mode {
             GameMode::TweakOffset => {
@@ -420,7 +422,7 @@ impl GameScene {
 
         let exercise_range = (chart.offset + info_offset + res.config.offset) as f64..res.track_length;
 
-        let judge = Judge::new(&chart);
+        let judge = Judge::new_xcsim(&chart, xcsim);
 
         let music = Self::new_music(&mut res)?;
         let lyrics = std::mem::take(&mut chart.extra.lyrics);
@@ -433,6 +435,7 @@ impl GameScene {
             res,
             chart,
             judge,
+            xcsim,
             gl: unsafe { get_internal_gl() },
             player,
             chart_bytes,
@@ -667,7 +670,12 @@ impl GameScene {
             let h = 0.07;
             let score_top = top + eps * 2.2 - (1. - p) * 0.4 + ui_shift_y;
             let score_right = 1. - margin;
-            let score = format!("{:07}", self.judge.score());
+            // XC-SIM 分数固定显示 8 位，官方/本地谱面显示 7 位。
+            let score = if self.xcsim {
+                format!("{:08}", self.judge.score())
+            } else {
+                format!("{:07}", self.judge.score())
+            };
             let scale_point = legacy_aui.then(|| {
                 let ct = ui.text(&score).size(0.8).measure_using(&PGR_FONT).center();
                 (score_right - ct.x, score_top + ct.y)
@@ -750,6 +758,41 @@ impl GameScene {
                             .draw_using(&PGR_FONT);
                     });
                 }
+            }
+            // Early/Late 指示（显示在屏幕顶部下方 150px）。
+            // 原版/本地：Perfect 不显示，Good/Bad 显示；XC-SIM：Perfect+(≤50ms) 不显示，Perfect/Good/Bad 显示。
+            // 每个指示独立瞬间显示，然后在 1 秒内渐隐（密集 Note 也不会互相重置）。
+            self.judge.early_late_list.retain(|&(_, _, tj)| res.time - tj <= 1.0);
+            let base_y = top + (300.0 / res.aspect_ratio) / screen_height() + ui_shift_y;
+            let mut shown = 0;
+            for &(j, diff, tj) in &self.judge.early_late_list {
+                let age = res.time - tj;
+                if age > 1.0 {
+                    continue;
+                }
+                let early = match j {
+                    Judgement::Good | Judgement::Bad => Some(diff < 0.),
+                    Judgement::Perfect => {
+                        if self.xcsim && diff.abs() > 0.05 {
+                            Some(diff < 0.)
+                        } else {
+                            None
+                        }
+                    }
+                    Judgement::Miss => None,
+                };
+                let Some(early) = early else { continue };
+                let alpha = (1. - age).clamp(0., 1.) as f32;
+                let (text, color) = if early {
+                    ("Early", Color::new(1., 0.2, 0.2, alpha))
+                } else {
+                    ("Late", Color::new(0.2, 0.4, 1., alpha))
+                };
+                let y = base_y + shown as f32 * 0.06;
+                self.chart.with_element(ui, res, UIElement::Combo, None, (0., y), |ui, _c| {
+                    ui.text(text).pos(0., y).anchor(0.5, 0.5).size(0.45).color(color).draw_using(&PGR_FONT);
+                });
+                shown += 1;
             }
             // magic to make score visible, refer to phira/src/rate.rs#L219
             ui.text("").draw_using(&PGR_FONT);

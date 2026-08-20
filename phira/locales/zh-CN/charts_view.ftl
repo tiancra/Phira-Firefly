@@ -6,3 +6,5 @@ move-before = 移动到其他之前
 move-after = 移动到其他之后
 
 choose-target = 请选择目标
+
+xcsim-need-login = 请先登录 XC-SIM 账号后再下载谱面。

@@ -45,3 +45,9 @@ multi-select-all = Select All
 multi-select-invert = Invert Selection
 
 fav-created = Favorites created
+
+xcsim = XC-SIM
+xcsim-login = Log in
+xcsim-logout = Log out XC-SIM
+xcsim-logout-confirm = Are you sure you want to log out of your XC-SIM account?
+xcsim-logged-out = Logged out of XC-SIM

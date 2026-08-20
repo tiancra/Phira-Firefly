@@ -104,6 +104,7 @@ pub fn sync_data() {
         get_data_mut().language = Some(LANGS[GLOBAL.order.lock().unwrap()[0]].to_owned());
     }
     let _ = client::set_access_token_sync(get_data().tokens.as_ref().map(|it| &*it.0));
+    let _ = client::xcsim::set_token_sync(get_data().xcsim_token.as_ref().map(|it| &*it.0));
 }
 
 pub fn set_data(data: Data) {

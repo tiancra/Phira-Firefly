@@ -110,6 +110,10 @@ pub struct Data {
     pub language: Option<String>,
     pub theme: usize,
     pub tokens: Option<(String, String)>,
+    #[serde(default)]
+    pub xcsim_token: Option<(String, String)>,
+    #[serde(default)]
+    pub xcsim_name: Option<String>,
     pub respacks: Vec<String>,
     pub respack_id: usize,
     // for compatibility

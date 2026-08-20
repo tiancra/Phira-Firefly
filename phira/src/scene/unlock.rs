@@ -76,7 +76,7 @@ impl UnlockScene {
         };
 
         let (_, background, _) = preloaded.clone().unwrap_or(LoadingScene::load(&mut *fs, &info.illustration).await?);
-        let loading_scene = Box::new(LoadingScene::new(mode, info, config, fs, player, upload_fn, update_fn, save_fn, preloaded).await?);
+        let loading_scene = Box::new(LoadingScene::new(mode, info, config, fs, player, upload_fn, update_fn, save_fn, false, preloaded).await?);
 
         Ok(UnlockScene {
             loading_scene,

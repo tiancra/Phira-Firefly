@@ -729,6 +729,15 @@ pub extern "C" fn Java_quad_1native_QuadNative_markImportRespack(_env: EnvUnowne
 
 #[cfg(target_os = "android")]
 #[no_mangle]
+pub extern "C" fn Java_quad_1native_QuadNative_markAutoImport(_env: EnvUnowned, _class: JClass) {
+    use prpr::scene::CHOSEN_FILE;
+
+    // 自动识别：zip 内含 click.png 视为资源包，否则视为谱面
+    CHOSEN_FILE.lock().unwrap().0 = Some("_import_auto".to_owned());
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
 pub extern "C" fn Java_quad_1native_QuadNative_setInputText(mut env: EnvUnowned, _class: JClass, text: JString) {
     use prpr::scene::INPUT_TEXT;
     let text = match env.with_env_no_catch(|env| text.try_to_string(env)).into_outcome() {

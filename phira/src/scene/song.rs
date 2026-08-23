@@ -418,6 +418,37 @@ pub struct SongScene {
     autocomplete_task: Option<Task<Result<String>>>,
 
     export_task: Option<mpsc::Receiver<Result<()>>>,
+
+    /// 局域网联机管理器
+    #[cfg(feature = "testing")]
+    lan_manager: Option<Arc<Mutex<crate::lan::LanManager>>>,
+    /// 局域网联机面板
+    #[cfg(feature = "testing")]
+    lan_panel: Option<crate::lan::LanPanel>,
+    /// 是否由局域网联机发起的游玩（结束返回时重新打开联机面板）
+    #[cfg(feature = "testing")]
+    lan_game: bool,
+    /// 是否已由联机触发过一次开始（防止重复触发）
+    #[cfg(feature = "testing")]
+    lan_launched: bool,
+    /// 成员端：从房主下载谱面的任务
+    #[cfg(feature = "testing")]
+    lan_download_task: Option<Task<Result<LocalTuple>>>,
+    /// 成员端：已下载完成的谱面（等待所有人同步后开始）
+    #[cfg(feature = "testing")]
+    lan_loaded_tuple: Option<LocalTuple>,
+    /// 房主端：是否在等待所有成员同步就绪
+    #[cfg(feature = "testing")]
+    lan_host_waiting: bool,
+    /// 房主端：房主自己是否已就绪（谱面准备完成）
+    #[cfg(feature = "testing")]
+    lan_host_ready: bool,
+    /// 成员端：是否已点“准备”
+    #[cfg(feature = "testing")]
+    lan_ready: bool,
+    /// 成员端：准备按钮
+    #[cfg(feature = "testing")]
+    lan_ready_btn: DRectButton,
 }
 
 impl SongScene {
@@ -437,7 +468,11 @@ impl SongScene {
                 .or_else(|| path.strip_prefix("download/xcsim/"))
                 .or_else(|| path.strip_prefix("download/"))
             {
-                chart.info.id = Some(id.parse().unwrap());
+                // 仅当后缀为数字 id 时才设置在线 id。
+                // 联机下载的谱面路径为 download/{uuid}（UUID 非数字），不应解析为在线 id。
+                if let Ok(id) = id.parse::<i32>() {
+                    chart.info.id = Some(id);
+                }
             }
         }
         let illu = if let Some(path) = &chart.local_path {
@@ -660,6 +695,27 @@ impl SongScene {
             autocomplete_task: None,
 
             export_task: None,
+
+            #[cfg(feature = "testing")]
+            lan_manager: Some(Arc::new(Mutex::new(crate::lan::LanManager::new()))),
+            #[cfg(feature = "testing")]
+            lan_panel: None,
+            #[cfg(feature = "testing")]
+            lan_game: false,
+            #[cfg(feature = "testing")]
+            lan_launched: false,
+            #[cfg(feature = "testing")]
+            lan_download_task: None,
+            #[cfg(feature = "testing")]
+            lan_loaded_tuple: None,
+            #[cfg(feature = "testing")]
+            lan_host_waiting: false,
+            #[cfg(feature = "testing")]
+            lan_host_ready: false,
+            #[cfg(feature = "testing")]
+            lan_ready: false,
+            #[cfg(feature = "testing")]
+            lan_ready_btn: DRectButton::new(),
         }
     }
 
@@ -904,6 +960,9 @@ impl SongScene {
         }
         if self.local_path.as_ref().is_some_and(|it| !it.starts_with(':')) {
             self.menu_options.push("export");
+            #[cfg(feature = "testing")]
+            // 局域网联机（仅已下载的本地谱面）
+            self.menu_options.push("lan-multiplayer");
         }
         self.menu.set_options(self.menu_options.iter().map(|it| tl!(*it).into_owned()).collect());
     }
@@ -1503,6 +1562,7 @@ impl SongScene {
             item(tl!("mods-rainbow"), Some(tl!("mods-rainbow-sub")), Mods::RAINBOW);
             item(tl!("mods-instant-death-ap"), Some(tl!("mods-instant-death-ap-sub")), Mods::INSTANT_DEATH_AP);
             item(tl!("mods-instant-death-fc"), Some(tl!("mods-instant-death-fc-sub")), Mods::INSTANT_DEATH_FC);
+            item(tl!("mods-health-bar"), Some(tl!("mods-health-bar-sub")), Mods::HEALTH_BAR);
             item(tl!("mods-no-shader"), Some(tl!("mods-no-shader-sub")), Mods::NO_SHADER);
             (width, h + 0.2)
         });
@@ -1776,6 +1836,24 @@ impl Scene for SongScene {
             return Ok(false);
         }
         let rt = tm.real_time() as f32;
+        #[cfg(feature = "testing")]
+        // 成员端：点“准备”后通知房主
+        if self.lan_loaded_tuple.is_some() && !self.lan_ready && self.lan_ready_btn.touch(touch, t) {
+            if let Some(mgr) = &self.lan_manager {
+                if let Ok(mut m) = mgr.lock() {
+                    let _ = m.ready(true);
+                }
+            }
+            self.lan_ready = true;
+            return Ok(true);
+        }
+        #[cfg(feature = "testing")]
+        // 局域网联机面板优先处理触摸
+        if let Some(panel) = &mut self.lan_panel {
+            if panel.visible() {
+                return Ok(panel.touch(touch, rt));
+            }
+        }
         if self.tags.touch(touch, rt) {
             return Ok(true);
         }
@@ -1945,6 +2023,88 @@ impl Scene for SongScene {
 
     fn update(&mut self, tm: &mut TimeManager) -> Result<()> {
         let t = tm.now() as f32;
+        #[cfg(feature = "testing")]
+        // 更新局域网联机面板（同步服务器列表）
+        if let Some(panel) = &mut self.lan_panel {
+            if panel.visible() {
+                panel.update(t)?;
+                // 检测房主开始游戏（lan_launched 防止重复触发）
+                let started = !self.lan_launched
+                    && self
+                        .lan_manager
+                        .as_ref()
+                        .is_some_and(|m| {
+                            let mgr = m.lock().unwrap();
+                            mgr.is_started()
+                        });
+                if started {
+                    self.lan_game = true;
+                    self.lan_launched = true;
+                    panel.hide();
+                    let is_member = self.lan_manager.as_ref().is_some_and(|m| m.lock().unwrap().is_member());
+                    if is_member {
+                        // 成员端：先检查本地是否有相同 id 谱面，有则跳过下载；否则从房主下载
+                        let mgr = self.lan_manager.clone().unwrap();
+                        let black = BLACK_TEXTURE.clone();
+                        self.lan_download_task = Some(Task::new(async move {
+                            // 本地查重：若本地已有与房主相同 id 的谱面，直接用本地谱面
+                            let host_id = mgr.lock().unwrap().started_chart_id();
+                            if let Some(id) = host_id {
+                                if let Some(existing) = get_data().charts.iter().find(|c| c.info.id == Some(id)) {
+                                    let local_path = existing.local_path.clone();
+                                    let root = format!("{}/{local_path}", dir::charts()?);
+                                    let dir = prpr::dir::Dir::new(&root)?;
+                                    let info: ChartInfo = serde_yaml::from_reader(dir.open("info.yml")?)?;
+                                    let tuple = load_local_tuple(&local_path, black, info).await?;
+                                    // 本地已有谱面，通知房主本成员已就绪（跳过下载）
+                                    let _ = mgr.lock().unwrap().notify_sync_ready();
+                                    return Ok(tuple);
+                                }
+                            }
+                            // 否则从房主下载谱面
+                            let chart_id = mgr.lock().unwrap().download_host_chart()?;
+                            let local_path = format!("download/{}", chart_id);
+                            let root = format!("{}/{local_path}", dir::charts()?);
+                            let dir = prpr::dir::Dir::new(&root)?;
+                            let info: ChartInfo = serde_yaml::from_reader(dir.open("info.yml")?)?;
+                            let tuple = load_local_tuple(&local_path, black, info.clone()).await?;
+                            // 注册到本地谱面库
+                            get_data_mut().charts.push(LocalChart {
+                                info: BriefChartInfo::from(info),
+                                local_path,
+                                record: None,
+                                mods: Mods::default(),
+                                played_unlock: false,
+                            });
+                            save_data()?;
+                            NEED_UPDATE.store(true, Ordering::Relaxed);
+                            Ok(tuple)
+                        }));
+                    } else {
+                        // 房主：进入等待（房主本机谱面即就绪），等所有成员就绪后开始
+                        self.lan_host_waiting = true;
+                        self.lan_host_ready = true;
+                    }
+                }
+            }
+        }
+        #[cfg(feature = "testing")]
+        // 房主：即使处于加载/等待界面也持续监听，所有成员 + 自己就绪后才广播开始并进入
+        if self.lan_host_waiting {
+            let members_ready = self
+                .lan_manager
+                .as_ref()
+                .is_some_and(|m| m.lock().unwrap().host_all_ready());
+            if members_ready && self.lan_host_ready {
+                self.lan_host_waiting = false;
+                if let Some(mgr) = &self.lan_manager {
+                    if let Ok(mut m) = mgr.lock() {
+                        let _ = m.host_start_playing();
+                    }
+                }
+                self.launch(GameMode::Normal, false)?;
+            }
+        }
         self.menu.update(t);
         self.fav_menu.update(t);
         if self.fav_btn.update_long_touch(t, &mut self.fav_long_touch) {
@@ -2103,6 +2263,46 @@ impl Scene for SongScene {
                 self.update_menu();
             }
         }
+        #[cfg(feature = "testing")]
+        // 成员端：从房主下载谱面完成（保留，等待所有人同步后开始）
+        if let Some(task) = &mut self.lan_download_task {
+            if let Some(res) = task.take() {
+                self.lan_download_task = None;
+                match res {
+                    Ok(tuple) => {
+                        self.lan_loaded_tuple = Some(tuple);
+                        // 房主开启“等待其他玩家”时，成员需点“准备”；否则自动就绪
+                        let waiting = self
+                            .lan_manager
+                            .as_ref()
+                            .is_some_and(|m| m.lock().unwrap().is_waiting());
+                        self.lan_ready = !waiting;
+                        if !waiting {
+                            if let Some(mgr) = &self.lan_manager {
+                                if let Ok(mut m) = mgr.lock() {
+                                    let _ = m.ready(true);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => show_error(e),
+                }
+            }
+        }
+        #[cfg(feature = "testing")]
+        // 成员端：已准备且收到开始游玩信号后进入
+        if self.lan_loaded_tuple.is_some() && self.lan_ready {
+            let start = self
+                .lan_manager
+                .as_ref()
+                .is_some_and(|m| m.lock().unwrap().member_start_playing());
+            if start {
+                if let Some(tuple) = self.lan_loaded_tuple.take() {
+                    self.load_tuple(tuple)?;
+                    self.launch(GameMode::Normal, false)?;
+                }
+            }
+        }
         if let Some(task) = &mut self.scene_task {
             if let Some(res) = poll_future(task.as_mut()) {
                 match res {
@@ -2123,7 +2323,24 @@ impl Scene for SongScene {
                             })
                             .show();
                     }
-                    Ok(scene) => self.next_scene = Some(scene),
+                    Ok(scene) => {
+                        #[cfg(feature = "testing")]
+                        // 联机游玩结束：返回后重新打开局域网联机面板
+                        if self.lan_game {
+                            self.lan_game = false;
+                            self.lan_launched = false;
+                            // 重置开始状态，避免返回时再次自动触发开始
+                            if let Some(mgr) = &self.lan_manager {
+                                if let Ok(mut m) = mgr.lock() {
+                                    m.reset_start();
+                                }
+                            }
+                            if let Some(panel) = &mut self.lan_panel {
+                                panel.show(tm.real_time() as _);
+                            }
+                        }
+                        self.next_scene = Some(scene);
+                    }
                 }
                 self.scene_task = None;
             }
@@ -2193,6 +2410,19 @@ impl Scene for SongScene {
                 }
                 "export" => {
                     request_export(format!("{}.zip", sanitize(&self.info.name)));
+                }
+                #[cfg(feature = "testing")]
+                "lan-multiplayer" => {
+                    // 打开局域网联机面板
+                    if let Some(manager) = self.lan_manager.clone() {
+                        // 记录当前谱面路径与在线 id，用于开始游戏时同步谱面
+                        if let Ok(mut mgr) = manager.lock() {
+                            mgr.set_chart_path(self.local_path.clone());
+                            mgr.set_chart_id(self.info.id);
+                        }
+                        let panel = self.lan_panel.get_or_insert_with(|| crate::lan::LanPanel::new(manager));
+                        panel.show(tm.real_time() as _);
+                    }
                 }
                 _ => {}
             }
@@ -2941,6 +3171,20 @@ impl Scene for SongScene {
         {
             ui.full_loading("", t);
         }
+        #[cfg(feature = "testing")]
+        // 联机同步阶段：成员下载 / 房主等待时显示加载动画
+        if self.lan_download_task.is_some() {
+            ui.full_loading("正在同步谱面...", t);
+        } else if self.lan_host_waiting {
+            ui.full_loading("正在等待玩家同步谱面...", t);
+        } else if self.lan_loaded_tuple.is_some() && !self.lan_ready {
+            // 房主开启“等待其他玩家”：成员需点准备
+            let ct = ui.screen_rect().center();
+            let r = Rect::new(ct.x, ct.y, 0., 0.).nonuniform_feather(0.14, 0.06);
+            self.lan_ready_btn.render_text(ui, r, t, "准备", 0.6, true);
+        } else if self.lan_loaded_tuple.is_some() {
+            ui.full_loading("正在等待所有人同步完成...", t);
+        }
         let rt = tm.real_time() as f32;
         self.tags.render(ui, rt);
         self.rate_dialog.render(ui, rt);
@@ -2959,6 +3203,14 @@ impl Scene for SongScene {
         }
 
         self.sf.render(ui, t);
+
+        #[cfg(feature = "testing")]
+        // 渲染局域网联机面板（覆盖在最上层）
+        if let Some(panel) = &mut self.lan_panel {
+            if panel.visible() {
+                panel.render(ui, rt);
+            }
+        }
 
         Ok(())
     }

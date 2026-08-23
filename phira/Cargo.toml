@@ -16,6 +16,8 @@ video = ["prpr/video"]
 chat = []
 aa = []
 event_debug = []
+testing = []
+intest = []
 
 [dependencies]
 anyhow = { workspace = true }

@@ -11,6 +11,10 @@ mod crash;
 mod data;
 mod icons;
 mod images;
+#[cfg(feature = "intest")]
+mod intest;
+#[cfg(feature = "testing")]
+mod lan;
 mod login;
 mod mp;
 mod page;
@@ -301,6 +305,9 @@ async fn the_main() -> Result<()> {
         }
     };
     let mut crash_font: Option<macroquad::text::Font> = load_crash_font().await;
+
+    #[cfg(feature = "intest")]
+    intest::init().await;
 
     let mut main = Some(Main::new(Box::new(BootScene::new(font.clone()).await?), TimeManager::default(), None).await?);
 

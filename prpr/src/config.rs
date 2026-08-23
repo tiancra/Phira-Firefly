@@ -39,6 +39,7 @@ bitflags! {
         const NO_SHADER = 0x0040;
         const INSTANT_DEATH_AP = 0x0080;
         const INSTANT_DEATH_FC = 0x0100;
+        const HEALTH_BAR = 0x0200;
 
         const UNRATED = Self::AUTOPLAY.bits() | Self::NO_SHADER.bits();
     }

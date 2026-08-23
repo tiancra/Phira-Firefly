@@ -23,7 +23,7 @@ use std::{
     path::Path,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, Mutex,
     },
 };
 
@@ -112,6 +112,13 @@ pub struct ChartsView {
 
     /// When set, opening a not-yet-downloaded chart requires an XC-SIM login.
     pub require_xcsim_login: bool,
+
+    /// 局域网联机管理器
+    #[cfg(feature = "testing")]
+    pub lan_manager: Option<Arc<Mutex<crate::lan::LanManager>>>,
+    /// 局域网联机面板
+    #[cfg(feature = "testing")]
+    lan_panel: Option<crate::lan::LanPanel>,
 }
 
 impl ChartsView {
@@ -145,6 +152,11 @@ impl ChartsView {
             require_xcsim_login: false,
 
             multi_select: None,
+
+            #[cfg(feature = "testing")]
+            lan_manager: None,
+            #[cfg(feature = "testing")]
+            lan_panel: None,
         }
     }
 
@@ -198,6 +210,13 @@ impl ChartsView {
     }
 
     pub fn touch(&mut self, touch: &Touch, t: f32, rt: f32) -> Result<bool> {
+        // 局域网联机面板优先处理触摸
+        #[cfg(feature = "testing")]
+        if let Some(panel) = &mut self.lan_panel {
+            if panel.visible() {
+                return Ok(panel.touch(touch, t));
+            }
+        }
         if self.chart_menu.showing() {
             self.chart_menu.touch(touch, t);
             return Ok(true);
@@ -400,7 +419,42 @@ impl ChartsView {
         self.charts.as_ref().is_some_and(|it| it.first().is_some_and(|item| item.chart.is_none()))
     }
 
+    /// 显示谱面菜单，包含局域网联机选项
+    pub fn show_chart_menu_with_lan(&mut self, ui: &mut Ui, t: f32, chart_index: usize) {
+        if self.editing_chart == Some(chart_index) && self.need_show_chart_menu {
+            self.need_show_chart_menu = false;
+            self.chart_menu.set_auto_adjust(Some(ui.screen_rect().nonuniform_feather(-0.03, -0.05)));
+            
+            let mut options = vec![
+                tl!("select").into_owned(),
+                #[cfg(feature = "testing")]
+                tl!("lan-multiplayer").into_owned(),
+            ];
+            
+            if self.allow_edit {
+                options.extend([
+                    tl!("move-to-first").into_owned(),
+                    tl!("move-to-last").into_owned(),
+                    tl!("move-before").into_owned(),
+                    tl!("move-after").into_owned(),
+                ]);
+            }
+            
+            self.chart_menu.set_options(options);
+            self.chart_menu.show(ui, t, Rect::new(0.35, 0.35, 0.3, 0.4));
+        }
+    }
+
     pub fn update(&mut self, t: f32) -> Result<bool> {
+        // 更新局域网联机面板
+        #[cfg(feature = "testing")]
+        if let Some(panel) = &mut self.lan_panel {
+            if panel.visible() {
+                panel.update(t)?;
+                // 面板可见时不再处理谱面菜单等交互
+                return Ok(false);
+            }
+        }
         let refreshed = self.can_refresh && self.scroll.y_scroller.pulled;
         self.chart_menu.update(t);
         self.scroll.update(t);
@@ -411,6 +465,8 @@ impl ChartsView {
                         self.scroll.y_scroller.halt();
                         self.editing_chart = Some(id);
                         let mut options = vec![tl!("select").into_owned()];
+                        #[cfg(feature = "testing")]
+                        options.push(tl!("lan-multiplayer").into_owned());
                         if self.allow_edit {
                             options.extend([
                                 tl!("move-to-first").into_owned(),
@@ -430,27 +486,37 @@ impl ChartsView {
         if self.chart_menu.changed() {
             let has_header = self.has_header();
             let editing = self.editing_chart.unwrap();
+            // move 选项在菜单中的起始索引（testing 时 "局域网联机" 占 index 1）
+            let move_start = if cfg!(feature = "testing") { 2 } else { 1 };
             match self.chart_menu.selected() {
                 0 => {
                     let chart = self.charts.as_ref().unwrap()[editing].chart.as_ref().unwrap();
                     self.multi_select = Some([chart.to_bare_ref()].into());
                 }
-                1 => {
+                #[cfg(feature = "testing")]
+                n if n == move_start - 1 => {
+                    // 局域网联机选项
+                    if let Some(manager) = self.lan_manager.clone() {
+                        let panel = self.lan_panel.get_or_insert_with(|| crate::lan::LanPanel::new(manager));
+                        panel.show(t);
+                    }
+                }
+                n if n == move_start => {
                     self.movement = Some((editing - has_header as usize, 0));
                     if let Some(charts) = &mut self.charts {
                         let chart = charts.remove(editing);
                         charts.insert(has_header as usize, chart);
                     }
                 }
-                2 => {
+                n if n == move_start + 1 => {
                     self.movement = Some((editing - has_header as usize, self.charts.as_ref().unwrap().len() - 1 - has_header as usize));
                     if let Some(charts) = &mut self.charts {
                         let chart = charts.remove(editing);
                         charts.push(chart);
                     }
                 }
-                3 | 4 => {
-                    self.edit_move_state = Some(self.chart_menu.selected() == 4);
+                n if n == move_start + 2 || n == move_start + 3 => {
+                    self.edit_move_state = Some(self.chart_menu.selected() == move_start + 3);
                     show_message(tl!("choose-target"));
                 }
                 _ => {}
@@ -661,6 +727,14 @@ impl ChartsView {
             });
         });
         self.chart_menu.render(ui, t, 1.);
+
+        // 渲染局域网联机面板（覆盖在最上层）
+        #[cfg(feature = "testing")]
+        if let Some(panel) = &mut self.lan_panel {
+            if panel.visible() {
+                panel.render(ui, t);
+            }
+        }
     }
 
     pub fn render_top(&mut self, ui: &mut Ui, t: f32) {

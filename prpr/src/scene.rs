@@ -363,6 +363,12 @@ impl<F: FnMut() -> Option<RenderTarget>> RenderTargetChooser for F {
     }
 }
 
+static EXTRA_TOP_RENDER: std::sync::Mutex<Option<fn()>> = std::sync::Mutex::new(None);
+
+pub fn set_extra_top_render(f: Option<fn()>) {
+    *EXTRA_TOP_RENDER.lock().unwrap() = f;
+}
+
 pub struct Main {
     pub scenes: Vec<Box<dyn Scene>>,
     times: Vec<f64>,
@@ -612,6 +618,9 @@ impl Main {
             });
             if remove {
                 FULL_LOADING.take();
+            }
+            if let Some(f) = *EXTRA_TOP_RENDER.lock().unwrap() {
+                f();
             }
             pop_camera_state();
         }

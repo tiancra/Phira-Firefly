@@ -217,6 +217,18 @@ impl Scene for MainScene {
         }
         self.state.update(tm);
         self.pages.last_mut().unwrap().enter(&mut self.state)?;
+        #[cfg(feature = "intest")]
+        {
+            Dialog::plain(
+                "该版本为内部测试版本",
+                concat!(
+                    "当前版本的Phira-Firefly（",
+                    env!("CARGO_PKG_VERSION"),
+                    "）为内部测试版本，可能存在一定问题，严禁对外传播，如有发现将会受到处罚，包括但不限于被踢出内测群聊并加入黑名单等"
+                ),
+            )
+            .show();
+        }
         MP_PANEL.with(|it| {
             if let Some(panel) = it.borrow_mut().as_mut() {
                 panel.enter();

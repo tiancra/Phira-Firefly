@@ -74,6 +74,10 @@ impl ChartList {
         let mut view = ChartsView::new(icons, rank_icons);
         view.can_refresh = ty != ChartListType::Local;
         view.require_xcsim_login = ty == ChartListType::XcSim;
+        #[cfg(feature = "testing")]
+        {
+            view.lan_manager = Some(Arc::new(Mutex::new(crate::lan::LanManager::new())));
+        }
         Self { ty, view }
     }
 }

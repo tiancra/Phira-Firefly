@@ -1,5 +1,6 @@
 
 select = 选择
+lan-multiplayer = 局域网联机
 move-to-first = 移动到最前
 move-to-last = 移动到最后
 move-before = 移动到其他之前

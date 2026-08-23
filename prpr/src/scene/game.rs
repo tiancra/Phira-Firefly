@@ -11,7 +11,7 @@ use super::{
 use crate::{
     bin::BinaryReader,
     config::{Config, Mods},
-    core::{copy_fbo, BadNote, Chart, ChartExtra, DynamicBackground, Effect, Point, Resource, UIElement, Vector, PGR_FONT},
+    core::{copy_fbo, BadNote, BOLD_FONT, Chart, ChartExtra, DynamicBackground, Effect, Point, Resource, UIElement, Vector, PGR_FONT},
     ext::{get_viewport, parse_time, screen_aspect, semi_white, RectExt, SafeTexture, ScaleType},
     fs::FileSystem,
     gamepad::GamepadFrame,
@@ -248,6 +248,9 @@ pub struct GameScene {
     skip_instant: bool,
     corner_skip_touch_ids: [Option<u64>; 4],
     track_skipped: bool,
+    // health bar
+    health: f32,
+    last_judge_counts: [u32; 4],
 
     // lyrics
     lyrics: Vec<LyricLine>,
@@ -488,6 +491,8 @@ impl GameScene {
             skip_instant: false,
             corner_skip_touch_ids: [None; 4],
             track_skipped: false,
+            health: 100.0,
+            last_judge_counts: [0; 4],
 
             lyrics,
             active_lyrics: Vec::new(),
@@ -662,6 +667,25 @@ impl GameScene {
             }
 
             let margin = 0.03;
+
+            // Health bar mod (top-left, aligned with pause button height)
+            if res.config.mods.contains(Mods::HEALTH_BAR) {
+                let hb_h = pause_h;
+                let hb_y = pause_center.y - pause_h / 2.;
+                let hb_bar_x = -0.78;
+                let hb_bar_w = 0.32;
+                let hp_ratio = (self.health / 100.0).clamp(0.0, 1.0);
+                // HP number on the left of the bar
+                ui.text(format!("{}", self.health.round() as i32))
+                    .pos(hb_bar_x - 0.02, hb_y + hb_h / 2.)
+                    .anchor(1., 0.5)
+                    .size(0.4)
+                    .color(Color::new(1., 1., 1., 0.9))
+                    .draw_using(&BOLD_FONT);
+                // Bar background + foreground
+                ui.fill_rect(Rect::new(hb_bar_x, hb_y, hb_bar_w, hb_h), Color::new(0., 0., 0., 0.5));
+                ui.fill_rect(Rect::new(hb_bar_x, hb_y, hb_bar_w * hp_ratio, hb_h), Color::new(1., 1., 1., 0.9));
+            }
 
             let legacy_aui = !res.info.use_attach_ui_fix.unwrap_or_default();
             let unit_h = if legacy_aui { ui.text("0").measure_using(&PGR_FONT).h } else { 0. };
@@ -1600,6 +1624,38 @@ impl Scene for GameScene {
         self.res.judge_line_color.a *= self.res.alpha;
         let aspect_ratio = self.res.aspect_ratio;
         self.chart.update(&mut self.res);
+
+        // Health bar mod: deduct HP on Good/Bad/Miss, trigger skip when HP <= 0
+        if self.res.config.mods.contains(Mods::HEALTH_BAR)
+            && !self.skip_done
+            && matches!(self.state, State::Playing)
+        {
+            let counts = self.judge.counts();
+            let good_delta = counts[1].saturating_sub(self.last_judge_counts[1]);
+            let bad_delta = counts[2].saturating_sub(self.last_judge_counts[2]);
+            let miss_delta = counts[3].saturating_sub(self.last_judge_counts[3]);
+            if good_delta > 0 || bad_delta > 0 || miss_delta > 0 {
+                self.health -= (good_delta as f32) * 1.0
+                    + (bad_delta as f32) * 2.0
+                    + (miss_delta as f32) * 5.0;
+                self.last_judge_counts = counts;
+                if self.health <= 0.0 {
+                    self.health = 0.0;
+                    self.skip_done = true;
+                    self.track_skipped = true;
+                    self.skip_transition_progress = 0.0;
+                    self.skip_wait_timer = 0.0;
+                    self.skip_fade_out_progress = 0.0;
+                    self.skip_bar_active = false;
+                    self.skip_bar_retracting = false;
+                    self.skip_instant = true;
+                    #[cfg(target_env = "ohos")]
+                    miniquad::native::set_interceptor_state(false);
+                }
+            } else {
+                self.last_judge_counts = counts;
+            }
+        }
 
         self.update_lyrics(time);
 

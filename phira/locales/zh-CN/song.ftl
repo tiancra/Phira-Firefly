@@ -28,6 +28,7 @@ rate = 评分
 exercise = 练习
 offset = 调整延迟
 unlock = 播放解锁动画
+lan-multiplayer = 局域网联机
 
 edit-cancel = 取消
 edit-save = 保存
@@ -121,6 +122,8 @@ mods-instant-death-ap = 突然死亡（AP）
 mods-instant-death-ap-sub = 非完美判定立即失败
 mods-instant-death-fc = 突然死亡（FC）
 mods-instant-death-fc-sub = 连击中断立即失败
+mods-health-bar = 血条
+mods-health-bar-sub = 血量扣完后将会结束游玩
 mods-no-shader = 无着色器
 mods-no-shader-sub = 禁用着色器特效。*启用此 Mod 后无法上传成绩*
 

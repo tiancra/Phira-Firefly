@@ -155,6 +155,7 @@ impl LongTouchState {
 #[derive(Clone, Copy)]
 pub struct RectButton {
     pts: Option<[Vec2; 4]>,
+    global_rect: Option<Rect>,
     id: Option<u64>,
 }
 
@@ -166,7 +167,7 @@ impl Default for RectButton {
 
 impl RectButton {
     pub fn new() -> Self {
-        Self { pts: None, id: None }
+        Self { pts: None, global_rect: None, id: None }
     }
 
     pub fn touching(&self) -> bool {
@@ -190,6 +191,7 @@ impl RectButton {
         let tl = ui.to_global((rect.x, rect.y));
         let br = ui.to_global((rect.right(), rect.bottom()));
         let global_rect = Rect::new(tl.0.min(br.0), tl.1.min(br.1), (br.0 - tl.0).abs(), (br.1 - tl.1).abs());
+        self.global_rect = Some(global_rect);
         register_focus_target(global_rect, FocusType::Button, format!("rb_{:p}", self as *mut _));
         let mat = nalgebra_to_glm(&ui.transform) * ui.gl_transform;
         let tr = |x: f32, y: f32| {
@@ -222,6 +224,9 @@ impl RectButton {
             }
             TouchPhase::Ended => {
                 if self.id.take() == Some(touch.id) && inside {
+                    if let Some(r) = self.global_rect {
+                        set_last_clicked_rect(r);
+                    }
                     return true;
                 }
             }
@@ -676,6 +681,637 @@ impl<'a> From<(f32, &'a mut bool)> for InputParams<'a> {
     }
 }
 
+// === 游戏内输入框 ===
+
+struct InlineInputState {
+    id: String,
+    rect: Option<Rect>, // None=在Ui::input中原位绘制, Some=在Main::render指定位置绘制
+    text: String,
+    cursor: usize,
+    active: bool,
+    confirmed: bool,
+    // 按键重复状态
+    backspace_held: f64,  // Backspace 已按住时间
+    backspace_next: f64,  // 下一次重复删除的时间点
+    arrow_held: Option<KeyCode>, // 当前按住的方向键
+    arrow_next: f64,       // 下一次方向键重复的时间点
+    v_was_down: bool,      // Ctrl+V 边沿检测：上一帧 V 是否按下
+    // 文本选择（字节索引，None 表示无选择）
+    selection: Option<(usize, usize)>,
+    // 撤销栈（保存修改前的 text + cursor）
+    undo_stack: Vec<(String, usize)>,
+    redo_stack: Vec<(String, usize)>,
+    // 触摸拖拽选择跟踪
+    touch_dragging: bool,
+    touch_anchor: usize,
+    // 待处理的触摸（在 render 中用 Ui 处理）
+    pending_touches: Vec<(f32, f32, u8)>, // (x, y, phase)
+}
+
+impl Default for InlineInputState {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            rect: None,
+            text: String::new(),
+            cursor: 0,
+            active: false,
+            confirmed: false,
+            backspace_held: 0.,
+            backspace_next: 0.,
+            arrow_held: None,
+            arrow_next: 0.,
+            v_was_down: false,
+            selection: None,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            touch_dragging: false,
+            touch_anchor: 0,
+            pending_touches: Vec::new(),
+        }
+    }
+}
+
+static INLINE_INPUT: std::sync::Mutex<InlineInputState> = std::sync::Mutex::new(InlineInputState {
+    id: String::new(),
+    rect: None,
+    text: String::new(),
+    cursor: 0,
+    active: false,
+    confirmed: false,
+    backspace_held: 0.,
+    backspace_next: 0.,
+    arrow_held: None,
+    arrow_next: 0.,
+    v_was_down: false,
+    selection: None,
+    undo_stack: Vec::new(),
+    redo_stack: Vec::new(),
+    touch_dragging: false,
+    touch_anchor: 0,
+    pending_touches: Vec::new(),
+});
+
+/// 激活游戏内输入框。rect=None时在Ui::input中原位绘制，rect=Some时在指定位置绘制
+pub fn activate_inline_input(id: impl Into<String>, rect: Option<Rect>, default: impl Into<String>) {
+    let mut state = INLINE_INPUT.lock().unwrap();
+    let text = default.into();
+    state.id = id.into();
+    state.rect = rect;
+    state.cursor = text.len(); // 字节索引，支持中文等多字节字符
+    state.text = text;
+    state.active = true;
+    state.confirmed = false;
+}
+
+/// 当前是否有激活的游戏内输入框
+pub fn is_inline_input_active() -> bool {
+    INLINE_INPUT.lock().unwrap().active
+}
+
+/// 获取当前激活输入框的全局rect（仅rect=Some模式），用于触摸命中判断
+pub fn inline_input_rect() -> Option<Rect> {
+    let state = INLINE_INPUT.lock().unwrap();
+    if state.active { state.rect } else { None }
+}
+
+/// 确认当前输入框（点击空白处时调用）
+pub fn confirm_inline_input() {
+    let mut state = INLINE_INPUT.lock().unwrap();
+    if state.active {
+        state.active = false;
+        state.confirmed = true;
+    }
+}
+
+/// 取消当前输入框
+pub fn cancel_inline_input() {
+    let mut state = INLINE_INPUT.lock().unwrap();
+    state.active = false;
+    state.confirmed = false;
+}
+
+/// 最后点击的按钮全局 rect（供 request_input 原位显示使用）
+static LAST_CLICKED_RECT: std::sync::Mutex<Option<Rect>> = std::sync::Mutex::new(None);
+
+pub fn set_last_clicked_rect(rect: Rect) {
+    *LAST_CLICKED_RECT.lock().unwrap() = Some(rect);
+}
+
+pub fn take_last_clicked_rect() -> Option<Rect> {
+    LAST_CLICKED_RECT.lock().unwrap().take()
+}
+
+/// 取出输入结果（id, text），确认后返回
+pub fn take_inline_result() -> Option<(String, String)> {
+    let mut state = INLINE_INPUT.lock().unwrap();
+    if state.confirmed {
+        state.confirmed = false;
+        Some((state.id.clone(), state.text.clone()))
+    } else {
+        None
+    }
+}
+
+// === 输入框辅助函数 ===
+
+/// 保存当前状态到撤销栈
+fn push_undo(state: &mut InlineInputState) {
+    state.undo_stack.push((state.text.clone(), state.cursor));
+    if state.undo_stack.len() > 100 {
+        state.undo_stack.remove(0);
+    }
+    state.redo_stack.clear();
+}
+
+/// 获取规范化的选择范围（start <= end），无选择返回 None
+fn selection_range(state: &InlineInputState) -> Option<(usize, usize)> {
+    state.selection.map(|(a, b)| if a <= b { (a, b) } else { (b, a) })
+}
+
+/// 删除选中的文本，返回是否删除了内容
+fn delete_selection(state: &mut InlineInputState) -> bool {
+    if let Some((start, end)) = selection_range(state) {
+        state.text.drain(start..end);
+        state.cursor = start;
+        state.selection = None;
+        true
+    } else {
+        false
+    }
+}
+
+/// 获取选中的文本
+fn selected_text(state: &InlineInputState) -> Option<String> {
+    selection_range(state).map(|(start, end)| state.text[start..end].to_string())
+}
+
+/// 将光标移动到指定位置（字节索引，自动对齐到字符边界）
+fn move_cursor(state: &mut InlineInputState, pos: usize, extend: bool) {
+    let mut pos = pos.min(state.text.len());
+    while pos > 0 && !state.text.is_char_boundary(pos) {
+        pos -= 1;
+    }
+    if extend {
+        match state.selection {
+            Some((anchor, _)) => {
+                state.selection = Some((anchor, pos));
+            }
+            None => {
+                state.selection = Some((state.cursor, pos));
+            }
+        }
+    } else {
+        state.selection = None;
+    }
+    state.cursor = pos;
+}
+
+/// 应用方向键操作（Left/Right/Up/Down），支持 Ctrl 修饰和 Shift 选择
+fn apply_arrow_key(state: &mut InlineInputState, key: KeyCode, ctrl: bool, shift: bool) {
+    match key {
+        KeyCode::Left => {
+            if ctrl {
+                // Ctrl+Left: 按词左移
+                let mut pos = state.cursor;
+                if pos > 0 {
+                    pos -= 1;
+                    while pos > 0 && !state.text.is_char_boundary(pos) { pos -= 1; }
+                    while pos > 0 && state.text[..pos].chars().last().map_or(false, |c| c.is_whitespace()) {
+                        pos -= 1;
+                        while pos > 0 && !state.text.is_char_boundary(pos) { pos -= 1; }
+                    }
+                    while pos > 0 && state.text[..pos].chars().last().map_or(false, |c| !c.is_whitespace()) {
+                        pos -= 1;
+                        while pos > 0 && !state.text.is_char_boundary(pos) { pos -= 1; }
+                    }
+                }
+                move_cursor(state, pos, shift);
+            } else {
+                // 普通左移
+                if state.cursor > 0 {
+                    let mut cursor = state.cursor - 1;
+                    while cursor > 0 && !state.text.is_char_boundary(cursor) { cursor -= 1; }
+                    move_cursor(state, cursor, shift);
+                } else if shift {
+                    state.selection = Some((0, 0));
+                }
+            }
+        }
+        KeyCode::Right => {
+            if ctrl {
+                // Ctrl+Right: 按词右移
+                let mut pos = state.cursor;
+                if pos < state.text.len() {
+                    while pos < state.text.len() && state.text[pos..].chars().next().map_or(false, |c| !c.is_whitespace()) {
+                        pos += 1;
+                        while pos < state.text.len() && !state.text.is_char_boundary(pos) { pos += 1; }
+                    }
+                    while pos < state.text.len() && state.text[pos..].chars().next().map_or(false, |c| c.is_whitespace()) {
+                        pos += 1;
+                        while pos < state.text.len() && !state.text.is_char_boundary(pos) { pos += 1; }
+                    }
+                }
+                move_cursor(state, pos, shift);
+            } else {
+                // 普通右移
+                if state.cursor < state.text.len() {
+                    let mut cursor = state.cursor + 1;
+                    while cursor < state.text.len() && !state.text.is_char_boundary(cursor) { cursor += 1; }
+                    move_cursor(state, cursor, shift);
+                } else if shift {
+                    state.selection = Some((state.cursor, state.cursor));
+                }
+            }
+        }
+        KeyCode::Up => {
+            // 上键：移动到开头
+            move_cursor(state, 0, shift);
+        }
+        KeyCode::Down => {
+            // 下键：移动到结尾
+            let end = state.text.len();
+            move_cursor(state, end, shift);
+        }
+        _ => {}
+    }
+}
+
+/// 处理键盘输入，每帧调用一次。Enter 确认，Esc 取消。
+/// cursor 是字节索引（不是字符计数），以支持中文等多字节字符。
+pub fn update_inline_input() {
+    let mut state = INLINE_INPUT.lock().unwrap();
+    if !state.active {
+        return;
+    }
+
+    let ctrl = is_key_down(KeyCode::LeftControl) || is_key_down(KeyCode::RightControl);
+    let shift = is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift);
+
+    // Ctrl+A: 全选
+    if ctrl && is_key_pressed(KeyCode::A) {
+        state.selection = Some((0, state.text.len()));
+        state.cursor = state.text.len();
+    }
+
+    // Ctrl+C: 复制
+    if ctrl && is_key_pressed(KeyCode::C) {
+        if let Some(text) = selected_text(&state) {
+            unsafe { get_internal_gl() }.quad_context.clipboard_set(&text);
+        }
+    }
+
+    // Ctrl+X: 剪切
+    if ctrl && is_key_pressed(KeyCode::X) {
+        if let Some(text) = selected_text(&state) {
+            unsafe { get_internal_gl() }.quad_context.clipboard_set(&text);
+            push_undo(&mut state);
+            delete_selection(&mut state);
+        }
+    }
+
+    // Ctrl+V: 粘贴（用 is_key_down 边沿检测，避免修饰键导致 is_key_pressed 失效）
+    if ctrl {
+        let v_down = is_key_down(KeyCode::V);
+        if v_down && !state.v_was_down {
+            if let Some(clip) = unsafe { get_internal_gl() }.quad_context.clipboard_get() {
+                if !clip.is_empty() {
+                    push_undo(&mut state);
+                    delete_selection(&mut state);
+                    let cursor = state.cursor;
+                    state.text.insert_str(cursor, &clip);
+                    state.cursor = cursor + clip.len();
+                }
+            }
+        }
+        state.v_was_down = v_down;
+    } else {
+        state.v_was_down = false;
+    }
+
+    // Ctrl+Z: 撤销
+    if ctrl && is_key_pressed(KeyCode::Z) && !shift {
+        if let Some((text, cursor)) = state.undo_stack.pop() {
+            let old_text = std::mem::take(&mut state.text);
+            let old_cursor = state.cursor;
+            state.redo_stack.push((old_text, old_cursor));
+            state.text = text;
+            state.cursor = cursor;
+            state.selection = None;
+        }
+    }
+
+    // Ctrl+Y 或 Ctrl+Shift+Z: 重做
+    if (ctrl && is_key_pressed(KeyCode::Y)) || (ctrl && shift && is_key_pressed(KeyCode::Z)) {
+        if let Some((text, cursor)) = state.redo_stack.pop() {
+            let old_text = std::mem::take(&mut state.text);
+            let old_cursor = state.cursor;
+            state.undo_stack.push((old_text, old_cursor));
+            state.text = text;
+            state.cursor = cursor;
+            state.selection = None;
+        }
+    }
+
+    // 字符输入（每帧都消费队列，避免累积；Ctrl+组合键不会产生可打印字符）
+    let mut chars: Vec<char> = Vec::new();
+    while let Some(c) = get_char_pressed() {
+        if !c.is_control() {
+            chars.push(c);
+        }
+    }
+    if !chars.is_empty() {
+        push_undo(&mut state);
+        delete_selection(&mut state);
+        for c in chars.into_iter().rev() {
+            let cursor = state.cursor;
+            state.text.insert(cursor, c);
+            state.cursor = cursor + c.len_utf8();
+        }
+    }
+
+    // 退格
+    let bs_pressed = is_key_pressed(KeyCode::Backspace);
+    let bs_down = is_key_down(KeyCode::Backspace);
+    if bs_pressed {
+        state.backspace_held = 0.;
+        state.backspace_next = 0.;
+    }
+    if bs_down {
+        let dt = get_frame_time() as f64;
+        state.backspace_held += dt;
+        const INITIAL_DELAY: f64 = 0.4;
+        const REPEAT_INTERVAL: f64 = 0.03;
+        let should_delete = if state.backspace_held < INITIAL_DELAY {
+            bs_pressed
+        } else {
+            if state.backspace_next == 0. {
+                state.backspace_next = state.backspace_held + REPEAT_INTERVAL;
+                true
+            } else if state.backspace_held >= state.backspace_next {
+                state.backspace_next += REPEAT_INTERVAL;
+                true
+            } else {
+                false
+            }
+        };
+        if should_delete {
+            if state.selection.is_some() {
+                push_undo(&mut state);
+                delete_selection(&mut state);
+                state.backspace_held = 0.;
+                state.backspace_next = 0.;
+            } else if state.cursor > 0 {
+                if bs_pressed { push_undo(&mut state); }
+                let mut cursor = state.cursor;
+                while cursor > 0 && !state.text.is_char_boundary(cursor) { cursor -= 1; }
+                if cursor > 0 {
+                    let mut start = cursor - 1;
+                    while start > 0 && !state.text.is_char_boundary(start) { start -= 1; }
+                    state.text.drain(start..cursor);
+                    state.cursor = start;
+                }
+            }
+        }
+    } else {
+        state.backspace_held = 0.;
+        state.backspace_next = 0.;
+    }
+
+    // Delete 键
+    if is_key_pressed(KeyCode::Delete) {
+        if state.selection.is_some() {
+            push_undo(&mut state);
+            delete_selection(&mut state);
+        } else if state.cursor < state.text.len() {
+            push_undo(&mut state);
+            let mut cursor = state.cursor;
+            while cursor < state.text.len() && !state.text.is_char_boundary(cursor) { cursor += 1; }
+            if cursor < state.text.len() {
+                let mut end = cursor + 1;
+                while end < state.text.len() && !state.text.is_char_boundary(end) { end += 1; }
+                state.text.drain(cursor..end);
+            }
+        }
+    }
+
+    // === 方向键处理（支持长按重复） ===
+    let now = get_time();
+    // 检测当前按下的方向键（优先首次按下的）
+    let pressed_arrow = if is_key_pressed(KeyCode::Left) { Some(KeyCode::Left) }
+        else if is_key_pressed(KeyCode::Right) { Some(KeyCode::Right) }
+        else if is_key_pressed(KeyCode::Up) { Some(KeyCode::Up) }
+        else if is_key_pressed(KeyCode::Down) { Some(KeyCode::Down) }
+        else { None };
+
+    if let Some(key) = pressed_arrow {
+        state.arrow_held = Some(key);
+        state.arrow_next = now + 0.4; // 400ms 初始延迟
+        apply_arrow_key(&mut state, key, ctrl, shift);
+    } else if let Some(key) = state.arrow_held {
+        // 检查是否还在按住
+        if !is_key_down(key) {
+            state.arrow_held = None;
+        } else if now >= state.arrow_next {
+            apply_arrow_key(&mut state, key, ctrl, shift);
+            state.arrow_next = now + 0.03; // 30ms 重复间隔
+        }
+    }
+
+    // Enter 确认
+    if is_key_pressed(KeyCode::Enter) || is_key_pressed(KeyCode::KpEnter) {
+        state.active = false;
+        state.confirmed = true;
+    }
+
+    // Esc 取消
+    if is_key_pressed(KeyCode::Escape) {
+        state.active = false;
+        state.confirmed = false;
+    }
+}
+
+/// 在指定 rect 处绘制输入框编辑状态（通用，调用方负责坐标上下文）
+/// draw_text: 是否渲染文字（原位模式由按钮显示文字，传 false；指定位置模式传 true）
+fn draw_input_editor(ui: &mut Ui, rect: Rect, text: &str, cursor: usize, selection: Option<(usize, usize)>, time: f64, draw_text: bool) {
+    // 强制 alpha=1，避免场景半透明容器导致文字透明
+    let old_alpha = ui.alpha;
+    ui.alpha = 1.;
+
+    // 透明背景
+    ui.fill_rect(rect, Color::new(0., 0., 0., 0.25));
+    // 边框
+    let bw = 0.003;
+    ui.fill_rect(Rect::new(rect.x, rect.y, rect.w, bw), Color::new(1., 1., 1., 0.6));
+    ui.fill_rect(Rect::new(rect.x, rect.y + rect.h - bw, rect.w, bw), Color::new(1., 1., 1., 0.6));
+    ui.fill_rect(Rect::new(rect.x, rect.y, bw, rect.h), Color::new(1., 1., 1., 0.6));
+    ui.fill_rect(Rect::new(rect.x + rect.w - bw, rect.y, bw, rect.h), Color::new(1., 1., 1., 0.6));
+
+    let font_size = (rect.h * 6.0).clamp(0.3, 0.6);
+    let text_y = rect.y + rect.h / 2.;
+    let padding = 0.01;
+    let visible_width = rect.w - padding * 2.;
+
+    // 测量文本总宽度和光标前文本宽度
+    let text_width = ui.text(text).size(font_size).no_baseline().measure().w;
+    let before_cursor = &text[..cursor.min(text.len())];
+    let cursor_x_abs = ui.text(before_cursor).size(font_size).no_baseline().measure().w;
+
+    // 计算滚动偏移量，确保光标始终在可见范围内
+    let mut scroll_x = 0f32;
+    if text_width > visible_width {
+        let max_scroll = text_width - visible_width;
+        if cursor_x_abs > scroll_x + visible_width - padding {
+            scroll_x = cursor_x_abs - visible_width + padding;
+        }
+        if cursor_x_abs < scroll_x + padding {
+            scroll_x = (cursor_x_abs - padding).max(0.);
+        }
+        scroll_x = scroll_x.clamp(0., max_scroll);
+    }
+
+    // scissor 裁剪，超出输入框范围的文字不显示
+    ui.scissor(rect, |ui| {
+        // 选中高亮
+        if let Some((sel_start, sel_end)) = selection {
+            let (s, e) = if sel_start <= sel_end { (sel_start, sel_end) } else { (sel_end, sel_start) };
+            let sel_before = &text[..s.min(text.len())];
+            let sel_x = ui.text(sel_before).size(font_size).no_baseline().measure().w;
+            let sel_text = &text[s.min(text.len())..e.min(text.len())];
+            let sel_w = ui.text(sel_text).size(font_size).no_baseline().measure().w;
+            ui.fill_rect(
+                Rect::new(rect.x + padding + sel_x - scroll_x, rect.y + rect.h * 0.15, sel_w, rect.h * 0.7),
+                Color::new(0.2, 0.4, 0.8, 0.6),
+            );
+        }
+
+        if draw_text {
+            ui.text(text)
+                .pos(rect.x + padding - scroll_x, text_y)
+                .anchor(0., 0.5)
+                .size(font_size)
+                .color(Color::new(1., 1., 1., 1.))
+                .no_baseline()
+                .draw();
+        }
+
+        // 闪烁光标（500ms 周期）
+        let cursor_visible = (time % 1.0) < 0.5;
+        if cursor_visible {
+            let cursor_x = rect.x + padding + cursor_x_abs - scroll_x;
+            ui.fill_rect(
+                Rect::new(cursor_x, rect.y + rect.h * 0.2, 0.003, rect.h * 0.6),
+                Color::new(1., 1., 1., 1.),
+            );
+        }
+    });
+
+    ui.alpha = old_alpha;
+}
+
+/// 根据触摸位置计算文本中的字节索引（用于点击定位光标和拖拽选择）
+fn position_to_offset(ui: &mut Ui, text: &str, rect: Rect, touch_x: f32, font_size: f32) -> usize {
+    let padding = 0.01;
+    let relative_x = touch_x - rect.x - padding;
+    if relative_x <= 0. {
+        return 0;
+    }
+    // 逐字符累加宽度，找到最接近的位置
+    let mut offset = 0;
+    let mut acc_width = 0f32;
+    for (i, c) in text.char_indices() {
+        let char_text = c.to_string();
+        let char_width = ui.text(&char_text).size(font_size).no_baseline().measure().w;
+        if relative_x < acc_width + char_width / 2. {
+            return offset;
+        }
+        acc_width += char_width;
+        offset = i + c.len_utf8();
+    }
+    text.len()
+}
+
+/// 处理输入框内的触摸事件（存储触摸信息，在 render 中用 Ui 处理光标定位和选择）
+/// touch_phase: 0=开始, 1=移动, 2=结束
+pub fn handle_inline_input_touch(touch_x: f32, touch_y: f32, touch_phase: u8) {
+    let mut state = INLINE_INPUT.lock().unwrap();
+    if !state.active {
+        return;
+    }
+    state.pending_touches.push((touch_x, touch_y, touch_phase));
+}
+
+/// 渲染游戏内输入框（仅 rect=Some 模式，在 Main::render 中调用）
+pub fn render_inline_input(ui: &mut Ui, time: f64) {
+    let mut state = INLINE_INPUT.lock().unwrap();
+    if !state.active {
+        return;
+    }
+    let Some(rect) = state.rect else { return };
+
+    // 处理待处理的触摸（光标定位和拖拽选择）
+    let pending: Vec<(f32, f32, u8)> = std::mem::take(&mut state.pending_touches);
+    for (touch_x, touch_y, phase) in pending {
+        // 判断是否在输入框区域内
+        let in_rect = touch_x >= rect.x && touch_x <= rect.x + rect.w
+            && touch_y >= rect.y && touch_y <= rect.y + rect.h;
+        if !in_rect {
+            // 区域外：确认输入（只在触摸开始时确认，避免移动时误触发）
+            if phase == 0 {
+                state.active = false;
+                state.confirmed = true;
+            }
+            continue;
+        }
+        // 区域内：处理光标定位和拖拽选择
+        let font_size = (rect.h * 6.0).clamp(0.3, 0.6);
+        let text = state.text.clone();
+        let offset = position_to_offset(ui, &text, rect, touch_x, font_size);
+        match phase {
+            0 => {
+                state.cursor = offset;
+                state.touch_anchor = offset;
+                state.touch_dragging = true;
+                state.selection = None;
+            }
+            1 => {
+                if state.touch_dragging {
+                    state.cursor = offset;
+                    if offset != state.touch_anchor {
+                        state.selection = Some((state.touch_anchor, offset));
+                    } else {
+                        state.selection = None;
+                    }
+                }
+            }
+            2 => {
+                state.touch_dragging = false;
+            }
+            _ => {}
+        }
+    }
+
+    let text = state.text.clone();
+    let cursor = state.cursor;
+    let selection = state.selection;
+    drop(state);
+    draw_input_editor(ui, rect, &text, cursor, selection, time, true);
+}
+
+/// Ui::input 原位绘制：如果当前激活的输入框 id 匹配，在指定 rect 处绘制背景、边框、光标（文字由按钮显示）
+pub fn render_inline_input_inline(ui: &mut Ui, id: &str, rect: Rect) -> bool {
+    let state = INLINE_INPUT.lock().unwrap();
+    if !state.active || state.rect.is_some() || state.id != id {
+        return false;
+    }
+    let text = state.text.clone();
+    let cursor = state.cursor;
+    let selection = state.selection;
+    drop(state);
+    draw_input_editor(ui, rect, &text, cursor, selection, get_time(), false);
+    true
+}
+
 pub struct Ui<'a> {
     pub top: f32,
     pub viewport: (i32, i32, i32, i32),
@@ -985,6 +1621,8 @@ impl<'a> Ui<'a> {
             }
         });
         if res {
+            // 记录最后点击的按钮全局 rect，供 request_input 原位显示使用
+            set_last_clicked_rect(rect);
             return true;
         }
         if !any && exists {
@@ -1064,14 +1702,34 @@ impl<'a> Ui<'a> {
         let r = self.text(label).anchor(1., 0.).size(0.47).draw();
         let lf = r.x;
         let r = Rect::new(0.02, r.y - 0.01, params.length, r.h + 0.02);
-        if if params.mode == InputMode::Password {
-            self.button(&id, r, "*".repeat(value.chars().count()))
+        // 如果当前激活的是本输入框（原位模式），按钮显示编辑中的文字
+        let editing_text = {
+            let state = INLINE_INPUT.lock().unwrap();
+            if state.active && state.rect.is_none() && state.id == id {
+                Some(state.text.clone())
+            } else {
+                None
+            }
+        };
+        let display_text = if let Some(et) = &editing_text {
+            if params.mode == InputMode::Password {
+                "*".repeat(et.chars().count())
+            } else {
+                et.lines().next().unwrap_or_default().to_owned()
+            }
+        } else if params.mode == InputMode::Password {
+            "*".repeat(value.chars().count())
         } else {
-            self.button(&id, r, value.lines().next().unwrap_or_default())
-        } {
-            request_input(&id, InputBox::new().default_text(value.as_str()).mode(params.mode));
+            value.lines().next().unwrap_or_default().to_owned()
+        };
+        if self.button(&id, r, display_text) {
+            // 点击输入框：激活游戏内输入框，原位模式（rect=None）
+            activate_inline_input(&id, None, value.as_str());
         }
-        if let Some((its_id, text)) = take_input() {
+        // 如果当前激活的是本输入框（原位模式），在原位置覆盖绘制背景、边框、光标（文字由按钮显示）
+        let _ = render_inline_input_inline(self, &id, r);
+        // 检查游戏内输入框的结果
+        if let Some((its_id, text)) = take_inline_result() {
             if its_id == id {
                 if let Some(changed) = params.changed {
                     *changed = true;

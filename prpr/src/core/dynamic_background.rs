@@ -56,8 +56,11 @@ uniform vec4 color11;
 uniform vec4 color12;
 uniform vec4 color13;
 
+// Apple Music 风格：大尺度、慢运动、柔和流动的流体色块
+// 使用 fBm 噪声驱动色块位置和形状，使过渡更自然平滑
+
 float hash(vec2 p) {
-    return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
 
 float noise(vec2 p) {
@@ -69,6 +72,18 @@ float noise(vec2 p) {
     float c = hash(i + vec2(0.0, 1.0));
     float d = hash(i + vec2(1.0, 1.0));
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+// fBm: 分形布朗运动，使噪声更自然、有层次
+float fbm(vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    for (int i = 0; i < 4; ++i) {
+        v += a * noise(p);
+        p *= 2.0;
+        a *= 0.5;
+    }
+    return v;
 }
 
 vec4 color_for(int i) {
@@ -95,40 +110,49 @@ void main() {
     float wsum = 0.0;
     int count = int(clamp(blob_count, 1.0, 14.0));
 
-    // 使用常量上界循环 + break，避免 GLES 2.0 不允许的动态循环索引导致驱动崩溃
+    // 慢时间系数：Apple Music 风格运动非常缓慢
+    float slow_time = time * 0.025;
+
     for (int i = 0; i < 14; ++i) {
         if (i >= count) { break; }
         vec4 col = color_for(i);
         float fi = float(i);
-        float t = time * (0.10 + noise(vec2(fi, 0.0)) * 0.07);
 
+        // 色块中心：由 fBm 噪声驱动，运动缓慢且自然
         vec2 center = vec2(
-            noise(vec2(fi * 1.7, t)),
-            noise(vec2(fi * 1.7 + 100.0, t))
+            fbm(vec2(fi * 0.7 + slow_time * 0.3, fi * 1.3)),
+            fbm(vec2(fi * 1.1 + 50.0, fi * 0.9 + slow_time * 0.3))
         );
 
         vec2 diff = uv - center;
         diff.x *= aspect;
 
-        float radius = 0.44 + noise(vec2(fi, 1.0)) * 0.28;
-        radius += (noise(uv * 3.0 + t * 0.7 + fi) - 0.5) * 0.16;
-        radius += energy * 0.14;
+        // 大半径：Apple Music 风格是大面积的色彩流动
+        float radius = 0.75 + fbm(vec2(fi * 2.0, slow_time * 0.2)) * 0.35;
+        radius += energy * 0.25;
 
+        // 形状扰动：使用大尺度噪声，使色块边缘柔和流动
+        float shape_noise = fbm(uv * 1.5 + vec2(slow_time * 0.5 + fi, slow_time * 0.3));
         float d = length(diff) / radius;
-        d += (noise(uv * 5.0 - t * 0.4 + fi * 2.0) - 0.5) * 0.24;
+        d += (shape_noise - 0.5) * 0.35;
 
-        float w = exp(-d * d * 2.2);
+        // 平滑权重：高斯衰减，使色彩过渡非常柔和
+        float w = exp(-d * d * 1.5);
         acc += col.rgb * w;
         wsum += w;
     }
 
-    vec3 blob_col = wsum > 0.001 ? acc / wsum : avg_color * 0.55;
-    float blend = clamp(wsum * 1.5 + 0.14, 0.0, 1.0);
-    vec3 col = mix(avg_color * (0.32 + (1.0 - mode) * 0.12), blob_col, blend);
-    col += (noise(uv * 7.0 + time * 0.08) - 0.5) * 0.05;
+    // 加权平均混合，避免色块边界
+    vec3 blob_col = wsum > 0.001 ? acc / wsum : avg_color * 0.5;
+    float blend = clamp(wsum * 1.2 + 0.1, 0.0, 1.0);
+    vec3 col = mix(avg_color * 0.25, blob_col, blend);
 
-    float base = 1.0 + (1.0 - mode) * 0.26 - mode * 0.10;
-    float amp = mode * 0.70;
+    // 细微纹理：增加流体质感
+    col += (fbm(uv * 3.0 + slow_time * 0.5) - 0.5) * 0.04;
+
+    // 整体亮度（调亮版）
+    float base = 1.05 + (1.0 - mode) * 0.15;
+    float amp = mode * 0.90;
     col *= base + energy * amp;
 
     gl_FragColor = vec4(col, 1.0);
@@ -162,22 +186,23 @@ vec3 hsv2rgb(vec3 c) {
 void main() {
     vec3 col = texture2D(screenTexture, uv).rgb;
 
-    // 模式 2：全频段 RMS 能量驱动饱和度与亮度“呼吸”
+    // 模式 2：全频段 RMS 能量驱动饱和度与亮度呼吸，响应更明显
     if (mode > 0.5) {
         vec3 hsv = rgb2hsv(col);
-        hsv.y *= 1.0 + energy * 0.85;
-        hsv.z *= 0.80 + energy * 0.55;
+        hsv.y *= 1.0 + energy * 1.1;
+        hsv.z *= 0.80 + energy * 0.75;
         col = hsv2rgb(hsv);
     }
 
-    // 原曲背景暗度叠加。静态亮度模式下弱化暗度，让色块更明亮。
-    float final_dim = dim * (mode < 1.5 ? 0.03 : 0.08);
+    // 整体暗度（更亮版）
+    float final_dim = dim * (mode < 1.5 ? 0.02 : 0.04);
     col *= 1.0 - final_dim;
 
-    // 轻微暗角，保留更多亮度
-    vec2 vuv = (uv - 0.5) * 1.4;
-    float vig = 1.0 - dot(vuv, vuv);
-    vig = 0.7 + 0.3 * smoothstep(0.0, 0.85, vig);
+    // 柔和暗角（更亮版）
+    vec2 vuv = (uv - 0.5) * 1.6;
+    float vig = 1.0 - dot(vuv, vuv) * 0.25;
+    vig = clamp(vig, 0.0, 1.0);
+    vig = 0.94 + 0.06 * vig;
     col *= vig;
 
     gl_FragColor = vec4(col, 1.0);
@@ -409,10 +434,11 @@ impl DynamicBackground {
     }
 
     fn blob_count_for((_, _, w, h): (i32, i32, i32, i32)) -> usize {
+        // Apple Music 风格：少量大色块，5-6个
         let area = w as f32 * h as f32;
-        let scale = (area / 130_000.0).sqrt();
-        let count = (scale * 2.8).ceil() as usize;
-        count.clamp(7, MAX_BLOBS)
+        let scale = (area / 200_000.0).sqrt();
+        let count = (4.0 + scale * 1.5).ceil() as usize;
+        count.clamp(5, 8)
     }
 
     /// 将音乐文件解码为单声道数据，用于模式 2。
@@ -479,8 +505,8 @@ impl DynamicBackground {
         let energy = if self.mode >= 2 {
             if let Some(audio) = &self.audio {
                 let raw = audio.full_band_rms(music_position.unwrap_or(0.0) as f64);
-                // 平滑过渡，避免突变
-                self.bass_smooth = self.bass_smooth * 0.88 + raw * 0.12;
+                // 平滑过渡，响应更灵敏
+                self.bass_smooth = self.bass_smooth * 0.75 + raw * 0.25;
                 self.bass_smooth
             } else {
                 self.bass_smooth * 0.95
@@ -549,9 +575,9 @@ impl DynamicBackground {
 
     fn create_targets(viewport: (i32, i32, i32, i32)) -> (RenderTarget, SafeTexture, RenderPass) {
         let (w, h) = (viewport.2 as u32, viewport.3 as u32);
-        // 色块目标为视口 1/4，用线性放大实现模糊；至少 128x128 防止过度马赛克
-        let blob_w = (w / 3).max(128);
-        let blob_h = (h / 3).max(128);
+        // Apple Music 风格：色块目标为视口 1/5，重度模糊；至少 96x96
+        let blob_w = (w / 5).max(96);
+        let blob_h = (h / 5).max(96);
 
         let blob_target = render_target(blob_w, blob_h);
         blob_target.texture.set_filter(FilterMode::Linear);

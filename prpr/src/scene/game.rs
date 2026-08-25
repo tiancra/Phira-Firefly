@@ -277,6 +277,8 @@ macro_rules! reset {
         $self.dead = false;
         $self.active_lyrics.clear();
         $self.lyric_index = 0;
+        $self.health = 100.0;
+        $self.last_judge_counts = [0; 4];
     }};
 }
 

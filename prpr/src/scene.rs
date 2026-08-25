@@ -171,24 +171,19 @@ fn show_inputbox(config: InputBox, backend: &dyn Backend) {
 }
 
 #[inline]
-pub fn request_input(id: impl Into<String>, mut config: InputBox) {
-    *INPUT_TEXT.lock().unwrap() = (Some(id.into()), None);
-    if config.title.is_none() {
-        config = config.title(ttl!("input"));
-    }
-    if config.prompt.is_none() {
-        config = config.prompt(ttl!("input-msg"));
-    }
-    if config.cancel_label.is_none() {
-        config = config.cancel_label(ttl!("cancel"));
-    }
-    if config.ok_label.is_none() {
-        config = config.ok_label(ttl!("confirm"));
-    }
-    show_inputbox(config, &*default_backend());
+pub fn request_input(id: impl Into<String>, config: InputBox) {
+    let id = id.into();
+    let default = config.default.to_string();
+    // 优先使用最后点击的按钮位置（原位显示），没有则屏幕中间
+    let rect = crate::ui::take_last_clicked_rect().unwrap_or(Rect { x: -0.4, y: -0.08, w: 0.8, h: 0.1 });
+    crate::ui::activate_inline_input(id, Some(rect), default);
 }
 
 pub fn take_input() -> Option<(String, String)> {
+    // 优先从游戏内输入框取结果
+    if let Some(result) = crate::ui::take_inline_result() {
+        return Some(result);
+    }
     let mut w = INPUT_TEXT.lock().unwrap();
     w.0.clone().zip(std::mem::take(&mut w.1))
 }
@@ -493,8 +488,33 @@ impl Main {
         }
 
         Judge::on_new_frame();
+        // 处理游戏内输入框的键盘输入
+        crate::ui::update_inline_input();
         let mut touches = Judge::get_touches();
         touches.iter_mut().for_each(f);
+        // 游戏内输入框触摸处理
+        if crate::ui::is_inline_input_active() {
+            if crate::ui::inline_input_rect().is_none() {
+                // 原位模式（Ui::input）：任何触摸都确认
+                if !touches.is_empty() {
+                    crate::ui::confirm_inline_input();
+                    touches.clear();
+                }
+            } else {
+                // 指定位置模式：把所有触摸事件传给输入框处理（在 render 中判断区域）
+                for touch in &touches {
+                    use macroquad::input::TouchPhase;
+                    let phase = match touch.phase {
+                        TouchPhase::Started => 0u8,
+                        TouchPhase::Moved => 1u8,
+                        TouchPhase::Ended | TouchPhase::Cancelled => 2u8,
+                        TouchPhase::Stationary => continue,
+                    };
+                    crate::ui::handle_inline_input_touch(touch.position.x, touch.position.y, phase);
+                }
+                touches.clear();
+            }
+        }
         if !(touches.is_empty() || FULL_LOADING.with(|it| it.borrow().is_some())) {
             let now = self.tm.now();
             let delta = (now - self.last_update_time) / touches.len() as f64;
@@ -566,6 +586,9 @@ impl Main {
             set_camera(&ui.camera());
             let mut gl = unsafe { get_internal_gl() };
             gl.flush();
+
+            // 渲染游戏内输入框（在 set_camera 之后，确保相机状态正确，避免文字翻转）
+            crate::ui::render_inline_input(&mut ui, self.tm.now());
 
             BILLBOARD.with(|it| {
                 let mut guard = it.borrow_mut();

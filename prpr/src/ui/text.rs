@@ -113,6 +113,7 @@ impl<'a, 's, 'ui> DrawText<'a, 's, 'ui> {
         let default_text_painter = &mut self.ui.text_painter;
         let painter = painter.as_deref_mut().unwrap_or(default_text_painter);
 
+        let color_arr = [self.color.r, self.color.g, self.color.b, self.color.a];
         let mut section = Section::new().with_layout(Layout::default().h_align(self.h_align));
         if painter.brush.fonts().len() > 1 {
             let mut last = 0;
@@ -124,7 +125,7 @@ impl<'a, 's, 'ui> DrawText<'a, 's, 'ui> {
                         section = section.add_text(
                             Text::new(&text[last..i])
                                 .with_scale(scale)
-                                .with_color(self.color)
+                                .with_color(color_arr)
                                 .with_font_id(FontId((!last_contain) as usize)),
                         );
                     }
@@ -136,12 +137,12 @@ impl<'a, 's, 'ui> DrawText<'a, 's, 'ui> {
                 section = section.add_text(
                     Text::new(&text[last..])
                         .with_scale(scale)
-                        .with_color(self.color)
+                        .with_color(color_arr)
                         .with_font_id(FontId((!last_contain) as usize)),
                 );
             }
         } else {
-            section = section.add_text(Text::new(text).with_scale(scale).with_color(self.color));
+            section = section.add_text(Text::new(text).with_scale(scale).with_color(color_arr));
         }
 
         let s = 2. / vp.2 as f32;
@@ -349,7 +350,8 @@ impl TextPainter {
                 |vertex| {
                     let pos = &vertex.pixel_coords;
                     let uv = &vertex.tex_coords;
-                    let mut color: Color = vertex.extra.color.into();
+                    let c = vertex.extra.color;
+                    let mut color = Color::new(c[0], c[1], c[2], c[3]);
                     color.a *= alpha;
                     [
                         MyVertex::new(pos.min.x, pos.min.y, uv.min.x, uv.min.y, color),
@@ -370,7 +372,7 @@ impl TextPainter {
                 }
                 Ok(BrushAction::Draw(vertices)) => {
                     self.vertices_buffer.clear();
-                    self.vertices_buffer.extend(vertices.into_iter().flatten());
+                    self.vertices_buffer.extend(vertices.into_iter().rev().flatten());
                     self.redraw(tr);
                     break;
                 }

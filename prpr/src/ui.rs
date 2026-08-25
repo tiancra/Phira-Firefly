@@ -690,6 +690,7 @@ struct InlineInputState {
     cursor: usize,
     active: bool,
     confirmed: bool,
+    show_at: f64, // 延迟显示的时间戳（等软键盘弹出后再显示输入框 UI）
     // 按键重复状态
     backspace_held: f64,  // Backspace 已按住时间
     backspace_next: f64,  // 下一次重复删除的时间点
@@ -717,6 +718,7 @@ impl Default for InlineInputState {
             cursor: 0,
             active: false,
             confirmed: false,
+            show_at: 0.,
             backspace_held: 0.,
             backspace_next: 0.,
             arrow_held: None,
@@ -739,6 +741,7 @@ static INLINE_INPUT: std::sync::Mutex<InlineInputState> = std::sync::Mutex::new(
     cursor: 0,
     active: false,
     confirmed: false,
+    show_at: 0.,
     backspace_held: 0.,
     backspace_next: 0.,
     arrow_held: None,
@@ -754,6 +757,9 @@ static INLINE_INPUT: std::sync::Mutex<InlineInputState> = std::sync::Mutex::new(
 
 /// 激活游戏内输入框。rect=None时在Ui::input中原位绘制，rect=Some时在指定位置绘制
 pub fn activate_inline_input(id: impl Into<String>, rect: Option<Rect>, default: impl Into<String>) {
+    // 先弹出系统软键盘（Android），再创建输入框，避免时序问题
+    set_soft_keyboard(true);
+    let now = miniquad::date::now();
     let mut state = INLINE_INPUT.lock().unwrap();
     let text = default.into();
     state.id = id.into();
@@ -762,6 +768,11 @@ pub fn activate_inline_input(id: impl Into<String>, rect: Option<Rect>, default:
     state.text = text;
     state.active = true;
     state.confirmed = false;
+    // Android 上延迟显示，等软键盘弹出动画完成；其他平台无延迟
+    #[cfg(target_os = "android")]
+    { state.show_at = now + 0.3; }
+    #[cfg(not(target_os = "android"))]
+    { state.show_at = now; }
     state.backspace_held = 0.;
     state.backspace_next = 0.;
     state.arrow_held = None;
@@ -775,8 +786,6 @@ pub fn activate_inline_input(id: impl Into<String>, rect: Option<Rect>, default:
     drop(state);
     // 清空 get_char_pressed 队列，避免游玩时累积的按键一次性输入
     while get_char_pressed().is_some() {}
-    // 显示系统软键盘（Android 上有效，支持中文输入法）
-    set_soft_keyboard(true);
 }
 
 /// 当前是否有激活的游戏内输入框
@@ -836,6 +845,59 @@ pub fn take_inline_result() -> Option<(String, String)> {
         Some((state.id.clone(), state.text.clone()))
     } else {
         None
+    }
+}
+
+// === Android 输入法操作（通过 JNI 调用） ===
+
+/// 全选当前输入框文本
+pub fn inline_input_select_all() {
+    let mut state = INLINE_INPUT.lock().unwrap();
+    if state.active {
+        state.selection = Some((0, state.text.len()));
+        state.cursor = state.text.len();
+    }
+}
+
+/// 复制选中文本到剪贴板
+pub fn inline_input_copy() {
+    let state = INLINE_INPUT.lock().unwrap();
+    if state.active {
+        if let Some(text) = selected_text(&state) {
+            if !text.is_empty() {
+                unsafe { get_internal_gl() }.quad_context.clipboard_set(&text);
+            }
+        }
+    }
+}
+
+/// 剪切选中文本
+pub fn inline_input_cut() {
+    let mut state = INLINE_INPUT.lock().unwrap();
+    if state.active {
+        if let Some(text) = selected_text(&state) {
+            if !text.is_empty() {
+                unsafe { get_internal_gl() }.quad_context.clipboard_set(&text);
+                push_undo(&mut state);
+                delete_selection(&mut state);
+            }
+        }
+    }
+}
+
+/// 粘贴剪贴板内容
+pub fn inline_input_paste() {
+    let mut state = INLINE_INPUT.lock().unwrap();
+    if state.active {
+        if let Some(clip) = unsafe { get_internal_gl() }.quad_context.clipboard_get() {
+            if !clip.is_empty() {
+                push_undo(&mut state);
+                delete_selection(&mut state);
+                let cursor = state.cursor;
+                state.text.insert_str(cursor, &clip);
+                state.cursor = cursor + clip.len();
+            }
+        }
     }
 }
 
@@ -1279,6 +1341,11 @@ pub fn render_inline_input(ui: &mut Ui, time: f64) {
     if !state.active {
         return;
     }
+    // 延迟显示：等软键盘弹出后再渲染输入框 UI
+    let now = miniquad::date::now();
+    if now < state.show_at {
+        return;
+    }
     let Some(rect) = state.rect else { return };
 
     // 处理待处理的触摸（光标定位和拖拽选择）
@@ -1337,6 +1404,11 @@ pub fn render_inline_input(ui: &mut Ui, time: f64) {
 pub fn render_inline_input_inline(ui: &mut Ui, id: &str, rect: Rect) -> bool {
     let state = INLINE_INPUT.lock().unwrap();
     if !state.active || state.rect.is_some() || state.id != id {
+        return false;
+    }
+    // 延迟显示：等软键盘弹出后再渲染输入框 UI
+    let now = miniquad::date::now();
+    if now < state.show_at {
         return false;
     }
     let text = state.text.clone();

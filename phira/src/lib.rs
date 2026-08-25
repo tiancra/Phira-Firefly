@@ -819,6 +819,32 @@ pub extern "C" fn Java_quad_1native_QuadNative_antiAddictionCallback(_env: EnvUn
     }
 }
 
+// === Android 输入法操作（全选/复制/剪切/粘贴） ===
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "C" fn Java_quad_1native_QuadNative_inputSelectAll(_env: EnvUnowned, _class: JClass) {
+    prpr::ui::inline_input_select_all();
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "C" fn Java_quad_1native_QuadNative_inputCopy(_env: EnvUnowned, _class: JClass) {
+    prpr::ui::inline_input_copy();
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "C" fn Java_quad_1native_QuadNative_inputCut(_env: EnvUnowned, _class: JClass) {
+    prpr::ui::inline_input_cut();
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "C" fn Java_quad_1native_QuadNative_inputPaste(_env: EnvUnowned, _class: JClass) {
+    prpr::ui::inline_input_paste();
+}
+
 #[cfg(target_env = "ohos")]
 #[napi]
 pub fn set_input_text(text: String) {

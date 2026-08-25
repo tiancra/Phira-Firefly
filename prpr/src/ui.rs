@@ -762,6 +762,21 @@ pub fn activate_inline_input(id: impl Into<String>, rect: Option<Rect>, default:
     state.text = text;
     state.active = true;
     state.confirmed = false;
+    state.backspace_held = 0.;
+    state.backspace_next = 0.;
+    state.arrow_held = None;
+    state.arrow_next = 0.;
+    state.v_was_down = false;
+    state.selection = None;
+    state.undo_stack.clear();
+    state.redo_stack.clear();
+    state.touch_dragging = false;
+    state.pending_touches.clear();
+    drop(state);
+    // 清空 get_char_pressed 队列，避免游玩时累积的按键一次性输入
+    while get_char_pressed().is_some() {}
+    // 显示系统软键盘（Android 上有效，支持中文输入法）
+    set_soft_keyboard(true);
 }
 
 /// 当前是否有激活的游戏内输入框
@@ -775,20 +790,31 @@ pub fn inline_input_rect() -> Option<Rect> {
     if state.active { state.rect } else { None }
 }
 
+/// 显示或隐藏系统软键盘（Android 上有效，其他平台为空操作）
+fn set_soft_keyboard(show: bool) {
+    unsafe { get_internal_gl() }.quad_context.show_keyboard(show);
+}
+
 /// 确认当前输入框（点击空白处时调用）
 pub fn confirm_inline_input() {
     let mut state = INLINE_INPUT.lock().unwrap();
     if state.active {
         state.active = false;
         state.confirmed = true;
+        drop(state);
+        set_soft_keyboard(false);
     }
 }
 
 /// 取消当前输入框
 pub fn cancel_inline_input() {
     let mut state = INLINE_INPUT.lock().unwrap();
-    state.active = false;
-    state.confirmed = false;
+    if state.active {
+        state.active = false;
+        state.confirmed = false;
+        drop(state);
+        set_soft_keyboard(false);
+    }
 }
 
 /// 最后点击的按钮全局 rect（供 request_input 原位显示使用）
@@ -1122,12 +1148,18 @@ pub fn update_inline_input() {
     if is_key_pressed(KeyCode::Enter) || is_key_pressed(KeyCode::KpEnter) {
         state.active = false;
         state.confirmed = true;
+        drop(state);
+        set_soft_keyboard(false);
+        return;
     }
 
     // Esc 取消
     if is_key_pressed(KeyCode::Escape) {
         state.active = false;
         state.confirmed = false;
+        drop(state);
+        set_soft_keyboard(false);
+        return;
     }
 }
 
@@ -1260,6 +1292,9 @@ pub fn render_inline_input(ui: &mut Ui, time: f64) {
             if phase == 0 {
                 state.active = false;
                 state.confirmed = true;
+                drop(state);
+                set_soft_keyboard(false);
+                return;
             }
             continue;
         }
@@ -1699,7 +1734,7 @@ impl<'a> Ui<'a> {
         let label = label.into();
         let params = params.into();
         let id = format!("input#{label}");
-        let r = self.text(label).anchor(1., 0.).size(0.47).draw();
+        let r = self.text(label.as_str()).anchor(1., 0.).size(0.47).draw();
         let lf = r.x;
         let r = Rect::new(0.02, r.y - 0.01, params.length, r.h + 0.02);
         // 如果当前激活的是本输入框（原位模式），按钮显示编辑中的文字

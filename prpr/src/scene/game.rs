@@ -72,6 +72,7 @@ const PAUSE_CLICK_INTERVAL: f32 = 0.7;
 #[cfg(target_os = "windows")]
 mod windows_ime {
     use std::os::raw::c_void;
+    use std::sync::Mutex;
 
     #[link(name = "user32")]
     extern "system" {
@@ -85,11 +86,18 @@ mod windows_ime {
         fn ImmReleaseContext(hwnd: *mut c_void, himc: *mut c_void) -> i32;
     }
 
+    struct Himc(*mut c_void);
+    unsafe impl Send for Himc {}
+
+    // 保存 disable 前的 IME 上下文，enable 时恢复
+    static SAVED_HIMC: Mutex<Option<Himc>> = Mutex::new(None);
+
     pub fn disable() {
         unsafe {
             let hwnd = GetForegroundWindow();
             if !hwnd.is_null() {
-                ImmAssociateContext(hwnd, std::ptr::null_mut());
+                let old = ImmAssociateContext(hwnd, std::ptr::null_mut());
+                *SAVED_HIMC.lock().unwrap() = Some(Himc(old));
             }
         }
     }
@@ -98,10 +106,17 @@ mod windows_ime {
         unsafe {
             let hwnd = GetForegroundWindow();
             if !hwnd.is_null() {
-                let himc = ImmGetContext(hwnd);
+                let saved = SAVED_HIMC.lock().unwrap().take();
+                let himc = if let Some(Himc(h)) = saved { h } else { std::ptr::null_mut() };
                 if !himc.is_null() {
                     ImmAssociateContext(hwnd, himc);
-                    ImmReleaseContext(hwnd, himc);
+                } else {
+                    // 没有保存的上下文，尝试获取默认上下文
+                    let himc = ImmGetContext(hwnd);
+                    if !himc.is_null() {
+                        ImmAssociateContext(hwnd, himc);
+                        ImmReleaseContext(hwnd, himc);
+                    }
                 }
             }
         }
@@ -1400,6 +1415,8 @@ impl Scene for GameScene {
         }
         #[cfg(target_env = "ohos")]
         miniquad::native::set_interceptor_state(false);
+        #[cfg(target_os = "windows")]
+        windows_ime::enable();
         Ok(())
     }
 
@@ -1408,6 +1425,8 @@ impl Scene for GameScene {
             tm.resume();
         }
         self.game_paused = false;
+        #[cfg(target_os = "windows")]
+        windows_ime::disable();
         Ok(())
     }
 

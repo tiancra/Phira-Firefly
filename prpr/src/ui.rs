@@ -859,6 +859,27 @@ pub fn inline_input_select_all() {
     }
 }
 
+/// 删除一个字符（退格），供 Android 输入法直接调用
+pub fn inline_input_backspace() {
+    let mut state = INLINE_INPUT.lock().unwrap();
+    if !state.active {
+        return;
+    }
+    push_undo(&mut state);
+    if !delete_selection(&mut state) {
+        // 没有选区时删除光标前一个字符
+        if state.cursor > 0 {
+            let cursor = state.cursor;
+            let mut start = cursor - 1;
+            while start > 0 && !state.text.is_char_boundary(start) {
+                start -= 1;
+            }
+            state.text.drain(start..cursor);
+            state.cursor = start;
+        }
+    }
+}
+
 /// 复制选中文本到剪贴板
 pub fn inline_input_copy() {
     let state = INLINE_INPUT.lock().unwrap();

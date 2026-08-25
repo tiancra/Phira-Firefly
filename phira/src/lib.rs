@@ -829,6 +829,12 @@ pub extern "C" fn Java_quad_1native_QuadNative_inputSelectAll(_env: EnvUnowned, 
 
 #[cfg(target_os = "android")]
 #[no_mangle]
+pub extern "C" fn Java_quad_1native_QuadNative_inputBackspace(_env: EnvUnowned, _class: JClass) {
+    prpr::ui::inline_input_backspace();
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
 pub extern "C" fn Java_quad_1native_QuadNative_inputCopy(_env: EnvUnowned, _class: JClass) {
     prpr::ui::inline_input_copy();
 }

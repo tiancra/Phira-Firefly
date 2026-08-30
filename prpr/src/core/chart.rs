@@ -1,4 +1,4 @@
-use super::{BpmList, Effect, JudgeLine, JudgeLineKind, Matrix, Resource, UIElement, Vector};
+﻿use super::{BpmList, Effect, JudgeLine, JudgeLineKind, Matrix, Resource, UIElement, Vector};
 use crate::{core::Object, fs::FileSystem, judge::JudgeStatus, parse::Lyrics, ui::Ui};
 use anyhow::{Context, Result};
 use macroquad::prelude::*;
@@ -183,5 +183,6 @@ impl Chart {
                 }
             }
         });
+
     }
 }

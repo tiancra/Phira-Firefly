@@ -1,4 +1,4 @@
-[package]
+﻿[package]
 name = "prpr"
 version = { workspace = true }
 edition = { workspace = true }
@@ -53,6 +53,7 @@ once_cell = { workspace = true }
 ordered-float = "5.1.0"
 phf = { version = "0.13.1", features = ["macros"] }
 rand = { workspace = true }
+rayon = "1.10"
 regex = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

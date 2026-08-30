@@ -22,7 +22,7 @@ use std::{
     sync::atomic::AtomicU32,
 };
 
-pub const MAX_SIZE: usize = 64; // needs tweaking
+pub const MAX_SIZE: usize = 256; // 每个 mesh 最多 256 个四边形，减少 draw call 拆分
 pub static DPI_VALUE: AtomicU32 = AtomicU32::new(250);
 pub const BUFFER_SIZE: usize = 1024;
 
@@ -329,6 +329,7 @@ impl ParticleEmitter {
                 atlas: Some(AtlasConfig::new(res_pack.info.hit_fx.0 as _, res_pack.info.hit_fx.1 as _, ..)),
                 emitting: false,
                 colors_curve,
+                gpu_driven: true,
                 ..Default::default()
             }),
             emitter_square: Emitter::new(EmitterConfig {
@@ -342,6 +343,7 @@ impl ParticleEmitter {
                 initial_velocity_randomness: 1. / 10.,
                 linear_accel: -6. / 1.,
                 colors_curve,
+                gpu_driven: true,
                 ..Default::default()
             }),
             hide_particles,
@@ -350,11 +352,19 @@ impl ParticleEmitter {
         Ok(res)
     }
 
+    /// 方形扩散粒子同时存在的上限
+    const MAX_PARTICLES: usize = 20;
+    const MAX_HIT_FX_PARTICLES: usize = 240;
+
     pub fn emit_at(&mut self, pt: Vec2, rotation: f32, color: Color) {
         self.emitter.config.initial_rotation = rotation;
         self.emitter.config.base_color = color;
-        self.emitter.emit(pt, 1);
-        if !self.hide_particles {
+        // 打击特效（序列帧）最多同时存在240个
+        if self.emitter.particle_count() < Self::MAX_HIT_FX_PARTICLES {
+            self.emitter.emit(pt, 1);
+        }
+        // 方形扩散粒子：最多同时存在20个Note的粒子效果
+        if !self.hide_particles && self.emitter_square.particle_count() < Self::MAX_PARTICLES {
             self.emitter_square.config.base_color = color;
             self.emitter_square.emit(pt, 4);
         }
@@ -578,6 +588,7 @@ impl Resource {
             note_buffer: RefCell::new(NoteBuffer::default()),
 
             model_stack: vec![Matrix::identity()],
+
         })
     }
 

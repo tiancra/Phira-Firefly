@@ -191,6 +191,8 @@ pub struct EmitterConfig {
     /// This will allows some effects affecting particles as a whole.
     /// NOTE: this is not really implemented and now Some will just make hardcoded downscaling
     pub post_processing: Option<PostProcessing>,
+    /// If true, particle updates (position/color/UV) are done in vertex shader based on birth time. CPU only handles emit.
+    pub gpu_driven: bool,
 }
 
 impl EmissionShape {
@@ -376,6 +378,7 @@ impl Default for EmitterConfig {
             atlas: None,
             material: None,
             post_processing: None,
+            gpu_driven: false,
         }
     }
 }
@@ -418,12 +421,15 @@ pub struct Emitter {
 
     blend_mode: BlendMode,
     mesh_dirty: bool,
+    current_time: f32,
+    buffer_dirty: bool,
 
     pub config: EmitterConfig,
 }
 
 impl Emitter {
     const MAX_PARTICLES: usize = 12000;
+    const GPU_DRIVEN_MAX_PARTICLES: usize = 512;
 
     pub fn new(config: EmitterConfig) -> Emitter {
         let InternalGlContext { quad_context: ctx, .. } = unsafe { get_internal_gl() };
@@ -553,6 +559,8 @@ impl Emitter {
             last_emit_time: 0.0,
             time_passed: 0.0,
             mesh_dirty: false,
+            current_time: 0.0,
+            buffer_dirty: false,
         }
     }
 
@@ -565,35 +573,47 @@ impl Emitter {
     }
 
     fn emit_particle(&mut self, offset: Vec2) {
-        if self.gpu_particles.len() == Self::MAX_PARTICLES {
+        if self.gpu_particles.len() >= Self::MAX_PARTICLES {
             return;
         }
         let offset = offset + self.config.emission_shape.gen_random_point();
 
         fn random_initial_vector(dir: Vec2, spread: f32, velocity: f32) -> Vec2 {
             let angle = rand::gen_range(-spread / 2.0, spread / 2.0);
-
             let quat = glam::Quat::from_rotation_z(angle);
             let dir = quat * vec3(dir.x, dir.y, 0.0);
             let res = dir * velocity;
-
             vec2(res.x, res.y)
         }
 
         let r = self.config.size - self.config.size * rand::gen_range(0.0, self.config.size_randomness);
-
         let rotation = self.config.initial_rotation - self.config.initial_rotation * rand::gen_range(0.0, self.config.initial_rotation_randomness);
+        let velocity = random_initial_vector(
+            vec2(self.config.initial_direction.x, self.config.initial_direction.y),
+            self.config.initial_direction_spread,
+            self.config.initial_velocity - self.config.initial_velocity * rand::gen_range(0.0, self.config.initial_velocity_randomness),
+        );
+        let lifetime = self.config.lifetime - self.config.lifetime * rand::gen_range(0.0, self.config.lifetime_randomness);
+        let angular_velocity = self.config.initial_angular_velocity
+            - self.config.initial_angular_velocity * rand::gen_range(0.0, self.config.initial_angular_velocity_randomness);
 
-        let particle = if self.config.local_coords {
+        let pos = if self.config.local_coords {
+            vec4(offset.x, offset.y, rotation, r)
+        } else {
+            vec4(self.position.x + offset.x, self.position.y + offset.y, rotation, r)
+        };
+
+        let particle = if self.config.gpu_driven {
+            // GPU-driven: data = (birth_time, lifetime, vel_x, vel_y), color = base_color
             GpuParticle {
-                pos: vec4(offset.x, offset.y, rotation, r),
-                uv: vec4(1.0, 1.0, 0.0, 0.0),
-                data: vec4(self.particles_spawned as f32, 0.0, 0.0, 0.0),
-                color: self.config.colors_curve.start.to_vec(),
+                pos,
+                uv: vec4(0.0, 0.0, 1.0, 1.0),
+                data: vec4(self.current_time, lifetime, velocity.x, velocity.y),
+                color: self.config.base_color.to_vec(),
             }
         } else {
             GpuParticle {
-                pos: vec4(self.position.x + offset.x, self.position.y + offset.y, rotation, r),
+                pos,
                 uv: vec4(1.0, 1.0, 0.0, 0.0),
                 data: vec4(self.particles_spawned as f32, 0.0, 0.0, 0.0),
                 color: self.config.colors_curve.start.to_vec(),
@@ -603,15 +623,10 @@ impl Emitter {
         self.particles_spawned += 1;
         self.gpu_particles.push(particle);
         self.cpu_counterpart.push(CpuParticle {
-            velocity: random_initial_vector(
-                vec2(self.config.initial_direction.x, self.config.initial_direction.y),
-                self.config.initial_direction_spread,
-                self.config.initial_velocity - self.config.initial_velocity * rand::gen_range(0.0, self.config.initial_velocity_randomness),
-            ),
-            angular_velocity: self.config.initial_angular_velocity
-                - self.config.initial_angular_velocity * rand::gen_range(0.0, self.config.initial_angular_velocity_randomness),
+            velocity,
+            angular_velocity,
             lived: 0.0,
-            lifetime: self.config.lifetime - self.config.lifetime * rand::gen_range(0.0, self.config.lifetime_randomness),
+            lifetime,
             frame: 0,
             initial_size: r,
             color: self.config.base_color,
@@ -619,6 +634,7 @@ impl Emitter {
     }
 
     fn update(&mut self, ctx: &mut Context, dt: f32) {
+        self.current_time += dt;
         if self.mesh_dirty {
             self.bindings = self
                 .config
@@ -658,6 +674,7 @@ impl Emitter {
             self.config.emitting = false;
         }
 
+        if !self.config.gpu_driven {
         for (gpu, cpu) in self.gpu_particles.iter_mut().zip(&mut self.cpu_counterpart) {
             // TODO: this is not quite the way to apply acceleration, this is not
             // fps independent and just wrong
@@ -701,20 +718,35 @@ impl Emitter {
                 gpu.uv = vec4(0.0, 0.0, 1.0, 1.0);
             }
         }
-
-        for i in (0..self.gpu_particles.len()).rev() {
-            // second if clause is just for the case when lifetime was changed in the editor
-            // normally particle lifetime is always less or equal config lifetime
-            if self.cpu_counterpart[i].lived >= self.cpu_counterpart[i].lifetime || self.cpu_counterpart[i].lived > self.config.lifetime {
-                if self.cpu_counterpart[i].lived != self.cpu_counterpart[i].lifetime {
-                    self.particles_spawned -= 1;
-                }
-                self.gpu_particles.swap_remove(i);
-                self.cpu_counterpart.swap_remove(i);
-            }
         }
 
-        self.bindings.vertex_buffers[1].update(ctx, &self.gpu_particles[..]);
+        if self.config.gpu_driven {
+            // CPU only does death collection (retain compare), no physics/color/UV update
+            for i in (0..self.gpu_particles.len()).rev() {
+                let age = self.current_time - self.gpu_particles[i].data.x;
+                if age >= self.gpu_particles[i].data.y {
+                    self.gpu_particles.swap_remove(i);
+                    self.cpu_counterpart.swap_remove(i);
+                }
+            }
+            self.bindings.vertex_buffers[1].update(ctx, &self.gpu_particles[..]);
+        } else {
+            for i in (0..self.gpu_particles.len()).rev() {
+                if self.cpu_counterpart[i].lived >= self.cpu_counterpart[i].lifetime || self.cpu_counterpart[i].lived > self.config.lifetime {
+                    if self.cpu_counterpart[i].lived != self.cpu_counterpart[i].lifetime {
+                        self.particles_spawned -= 1;
+                    }
+                    self.gpu_particles.swap_remove(i);
+                    self.cpu_counterpart.swap_remove(i);
+                }
+            }
+            self.bindings.vertex_buffers[1].update(ctx, &self.gpu_particles[..]);
+        }
+    }
+
+    /// 当前活跃粒子数
+    pub fn particle_count(&self) -> usize {
+        self.gpu_particles.len()
     }
 
     /// Immediately emit N particles, ignoring "emitting" and "amount" params of EmitterConfig
@@ -731,6 +763,17 @@ impl Emitter {
             mvp: quad_gl.get_projection_matrix(),
             emitter_position: vec3(self.position.x, self.position.y, 0.0),
             local_coords: if self.config.local_coords { 1.0 } else { 0.0 },
+            time: self.current_time,
+            gpu_driven: if self.config.gpu_driven { 1.0 } else { 0.0 },
+            color_start: self.config.colors_curve.start.to_vec(),
+            color_mid: self.config.colors_curve.mid.to_vec(),
+            color_end: self.config.colors_curve.end.to_vec(),
+            atlas_n: self.config.atlas.as_ref().map_or(1.0, |a| a.n as f32),
+            atlas_m: self.config.atlas.as_ref().map_or(1.0, |a| a.m as f32),
+            atlas_start: self.config.atlas.as_ref().map_or(0.0, |a| a.start_index as f32),
+            atlas_end: self.config.atlas.as_ref().map_or(1.0, |a| a.end_index as f32),
+            gravity: self.config.gravity,
+            linear_accel: self.config.linear_accel,
         });
 
         ctx.draw(0, self.bindings.index_buffer.size() as i32 / std::mem::size_of::<u16>() as i32, self.gpu_particles.len() as i32);
@@ -814,9 +857,52 @@ mod shader {
     varying lowp vec4 color;
 
     void main() {
-        gl_Position = particle_transform_vertex();
-        color = in_attr_inst_color;
-        texcoord = particle_transform_uv();
+        if (_gpu_driven > 0.5) {
+            float birth = in_attr_inst_data.x;
+            float lifetime = in_attr_inst_data.y;
+            float age = _time - birth;
+            if (age >= lifetime || lifetime <= 0.0) {
+                color = vec4(0.0);
+                texcoord = vec2(0.0);
+                gl_Position = vec4(0.0, 0.0, -1000.0, 1.0);
+            } else {
+                float t = age / lifetime;
+                vec2 vel = in_attr_inst_data.zw;
+                vec2 pos = in_attr_inst_pos.xy + vel * age + 0.5 * _gravity * age * age;
+                if (length(vel) > 0.001) {
+                    pos += normalize(vel) * _linear_accel * 0.5 * age * age;
+                }
+                float rotation = in_attr_inst_pos.z;
+                float size = in_attr_inst_pos.w;
+                // Color curve (match CPU logic)
+                vec4 col;
+                if (t < 0.5) {
+                    col = mix(_color_start, _color_mid, t * 2.0);
+                } else {
+                    col = mix(_color_mid, _color_end, (t - 0.5) * 2.0);
+                }
+                color = col * in_attr_inst_color;
+                // Atlas UV (floor version)
+                float frame_count = _atlas_end - _atlas_start;
+                float frame = floor(t * frame_count) + _atlas_start;
+                if (frame >= _atlas_end) frame = _atlas_end - 1.0;
+                float fx = mod(frame, _atlas_n);
+                float fy = floor(frame / _atlas_n);
+                texcoord = in_attr_uv * vec2(1.0 / _atlas_n, 1.0 / _atlas_m) + vec2(fx / _atlas_n, fy / _atlas_m);
+                mat2 rot = rotate2d(rotation);
+                vec4 transformed;
+                if (_local_coords == 0.0) {
+                    transformed = vec4(vec3(rot * in_attr_pos.xy, in_attr_pos.z) * size + vec3(pos, 0.0), 1.0);
+                } else {
+                    transformed = vec4(vec3(rot * in_attr_pos.xy, in_attr_pos.z) * size + vec3(pos, 0.0) + _emitter_position.xyz, 1.0);
+                }
+                gl_Position = _mvp * transformed;
+            }
+        } else {
+            gl_Position = particle_transform_vertex();
+            color = in_attr_inst_color;
+            texcoord = particle_transform_uv();
+        }
     }
     "#;
 
@@ -839,6 +925,17 @@ mod shader {
                     UniformDesc::new("_mvp", UniformType::Mat4),
                     UniformDesc::new("_local_coords", UniformType::Float1),
                     UniformDesc::new("_emitter_position", UniformType::Float3),
+                    UniformDesc::new("_time", UniformType::Float1),
+                    UniformDesc::new("_gpu_driven", UniformType::Float1),
+                    UniformDesc::new("_color_start", UniformType::Float4),
+                    UniformDesc::new("_color_mid", UniformType::Float4),
+                    UniformDesc::new("_color_end", UniformType::Float4),
+                    UniformDesc::new("_atlas_n", UniformType::Float1),
+                    UniformDesc::new("_atlas_m", UniformType::Float1),
+                    UniformDesc::new("_atlas_start", UniformType::Float1),
+                    UniformDesc::new("_atlas_end", UniformType::Float1),
+                    UniformDesc::new("_gravity", UniformType::Float2),
+                    UniformDesc::new("_linear_accel", UniformType::Float1),
                 ],
             },
         }
@@ -849,6 +946,17 @@ mod shader {
         pub mvp: Mat4,
         pub local_coords: f32,
         pub emitter_position: Vec3,
+        pub time: f32,
+        pub gpu_driven: f32,
+        pub color_start: Vec4,
+        pub color_mid: Vec4,
+        pub color_end: Vec4,
+        pub atlas_n: f32,
+        pub atlas_m: f32,
+        pub atlas_start: f32,
+        pub atlas_end: f32,
+        pub gravity: Vec2,
+        pub linear_accel: f32,
     }
 }
 

@@ -1,4 +1,4 @@
-//! Configuration module of the playing environment.\
+﻿//! Configuration module of the playing environment.\
 //! e.g. player name, volume, speed, autoplay, etc.
 
 use bitflags::bitflags;
@@ -105,6 +105,7 @@ pub struct Config {
     pub volume_bgm: f32,
     pub volume_music: f32,
     pub volume_sfx: f32,
+    pub vsync: bool,
 
     /// XC-SIM chart server base URL (empty = use the built-in default).
     #[serde(default)]
@@ -150,6 +151,7 @@ impl Default for Config {
             volume_music: 1.,
             volume_sfx: 1.,
             volume_bgm: 1.,
+            vsync: false,
 
             xcsim_server: String::new(),
 

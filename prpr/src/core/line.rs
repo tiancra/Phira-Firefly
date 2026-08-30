@@ -219,18 +219,28 @@ impl JudgeLine {
     }
 
     pub fn fetch_pos(&self, res: &Resource, lines: &[JudgeLine]) -> Vector {
+        self.fetch_pos_with_aspect(res.aspect_ratio, lines)
+    }
+
+    /// 仅接受 aspect_ratio 的版本，用于跨线程并行计算（Resource 不是 Sync）
+    pub fn fetch_pos_with_aspect(&self, aspect_ratio: f32, lines: &[JudgeLine]) -> Vector {
         if let Some(parent) = self.parent {
             let parent = &lines[parent];
-            let parent_translation = parent.fetch_pos(res, lines);
-            return parent_translation + Rotation2::new(parent.fetch_rot(lines).to_radians()) * self.object.now_translation(res);
+            let parent_translation = parent.fetch_pos_with_aspect(aspect_ratio, lines);
+            return parent_translation + Rotation2::new(parent.fetch_rot(lines).to_radians()) * self.object.now_translation_with_aspect(aspect_ratio);
         }
-        self.object.now_translation(res)
+        self.object.now_translation_with_aspect(aspect_ratio)
     }
 
     pub fn now_transform(&self, res: &Resource, lines: &[JudgeLine]) -> Matrix {
+        self.now_transform_with_aspect(res.aspect_ratio, lines)
+    }
+
+    /// 仅接受 aspect_ratio 的版本，用于跨线程并行计算（Resource 不是 Sync）
+    pub fn now_transform_with_aspect(&self, aspect_ratio: f32, lines: &[JudgeLine]) -> Matrix {
         Rotation2::new(self.fetch_rot(lines).to_radians())
             .to_homogeneous()
-            .append_translation(&self.fetch_pos(res, lines))
+            .append_translation(&self.fetch_pos_with_aspect(aspect_ratio, lines))
     }
 
     pub fn render(&self, ui: &mut Ui, res: &mut Resource, lines: &[JudgeLine], bpm_list: &mut BpmList, settings: &ChartSettings, id: usize) {

@@ -256,6 +256,7 @@ async fn the_main() -> Result<()> {
     #[cfg(target_os = "windows")]
     {
         macroquad::window::set_fullscreen(get_data().config.fullscreen_mode);
+        prpr::set_swap_interval(if get_data().config.vsync { 1 } else { 0 });
     }
 
     let rx = {

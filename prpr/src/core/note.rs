@@ -1,4 +1,4 @@
-use super::{chart::ChartSettings, BpmList, CtrlObject, JudgeLine, Matrix, Object, Point, Resource};
+﻿use super::{chart::ChartSettings, BpmList, CtrlObject, JudgeLine, Matrix, Object, Point, Resource};
 pub use crate::{
     config::Mods,
     judge::{HitSound, JudgeStatus, LIMIT_BAD},
@@ -239,6 +239,8 @@ impl Note {
         {
             return;
         }
+
+
         let order = self.kind.order();
         let style = if res.config.double_hint && self.multiple_hint {
             &res.res_pack.note_style_mh

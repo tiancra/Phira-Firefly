@@ -1,4 +1,4 @@
-//! Judgement system
+﻿//! Judgement system
 
 use crate::{
     config::Config,

@@ -1,4 +1,4 @@
-use super::{AnimFloat, AnimVector, Color, Matrix, Resource, Vector};
+﻿use super::{AnimFloat, AnimVector, Color, Matrix, Resource, Vector};
 use macroquad::prelude::*;
 use nalgebra::Rotation2;
 
@@ -51,8 +51,13 @@ impl Object {
 
     #[inline]
     pub fn now_translation(&self, res: &Resource) -> Vector {
+        self.now_translation_with_aspect(res.aspect_ratio)
+    }
+
+    /// 仅接受 aspect_ratio 的版本，用于跨线程并行计算（Resource 不是 Sync）
+    pub fn now_translation_with_aspect(&self, aspect_ratio: f32) -> Vector {
         let mut tr = self.translation.now();
-        tr.y /= res.aspect_ratio;
+        tr.y /= aspect_ratio;
         tr
     }
 

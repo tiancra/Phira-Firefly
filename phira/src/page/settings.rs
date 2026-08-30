@@ -844,6 +844,8 @@ struct ChartList {
     dhint_btn: DRectButton,
     opt_btn: DRectButton,
     use_keyboard_btn: DRectButton,
+    #[cfg(not(target_os = "android"))]
+    vsync_btn: DRectButton,
     dynamic_bg_btn: ChooseButton,
     speed_slider: Slider,
     size_slider: Slider,
@@ -859,6 +861,8 @@ impl ChartList {
             dhint_btn: DRectButton::new(),
             opt_btn: DRectButton::new(),
             use_keyboard_btn: DRectButton::new(),
+            #[cfg(not(target_os = "android"))]
+            vsync_btn: DRectButton::new(),
             dynamic_bg_btn: ChooseButton::new()
                 .with_options(vec![
                     tl!("dynamic-bg-off").to_string(),
@@ -904,6 +908,12 @@ impl ChartList {
         }
         if self.use_keyboard_btn.touch(touch, t) {
             config.use_keyboard ^= true;
+            return Ok(Some(true));
+        }
+        #[cfg(not(target_os = "android"))]
+        if self.vsync_btn.touch(touch, t) {
+            config.vsync ^= true;
+            prpr::set_swap_interval(if config.vsync { 1 } else { 0 });
             return Ok(Some(true));
         }
         if self.dynamic_bg_btn.touch(touch, t) {
@@ -977,6 +987,11 @@ impl ChartList {
         item! {
             render_title(ui, tl!("item-use-keyboard"), Some(tl!("item-use-keyboard-sub")));
             render_switch(ui, rr, t, &mut self.use_keyboard_btn, config.use_keyboard);
+        }
+        #[cfg(not(target_os = "android"))]
+        item! {
+            render_title(ui, "垂直同步", Some(Cow::Borrowed("关闭此选项可以适当提升游戏帧率和降低输入延迟，但是会导致更高的资源占用，配置较差的设备可能导致画面撕裂")));
+            render_switch(ui, rr, t, &mut self.vsync_btn, config.vsync);
         }
         item! {
             render_title(ui, tl!("item-speed"), None);

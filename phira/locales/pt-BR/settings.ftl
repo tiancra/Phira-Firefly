@@ -84,3 +84,11 @@ about-content =
   { $localization }
 
   E muitos outros revisores de charts voluntários. Para uma lista completa, consulte https://phira.moe/staff
+
+item-render-backend = Render Backend
+item-render-backend-sub = Requires restart to take effect
+item-render-backend-auto = Auto
+item-render-backend-wgpu = Vulkan
+item-render-backend-opengl = OpenGL
+item-perf-monitor = Monitor de desempenho
+item-perf-monitor-sub = Mostrar FPS/CPU/Memória/GPU/Disco no canto superior esquerdo

@@ -6,6 +6,13 @@ use nalgebra::Rotation2;
 use sasa::AudioClip;
 use std::{cell::RefCell, collections::HashMap};
 
+/// Hold 音符持续粒子的发射请求（并行更新阶段收集，串行阶段发射）
+pub struct ParticleEmitRequest {
+    pub transform: Matrix,
+    pub rotation: f32,
+    pub color: Color,
+}
+
 #[derive(Default)]
 pub struct ChartExtra {
     pub effects: Vec<Effect>,
@@ -129,8 +136,26 @@ impl Chart {
         // TODO optimize
         let trs = self.lines.iter().map(|it| it.now_transform(res, &self.lines)).collect::<Vec<_>>();
         let rotations = self.lines.iter().map(|it| it.fetch_rot(&self.lines)).collect::<Vec<_>>();
-        for ((line, tr), rot) in self.lines.iter_mut().zip(trs).zip(rotations) {
-            line.update(res, tr, rot);
+
+        // 并行更新所有判定线的 Note 状态
+        // 安全保证：并行阶段只只读访问 Resource（time/config/res_pack/aspect_ratio/info/note_width），
+        // 不访问 emitter（粒子发射已分离到下方串行阶段）和 note_buffer（仅渲染时使用）。
+        use rayon::prelude::*;
+        let all_emits: Vec<Vec<ParticleEmitRequest>> = self
+            .lines
+            .par_iter_mut()
+            .zip(trs)
+            .zip(rotations)
+            .map(|((line, tr), rot)| line.update(res, tr, rot))
+            .collect();
+
+        // 串行发射所有 Hold 持续粒子（粒子发射器非线程安全）
+        for emits in all_emits {
+            for req in emits {
+                res.with_model(req.transform, |res| {
+                    res.emit_at_origin(req.rotation, req.color);
+                });
+            }
         }
         for effect in &mut self.extra.effects {
             effect.update(res);

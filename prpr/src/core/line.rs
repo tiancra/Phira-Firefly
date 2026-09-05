@@ -157,15 +157,22 @@ pub struct JudgeLine {
     pub cache: JudgeLineCache,
 }
 
+// 安全保证：rayon 并行更新时每个线程独占一个 JudgeLine，
+// 不存在多线程同时访问同一 RefCell 的情况；跨线程移动时无外部引用。
+unsafe impl Send for JudgeLine {}
+
 impl JudgeLine {
-    pub fn update(&mut self, res: &mut Resource, tr: Matrix, parent_rot: f32) {
+    pub fn update(&mut self, res: &Resource, tr: Matrix, parent_rot: f32) -> Vec<super::chart::ParticleEmitRequest> {
         // self.object.set_time(res.time); // this is done by chart, chart has to calculate transform for us
         self.height.set_time(res.time);
         let line_height = self.height.now();
         let mut ctrl_obj = self.ctrl_obj.borrow_mut();
+        let mut emits = Vec::new();
         self.cache.update_order.retain(|id| {
             let note = &mut self.notes[*id as usize];
-            note.update(res, parent_rot, &tr, &mut ctrl_obj, line_height as f64);
+            if let Some(req) = note.update(res, parent_rot, &tr, &mut ctrl_obj, line_height as f64) {
+                emits.push(req);
+            }
             !note.dead()
         });
         drop(ctrl_obj);
@@ -206,6 +213,7 @@ impl JudgeLine {
             }
             true
         });
+        emits
     }
 
     pub fn fetch_rot(&self, lines: &[JudgeLine]) -> f32 {

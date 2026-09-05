@@ -97,3 +97,11 @@ about-content =
   { $localization }
 
   และผู้ตรวจสอบชาร์ตอาสาสมัครอีกมากมาย สำหรับรายการทั้งหมดโปรดดูที่ https://phira.moe/staff
+
+item-render-backend = Render Backend
+item-render-backend-sub = Requires restart to take effect
+item-render-backend-auto = Auto
+item-render-backend-wgpu = Vulkan
+item-render-backend-opengl = OpenGL
+item-perf-monitor = ตรวจสอบประสิทธิภาพ
+item-perf-monitor-sub = แสดง FPS/CPU/หน่วยความจำ/GPU/ดิสก์ที่มุมบนซ้ายในเกม

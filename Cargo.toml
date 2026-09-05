@@ -2,6 +2,7 @@
 members = [
 	"prpr",
 	"prpr-avc",
+	"prpr-render",
 	"prpr-pbc",
 	"prpr-l10n",
 	"phira",
@@ -65,6 +66,7 @@ phira-mp-common = { git = "https://github.com/tiancra/phira-mp", branch = "main"
 prpr = { path = "prpr", default-features = false }
 prpr-avc = { path = "prpr-avc" }
 prpr-l10n = { path = "prpr-l10n" }
+prpr-render = { path = "prpr-render" }
 sasa = { git = "https://github.com/Mivik/sasa", rev = "e76229b", default-features = false }
 
 [profile.release]

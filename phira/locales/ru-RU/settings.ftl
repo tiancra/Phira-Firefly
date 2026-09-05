@@ -97,3 +97,11 @@ item-show-avg-fps = Показать сред.частоту FPS
 item-ap-fc-indicator = Индикатор AP/FC
 item-ap-fc-indicator-sub = Использовать цвет линии для показа статуса AP/FC.
 item-show-avg-fps-sub = Показать среднее значение FPS в экране результатов
+
+item-render-backend = Render Backend
+item-render-backend-sub = Requires restart to take effect
+item-render-backend-auto = Auto
+item-render-backend-wgpu = Vulkan
+item-render-backend-opengl = OpenGL
+item-perf-monitor = Монитор производительности
+item-perf-monitor-sub = Показывать FPS/CPU/Память/GPU/Диск в левом верхнем углу

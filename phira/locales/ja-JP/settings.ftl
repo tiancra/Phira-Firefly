@@ -81,3 +81,11 @@ about-content =
   { $localization }
 
   その他多くのボランティア譜面レビュアーの皆様に感謝します。完全なリストは https://phira.moe/staff をご覧ください。
+
+item-render-backend = Render Backend
+item-render-backend-sub = Requires restart to take effect
+item-render-backend-auto = Auto
+item-render-backend-wgpu = Vulkan
+item-render-backend-opengl = OpenGL
+item-perf-monitor = パフォーマンスモニター
+item-perf-monitor-sub = ゲーム中左上にFPS/CPU/メモリ/GPU/ディスク使用率を表示

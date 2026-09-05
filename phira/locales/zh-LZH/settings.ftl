@@ -104,3 +104,11 @@ about-content =
   { $localization }
 
   以及衆多志願譜面審核員！完整之表見 https://phira.moe/staff
+
+item-render-backend = 渲染后端
+item-render-backend-sub = 重启后生效
+item-render-backend-auto = 自动
+item-render-backend-wgpu = Vulkan
+item-render-backend-opengl = OpenGL
+item-perf-monitor = 實時監測
+item-perf-monitor-sub = 局中左上顯FPS/CPU/內存/GPU/磁盤佔用

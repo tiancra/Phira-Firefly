@@ -253,6 +253,10 @@ async fn the_main() -> Result<()> {
     sync_data();
     save_data()?;
 
+    // 初始化渲染后端（wgpu/Vulkan 或 OpenGL 兜底）
+    let selected_backend = get_data().config.render_backend;
+    prpr::render_backend::init_render_backend(selected_backend);
+
     #[cfg(target_os = "windows")]
     {
         macroquad::window::set_fullscreen(get_data().config.fullscreen_mode);

@@ -135,7 +135,7 @@ impl BootScene {
         let screen = ui.screen_rect();
         let title_size = 0.6;
         let body_size = 0.4;
-        let gap = 0.15;
+        let gap = 0.08;
         let max_width = 1.7;
 
         // 测量正文在基准字号下的高度（世界坐标），用于动态适配屏幕比例

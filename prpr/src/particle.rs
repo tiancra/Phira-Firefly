@@ -622,6 +622,7 @@ impl Emitter {
 
         self.particles_spawned += 1;
         self.gpu_particles.push(particle);
+        self.buffer_dirty = true;
         self.cpu_counterpart.push(CpuParticle {
             velocity,
             angular_velocity,
@@ -675,61 +676,77 @@ impl Emitter {
         }
 
         if !self.config.gpu_driven {
-        for (gpu, cpu) in self.gpu_particles.iter_mut().zip(&mut self.cpu_counterpart) {
-            // TODO: this is not quite the way to apply acceleration, this is not
-            // fps independent and just wrong
-            cpu.velocity += cpu.velocity * self.config.linear_accel * dt;
-            cpu.angular_velocity += cpu.angular_velocity * self.config.angular_accel * dt;
-            cpu.angular_velocity *= 1.0 - self.config.angular_damping;
+            use rayon::prelude::*;
+            self.gpu_particles
+                .par_iter_mut()
+                .zip(self.cpu_counterpart.par_iter_mut())
+                .for_each(|(gpu, cpu)| {
+                    // TODO: this is not quite the way to apply acceleration, this is not
+                    // fps independent and just wrong
+                    cpu.velocity += cpu.velocity * self.config.linear_accel * dt;
+                    cpu.angular_velocity += cpu.angular_velocity * self.config.angular_accel * dt;
+                    cpu.angular_velocity *= 1.0 - self.config.angular_damping;
 
-            gpu.color = {
-                let t = cpu.lived / cpu.lifetime;
-                if t < 0.5 {
-                    let t = t * 2.;
-                    self.config.colors_curve.start.to_vec() * (1.0 - t) + self.config.colors_curve.mid.to_vec() * t
-                } else {
-                    let t = (t - 0.5) * 2.;
-                    self.config.colors_curve.mid.to_vec() * (1.0 - t) + self.config.colors_curve.end.to_vec() * t
-                }
-            };
-            gpu.color *= cpu.color.to_vec();
-            gpu.pos += vec4(cpu.velocity.x, cpu.velocity.y, cpu.angular_velocity, 0.0) * dt;
+                    gpu.color = {
+                        let t = cpu.lived / cpu.lifetime;
+                        if t < 0.5 {
+                            let t = t * 2.;
+                            self.config.colors_curve.start.to_vec() * (1.0 - t) + self.config.colors_curve.mid.to_vec() * t
+                        } else {
+                            let t = (t - 0.5) * 2.;
+                            self.config.colors_curve.mid.to_vec() * (1.0 - t) + self.config.colors_curve.end.to_vec() * t
+                        }
+                    };
+                    gpu.color *= cpu.color.to_vec();
+                    gpu.pos += vec4(cpu.velocity.x, cpu.velocity.y, cpu.angular_velocity, 0.0) * dt;
 
-            gpu.pos.w = cpu.initial_size * self.batched_size_curve.as_ref().map_or(1.0, |curve| curve.get(cpu.lived / cpu.lifetime));
+                    gpu.pos.w = cpu.initial_size * self.batched_size_curve.as_ref().map_or(1.0, |curve| curve.get(cpu.lived / cpu.lifetime));
 
-            if cpu.lifetime != 0.0 {
-                gpu.data.y = cpu.lived / cpu.lifetime;
-            }
+                    if cpu.lifetime != 0.0 {
+                        gpu.data.y = cpu.lived / cpu.lifetime;
+                    }
 
-            //cpu.lived = f32::min(cpu.lived + dt, cpu.lifetime);
-            cpu.lived += dt;
-            cpu.velocity += self.config.gravity * dt;
+                    cpu.lived += dt;
+                    cpu.velocity += self.config.gravity * dt;
 
-            if let Some(atlas) = &self.config.atlas {
-                if cpu.lifetime != 0.0 {
-                    cpu.frame = (cpu.lived / cpu.lifetime * (atlas.end_index - atlas.start_index) as f32) as u16 + atlas.start_index;
-                }
+                    if let Some(atlas) = &self.config.atlas {
+                        if cpu.lifetime != 0.0 {
+                            cpu.frame = (cpu.lived / cpu.lifetime * (atlas.end_index - atlas.start_index) as f32) as u16 + atlas.start_index;
+                        }
 
-                let x = cpu.frame % atlas.n;
-                let y = cpu.frame / atlas.n;
+                        let x = cpu.frame % atlas.n;
+                        let y = cpu.frame / atlas.n;
 
-                gpu.uv = vec4(x as f32 / atlas.n as f32, y as f32 / atlas.m as f32, 1.0 / atlas.n as f32, 1.0 / atlas.m as f32);
-            } else {
-                gpu.uv = vec4(0.0, 0.0, 1.0, 1.0);
-            }
-        }
+                        gpu.uv = vec4(x as f32 / atlas.n as f32, y as f32 / atlas.m as f32, 1.0 / atlas.n as f32, 1.0 / atlas.m as f32);
+                    } else {
+                        gpu.uv = vec4(0.0, 0.0, 1.0, 1.0);
+                    }
+                });
         }
 
         if self.config.gpu_driven {
             // CPU only does death collection (retain compare), no physics/color/UV update
-            for i in (0..self.gpu_particles.len()).rev() {
-                let age = self.current_time - self.gpu_particles[i].data.x;
-                if age >= self.gpu_particles[i].data.y {
+            // 并行收集死亡粒子索引，然后批量移除
+            use rayon::prelude::*;
+            let current_time = self.current_time;
+            let mut dead: Vec<usize> = (0..self.gpu_particles.len())
+                .into_par_iter()
+                .filter(|&i| current_time - self.gpu_particles[i].data.x >= self.gpu_particles[i].data.y)
+                .collect();
+            // 按索引从大到小排序，确保 swap_remove 不影响未处理索引
+            dead.sort_unstable_by(|a, b| b.cmp(a));
+            if !dead.is_empty() {
+                for i in dead {
                     self.gpu_particles.swap_remove(i);
                     self.cpu_counterpart.swap_remove(i);
                 }
+                self.buffer_dirty = true;
             }
-            self.bindings.vertex_buffers[1].update(ctx, &self.gpu_particles[..]);
+            // GPU-driven 模式下粒子初始数据生命周期内不变，仅发射/死亡时更新缓冲
+            if self.buffer_dirty {
+                self.bindings.vertex_buffers[1].update(ctx, &self.gpu_particles[..]);
+                self.buffer_dirty = false;
+            }
         } else {
             for i in (0..self.gpu_particles.len()).rev() {
                 if self.cpu_counterpart[i].lived >= self.cpu_counterpart[i].lifetime || self.cpu_counterpart[i].lived > self.config.lifetime {

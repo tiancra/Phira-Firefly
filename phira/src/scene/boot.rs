@@ -1,4 +1,5 @@
-use super::MainScene;
+use super::{MainScene, OnboardingScene};
+use super::onboarding::PENDING_MAIN;
 use crate::get_data;
 use anyhow::Result;
 use macroquad::prelude::*;
@@ -61,6 +62,7 @@ pub struct BootScene {
     boot: SafeTexture,
     splash_music: Option<Music>,
     main_scene: Option<MainScene>,
+    onboarding: Option<OnboardingScene>,
 
     started: f64,
     started_set: bool,
@@ -93,12 +95,14 @@ impl BootScene {
                 None
             }
         };
+        let onboarding = OnboardingScene::new()?;
         Ok(Self {
             splash,
             background,
             boot,
             splash_music,
             main_scene: Some(main_scene),
+            onboarding: Some(onboarding),
             started: 0.,
             started_set: false,
             boot_music_started: false,
@@ -290,14 +294,16 @@ impl Scene for BootScene {
                 ui.fill_rect(screen, (*self.background, screen));
             });
 
-            // 遮罩 / boot / 文字（点击后渐隐），直接用颜色 alpha 控制透明度
+            // 遮罩 / boot / 文字
+            // 半透明黑色遮罩点击后保持不渐隐，作为引导场景（onboarding）的底，视觉无缝衔接
+            let mask_alpha = if self.clicked { 1.0 } else { out_sine(enter_p) };
+            ui.fill_rect(screen, semi_black(0.5 * mask_alpha));
+            // boot / 文字（点击后渐隐），直接用颜色 alpha 控制透明度
             let overlay_alpha = if self.clicked {
                 (1.0 - out_sine((self.since_click(tm) / BOOT_CLICK_FADE_OUT).min(1.0))).max(0.0)
             } else {
                 out_sine(enter_p)
             };
-            // 模糊遮罩（半透明暗色遮罩）
-            ui.fill_rect(screen, semi_black(0.5 * overlay_alpha));
             // boot.png（小一点，居中偏上），固定大小
             self.draw_tex_centered(ui, &self.boot, overlay_alpha, 0.7);
             // 点击提示
@@ -314,6 +320,15 @@ impl Scene for BootScene {
 
     fn next_scene(&mut self, tm: &mut TimeManager) -> NextScene {
         if self.clicked && self.since_click(tm) >= BOOT_CLICK_FADE_OUT {
+            if !get_data().onboarding_done {
+                // 首次启动：把主界面放入传送槽，进入引导场景
+                if let Some(main) = self.main_scene.take() {
+                    PENDING_MAIN.with(|it| *it.borrow_mut() = Some(main));
+                }
+                if let Some(ob) = self.onboarding.take() {
+                    return NextScene::Replace(Box::new(ob));
+                }
+            }
             if let Some(main) = self.main_scene.take() {
                 return NextScene::Replace(Box::new(main));
             }

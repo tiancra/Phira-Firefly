@@ -28,6 +28,9 @@ pub use profile::ProfileScene;
 mod tutorial;
 pub use tutorial::TutorialLoadingScene;
 
+mod onboarding;
+pub use onboarding::OnboardingScene;
+
 use crate::{
     client::{Client, UserManager},
     data::LocalChart,

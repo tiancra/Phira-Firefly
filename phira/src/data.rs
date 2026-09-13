@@ -126,6 +126,10 @@ pub struct Data {
     #[serde(default = "default_anys_gateway")]
     pub anys_gateway: String,
 
+    /// 是否已完成首次启动引导（onboarding）
+    #[serde(default)]
+    pub onboarding_done: bool,
+
     pub prefer_reduced_motion: bool,
 
     #[serde(default, rename = "collections")]

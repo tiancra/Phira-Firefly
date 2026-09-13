@@ -250,6 +250,11 @@ impl Scroller {
     pub fn size(&mut self, size: f32) {
         self.size = size;
     }
+
+    /// 内容超出可视区的最大滚动偏移（offset 的上限）
+    pub fn max_offset(&self) -> f32 {
+        self.size
+    }
 }
 
 pub enum ClipType {

@@ -7,6 +7,7 @@ license = { workspace = true }
 [features]
 default = ["video"]
 video = ["phira/video"]
+intest = ["phira/intest"]
 
 [dependencies]
 phira = { workspace = true, default-features = false }

@@ -45,7 +45,7 @@ const BOARD_TRANSIT_TIME: f32 = 1.2;
 fn entry_anim(t: f32, dir: f32) -> (f32, f32) {
     let p = crate::scene::boot::boot_entry_progress(t, 1.0);
     let eased = (p * std::f32::consts::PI / 2.).sin();
-    ((1. - eased) * dir * 0.5, eased)
+    ((1. - eased) * dir * 1.0, eased)
 }
 
 type BoldFontUpdateTask = Task<Result<Option<(FontArc, String)>>>;
@@ -258,8 +258,8 @@ impl HomePage {
 
     fn render_not_char(&mut self, ui: &mut Ui, s: &mut SharedState) {
         let t = s.t;
-        // 主界面右侧按钮组从右侧划入并渐显（向左移动）
-        let (off, alpha) = entry_anim(t, -1.);
+        // 主界面右侧按钮组从右侧边缘外滑入并渐显
+        let (off, alpha) = entry_anim(t, 1.);
         let old_alpha = ui.alpha;
         ui.alpha = old_alpha * alpha;
         ui.dx(off);
@@ -606,8 +606,8 @@ impl Page for HomePage {
         let rt = s.rt;
 
         let cp = self.char_screen_p.now(rt);
-        // 主界面左侧元素从右侧划入并渐显
-        let (off, alpha) = entry_anim(t, 1.);
+        // 主界面左侧元素从左侧边缘外滑入并渐显
+        let (off, alpha) = entry_anim(t, -1.);
         let old_alpha = ui.alpha;
         ui.alpha = old_alpha * alpha;
         ui.dx(off);
@@ -712,8 +712,8 @@ impl Page for HomePage {
         });
 
         s.fader.roll_back();
-        // 主界面右上元素从左侧划入并渐显
-        let (off, alpha) = entry_anim(t, -1.);
+        // 主界面右上元素从右侧边缘外滑入并渐显
+        let (off, alpha) = entry_anim(t, 1.);
         let old_alpha = ui.alpha;
         ui.alpha = old_alpha * alpha;
         ui.dx(off);

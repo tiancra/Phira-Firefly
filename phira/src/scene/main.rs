@@ -201,6 +201,13 @@ impl MainScene {
             let _ = bgm.fade_in(fade_time);
         }
     }
+
+    /// 暂停/恢复主页背景音乐（新手教程等覆盖场景使用）。
+    pub fn set_bgm_paused(&mut self, paused: bool) {
+        if let Some(bgm) = &mut self.bgm {
+            let _ = if paused { bgm.pause() } else { bgm.play() };
+        }
+    }
 }
 
 impl Scene for MainScene {
@@ -687,6 +694,12 @@ impl Scene for MainScene {
         let s = &mut self.state;
         s.update(tm);
 
+        // 启动入场整体渐显（Out Sine, 1s）
+        let entry_p = crate::scene::boot::boot_entry_progress(s.t, 1.0);
+        let entry_alpha = (entry_p * std::f32::consts::PI / 2.).sin();
+        let old_entry_alpha = ui.alpha;
+        ui.alpha = old_entry_alpha * entry_alpha;
+
         // 1. page
         if s.fader.transiting() {
             let pos = self.pages.len() - 2;
@@ -755,6 +768,7 @@ impl Scene for MainScene {
             ui.full_loading(itl!("batch-importing", "current" => current, "total" => total), s.t);
         }
 
+        ui.alpha = old_entry_alpha;
         Ok(())
     }
 

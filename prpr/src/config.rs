@@ -1,4 +1,4 @@
-﻿//! Configuration module of the playing environment.\
+//! Configuration module of the playing environment.\
 //! e.g. player name, volume, speed, autoplay, etc.
 
 use bitflags::bitflags;
@@ -14,6 +14,20 @@ pub enum DynamicBackgroundMode {
     Off,
     StaticBrightness,
     DynamicBrightness,
+}
+
+/// Rendering backend selection.
+///
+/// - `Auto`: prefer wgpu (Vulkan/Metal/DX12), fall back to OpenGL ES.
+/// - `Wgpu`: force the wgpu backend (Vulkan on Android/Windows).
+/// - `OpenGl`: force the legacy macroquad/OpenGL ES backend.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum RenderBackend {
+    #[default]
+    Auto,
+    Wgpu,
+    OpenGl,
 }
 
 impl DynamicBackgroundMode {
@@ -96,9 +110,11 @@ pub struct Config {
     pub player_rks: f32,
     pub preferred_sample_rate: Option<u32>,
     pub res_pack_path: Option<String>,
+    pub render_backend: RenderBackend,
     pub sample_count: u32,
     pub show_acc: bool,
     pub show_avg_fps: bool,
+    pub performance_monitor: bool,
     pub speed: f32,
     pub touch_debug: bool,
     pub use_keyboard: bool,
@@ -142,9 +158,11 @@ impl Default for Config {
             player_rks: 15.,
             preferred_sample_rate: None,
             res_pack_path: None,
+            render_backend: RenderBackend::default(),
             sample_count: 1,
             show_acc: false,
             show_avg_fps: false,
+            performance_monitor: false,
             speed: 1.,
             touch_debug: false,
             use_keyboard: false,

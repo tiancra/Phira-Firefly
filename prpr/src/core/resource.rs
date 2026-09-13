@@ -354,12 +354,12 @@ impl ParticleEmitter {
 
     /// 方形扩散粒子同时存在的上限
     const MAX_PARTICLES: usize = 20;
-    const MAX_HIT_FX_PARTICLES: usize = 240;
+    const MAX_HIT_FX_PARTICLES: usize = 65536;
 
     pub fn emit_at(&mut self, pt: Vec2, rotation: f32, color: Color) {
         self.emitter.config.initial_rotation = rotation;
         self.emitter.config.base_color = color;
-        // 打击特效（序列帧）最多同时存在240个
+        // 打击特效（序列帧）最多同时存在65536个
         if self.emitter.particle_count() < Self::MAX_HIT_FX_PARTICLES {
             self.emitter.emit(pt, 1);
         }
@@ -469,6 +469,10 @@ macro_rules! loads {
         Texture2D::from_image(&load_image($path).await?).into()
     };
 }
+
+// 安全保证：rayon 并行更新阶段只只读访问 Resource，
+// 不访问 emitter（粒子发射分离到串行阶段）和 note_buffer（仅渲染时使用）。
+unsafe impl Sync for Resource {}
 
 impl Resource {
     pub async fn load_icons() -> Result<[SafeTexture; 8]> {

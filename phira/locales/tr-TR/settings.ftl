@@ -84,3 +84,11 @@ about-content =
   { $localization }
 
   Ve daha birçok gönüllü chart incelemecisi. Tam liste için https://phira.moe/staff adresine bakın
+
+item-render-backend = Render Backend
+item-render-backend-sub = Requires restart to take effect
+item-render-backend-auto = Auto
+item-render-backend-wgpu = Vulkan
+item-render-backend-opengl = OpenGL
+item-perf-monitor = Performans Monitörü
+item-perf-monitor-sub = Oyun içinde sol üstte FPS/CPU/Bellek/GPU/Disk kullanımını göster

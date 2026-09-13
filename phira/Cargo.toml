@@ -14,10 +14,10 @@ crate-type = ["lib", "cdylib"]
 default = ["video"]
 video = ["prpr/video"]
 chat = []
+intest = []
+testing = []
 aa = []
 event_debug = []
-testing = []
-intest = []
 
 [dependencies]
 anyhow = { workspace = true }

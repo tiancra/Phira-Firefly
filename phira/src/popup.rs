@@ -182,6 +182,12 @@ impl Popup {
                 }
                 if self.rect.contains(touch.position) {
                     for (id, (_, btn)) in self.options.iter_mut().enumerate() {
+                        // popup 显示后第一个触摸/鼠标序列可能没有 Started 事件
+                        // （Started 被主按钮消费了），在任何 phase 下补设 id
+                        if !btn.touching() && btn.contains(touch.position) {
+                            let started_touch = Touch { phase: TouchPhase::Started, ..*touch };
+                            let _ = btn.touch(&started_touch);
+                        }
                         if btn.touch(touch) {
                             button_hit();
                             if self.selected != id {
@@ -230,6 +236,7 @@ pub struct ChooseButton {
     width: Option<f32>,
     height: f32,
     need_to_show: bool,
+    bottom: bool,
 }
 
 impl ChooseButton {
@@ -238,8 +245,9 @@ impl ChooseButton {
             btn: DRectButton::new(),
             popup: Popup::new(),
             width: None,
-            height: 0.34,
+            height: 0.25,
             need_to_show: false,
+            bottom: true,
         }
     }
 
@@ -255,6 +263,13 @@ impl ChooseButton {
         self
     }
 
+    /// Set popup direction: \	rue\ pops downward (default), \alse\ pops upward.
+    #[inline]
+    pub fn with_bottom(mut self, bottom: bool) -> Self {
+        self.bottom = bottom;
+        self
+    }
+
     #[inline]
     pub fn selected(&self) -> usize {
         self.popup.selected
@@ -265,16 +280,28 @@ impl ChooseButton {
         self.popup.changed()
     }
 
+    pub fn set_options(&mut self, options: Vec<String>) {
+        self.popup.set_options(options);
+    }
+
+    pub fn set_selected(&mut self, selected: usize) {
+        self.popup.set_selected(selected);
+    }
+
     pub fn render(&mut self, ui: &mut Ui, r: Rect, t: f32) {
         self.btn
             .render_text(ui, r, t, &self.popup.options[self.popup.selected].0, self.popup.size, false);
         if self.need_to_show {
             let pad = 0.007;
-            let mut rr = Rect::new(r.x, r.bottom() + pad, self.width.unwrap_or(r.w), self.height);
             let delta = 0.1;
-            rr.x -= delta;
-            rr.w += delta;
-            self.popup.set_bottom(true);
+            let popup_height = self.height * self.popup.options.len().max(1) as f32;
+            let mut rr = Rect::new(r.x - delta, 0., self.width.unwrap_or(r.w) + delta, popup_height);
+            if self.bottom {
+                rr.y = r.bottom() + pad;
+            } else {
+                rr.y = r.y - pad - popup_height;
+            }
+            self.popup.set_bottom(self.bottom);
             self.popup.show(ui, t, rr);
             self.need_to_show = false;
         }

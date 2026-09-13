@@ -9,6 +9,8 @@ pub mod info;
 pub mod judge;
 pub mod parse;
 pub mod particle;
+pub mod perf_monitor;
+pub mod render_backend;
 pub mod scene;
 pub mod task;
 pub mod time;

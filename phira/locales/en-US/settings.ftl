@@ -114,3 +114,11 @@ about-content =
   { $localization }
 
   And many more voluntary chart reviewers. For a full list please refer to https://phira.moe/staff .
+
+item-render-backend = Render Backend
+item-render-backend-sub = Requires restart to take effect
+item-render-backend-auto = Auto
+item-render-backend-wgpu = Vulkan
+item-render-backend-opengl = OpenGL
+item-perf-monitor = Performance Monitor
+item-perf-monitor-sub = Show FPS/CPU/Memory/GPU/Disk usage in-game top-left

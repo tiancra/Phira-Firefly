@@ -97,3 +97,11 @@ about-content =
   { $localization }
 
   Và nhiều người đánh giá chart tình nguyện khác. Để xem danh sách đầy đủ, vui lòng tham khảo https://phira.moe/staff
+
+item-render-backend = Render Backend
+item-render-backend-sub = Requires restart to take effect
+item-render-backend-auto = Auto
+item-render-backend-wgpu = Vulkan
+item-render-backend-opengl = OpenGL
+item-perf-monitor = Giám sát hiệu năng
+item-perf-monitor-sub = Hiển thị FPS/CPU/Bộ nhớ/GPU/Ổ đĩa góc trên trái trong game

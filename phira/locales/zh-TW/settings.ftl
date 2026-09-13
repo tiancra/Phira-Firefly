@@ -97,3 +97,11 @@ about-content =
     { $localization }
 
     以及許多志願譜面審核員！完整列表參見 https://phira.moe/staff
+
+item-render-backend = 渲染後端
+item-render-backend-sub = 重啟後生效
+item-render-backend-auto = 自動
+item-render-backend-wgpu = Vulkan
+item-render-backend-opengl = OpenGL
+item-perf-monitor = 即時監測
+item-perf-monitor-sub = 遊戲中左上角顯示FPS/CPU/記憶體/GPU/硬碟占用

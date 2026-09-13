@@ -71,3 +71,11 @@ about-content =
   { $localization }
 
   I wielu innych dobrowolnych recenzentów chartów. Pełną listę można znaleźć na https://phira.moe/staff
+
+item-render-backend = Render Backend
+item-render-backend-sub = Requires restart to take effect
+item-render-backend-auto = Auto
+item-render-backend-wgpu = Vulkan
+item-render-backend-opengl = OpenGL
+item-perf-monitor = Monitor wydajności
+item-perf-monitor-sub = Pokaż FPS/CPU/Pamięć/GPU/Dysk w lewym górnym rogu podczas gry

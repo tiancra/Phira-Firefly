@@ -92,3 +92,11 @@ about-content =
   { $localization }
 
   그리고 많은 자원봉사 채보 리뷰어들에게 감사드립니다. 전체 목록은 https://phira.moe/staff 를 참조하세요.
+
+item-render-backend = Render Backend
+item-render-backend-sub = Requires restart to take effect
+item-render-backend-auto = Auto
+item-render-backend-wgpu = Vulkan
+item-render-backend-opengl = OpenGL
+item-perf-monitor = 성능 모니터
+item-perf-monitor-sub = 게임 내 좌측 상단에 FPS/CPU/메모리/GPU/디스크 사용량 표시

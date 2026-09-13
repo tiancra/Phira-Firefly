@@ -37,9 +37,8 @@ use std::{
     sync::atomic::Ordering,
 };
 
-/// 内测资格验证服务地址（exam 后端）。
-/// 本地开发默认指向本地 server.py；正式环境改为 https://pf.tianstudio.top
-pub const EXAM_API_URL: &str = "http://127.0.0.1:8000";
+/// 内测资格验证服务地址（exam 后端，正式环境）。
+pub const EXAM_API_URL: &str = "https://pf.tianstudio.top";
 
 // 主界面预加载传送槽：BootScene 创建 MainScene 后放入，引导结束时取出 Replace。
 thread_local! {

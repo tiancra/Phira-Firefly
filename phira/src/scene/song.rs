@@ -960,6 +960,8 @@ impl SongScene {
         }
         if self.local_path.as_ref().is_some_and(|it| !it.starts_with(':')) {
             self.menu_options.push("export");
+            #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+            self.menu_options.push("render");
             #[cfg(feature = "testing")]
             // 局域网联机（仅已下载的本地谱面）
             self.menu_options.push("lan-multiplayer");
@@ -2410,6 +2412,41 @@ impl Scene for SongScene {
                 }
                 "export" => {
                     request_export(format!("{}.zip", sanitize(&self.info.name)));
+                }
+                #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+                "render" => {
+                    use crate::scene::RenderSettingsScene;
+                    let local_path = self.local_path.clone().unwrap();
+                    let chart_dir = format!("{}/{}", dir::charts()?, local_path);
+                    // Load full ChartInfo from info.yml
+                    let info_path = format!("{}/info.yml", chart_dir);
+                    let info: prpr::info::ChartInfo = match std::fs::read_to_string(&info_path) {
+                        Ok(text) => match serde_yaml::from_str(&text) {
+                            Ok(i) => i,
+                            Err(e) => {
+                                show_message(format!("Failed to parse info.yml: {e}")).error();
+                                return Ok(());
+                            }
+                        },
+                        Err(e) => {
+                            show_message(format!("Failed to read info.yml: {e}")).error();
+                            return Ok(());
+                        }
+                    };
+                    // Pause preview audio before going to render
+                    if let Some(preview) = &mut self.preview {
+                        let _ = preview.pause();
+                    }
+                    let pname = get_data().me.as_ref().map(|it| it.name.clone()).unwrap_or_else(|| "Guest".to_string());
+                    let prks = get_data().me.as_ref().map(|it| it.rks).unwrap_or(0.0);
+                    self.next_scene = Some(NextScene::Overlay(Box::new(RenderSettingsScene::new(
+                        chart_dir,
+                        info,
+                        &get_data().config,
+                        pname,
+                        prks,
+                        None,
+                    ))));
                 }
                 #[cfg(feature = "testing")]
                 "lan-multiplayer" => {

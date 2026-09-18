@@ -20,6 +20,8 @@ mod mp;
 mod page;
 mod popup;
 mod rate;
+#[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+pub mod render_worker;
 mod resource;
 mod scene;
 mod tabs;
@@ -617,6 +619,47 @@ fn build_global_window_conf() -> Conf {
 #[no_mangle]
 pub extern "C" fn quad_main() {
     crash::set_panic_hook();
+    // Render child-process mode: headless, reads job from stdin, writes progress to stdout.
+    #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+    if std::env::args().nth(1).as_deref() == Some("render") {
+        // Initialize tokio runtime for spawn_blocking used by file system
+        // Use current-thread to avoid thread-local (PGR_FONT/BOLD_FONT) migration
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _guard = rt.enter();
+
+        let mut conf = build_global_window_conf();
+        conf.headless = true;
+        conf.window_width = 1920;
+        conf.window_height = 1080;
+        macroquad::Window::from_config(conf, async {
+            prpr::core::init_assets();
+            // Minimize the window on Windows
+            #[cfg(target_os = "windows")]
+            {
+                use std::ffi::c_void;
+                #[link(name = "user32")]
+                extern "system" {
+                    fn GetForegroundWindow() -> *mut c_void;
+                    fn ShowWindow(hwnd: *mut c_void, ncmdshow: i32) -> i32;
+                }
+                unsafe {
+                    let hwnd = GetForegroundWindow();
+                    if !hwnd.is_null() {
+                        ShowWindow(hwnd, 6); // SW_MINIMIZE = 6
+                    }
+                }
+            }
+            if let Err(err) = render_worker::run().await {
+                eprintln!("render worker error: {err:?}");
+                std::process::exit(1);
+            }
+            std::process::exit(0);
+        });
+        return;
+    }
     macroquad::Window::from_config(build_global_window_conf(), async {
         if let Err(err) = the_main().await {
             error!(?err, "global error");

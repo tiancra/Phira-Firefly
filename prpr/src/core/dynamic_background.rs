@@ -353,15 +353,17 @@ impl DynamicBackground {
 
         let rgb = image.to_rgb8();
         // color-thief 的 quality 参数范围必须是 1..=10，之前误传 14 会在 Android 上触发断言崩溃
-        let palette = color_thief::get_palette(&rgb, color_thief::ColorFormat::Rgb, 10, 5).context("failed to extract color palette")?;
-        let mut colors = [BLACK; MAX_BLOBS];
-        for i in 0..MAX_BLOBS {
-            let index = if i < palette.len() { i } else { palette.len().max(1) - 1 };
-            let c = &palette[index];
-            colors[i] = Color::from_rgba(c.r, c.g, c.b, 255);
-        }
-
+        let palette = color_thief::get_palette(&rgb, color_thief::ColorFormat::Rgb, 10, 12)
+            .context("failed to extract color palette")?;
         let blob_count = Self::blob_count_for(viewport);
+        let distinct = select_distinct_colors(&palette, blob_count);
+
+        let mut colors = [BLACK; MAX_BLOBS];
+        let fallback = distinct.last().copied().unwrap_or(color_thief::Color { r: 0, g: 0, b: 0 });
+        for (i, slot) in colors.iter_mut().enumerate() {
+            let c = distinct.get(i).copied().unwrap_or(fallback);
+            *slot = Color::from_rgba(c.r, c.g, c.b, 255);
+        }
 
         let blob_material = load_material(
             VERTEX,
@@ -628,4 +630,46 @@ fn append_mono(buf: AudioBufferRef, out: &mut Vec<f32>) {
         let sum: f32 = frame.iter().sum();
         out.push(sum / div);
     }
+}
+
+
+/// 两个 RGB 颜色之间的欧氏距离（0 ~ 441.67）。
+fn color_dist(a: &color_thief::Color, b: &color_thief::Color) -> f32 {
+    let dr = a.r as f32 - b.r as f32;
+    let dg = a.g as f32 - b.g as f32;
+    let db = a.b as f32 - b.b as f32;
+    (dr * dr + dg * dg + db * db).sqrt()
+}
+
+/// 从候选调色板中贪心挑选与已选色差异最大的 k 个颜色。
+/// 第一个选出现频率最高的 palette[0]，之后每次选"到已选集合最小距离最大"的候选，
+/// 保证返回的 k 个色彼此拉开差距，避免流体混合后糊成一片。
+fn select_distinct_colors(palette: &[color_thief::Color], k: usize) -> Vec<color_thief::Color> {
+    let k = k.min(palette.len());
+    if k == 0 {
+        return Vec::new();
+    }
+    let mut chosen: Vec<usize> = vec![0];
+    while chosen.len() < k {
+        let mut best_i = 0usize;
+        let mut best_d = -1.0f32;
+        for (i, cand) in palette.iter().enumerate() {
+            if chosen.contains(&i) {
+                continue;
+            }
+            let mut min_d = f32::INFINITY;
+            for &s in &chosen {
+                let d = color_dist(&palette[s], cand);
+                if d < min_d {
+                    min_d = d;
+                }
+            }
+            if min_d > best_d {
+                best_d = min_d;
+                best_i = i;
+            }
+        }
+        chosen.push(best_i);
+    }
+    chosen.into_iter().map(|i| palette[i]).collect()
 }

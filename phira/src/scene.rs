@@ -17,6 +17,10 @@ pub use main::{MainScene, BGM_VOLUME_UPDATED, MP_PANEL};
 
 mod song;
 pub use song::{compress_folder, Downloading, SongScene, RECORD_ID};
+#[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+mod render;
+#[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+pub use render::{RenderProgressScene, RenderSettingsScene};
 #[cfg(feature = "video")]
 mod unlock;
 #[cfg(feature = "video")]

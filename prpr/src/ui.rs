@@ -1,4 +1,4 @@
-//! UI utilities.
+﻿//! UI utilities.
 prpr_l10n::tl_file!("scene" ttl);
 mod billboard;
 pub use billboard::{BillBoard, Message, MessageHandle, MessageKind};
@@ -1524,7 +1524,8 @@ impl<'a> Ui<'a> {
     }
 
     fn set_tolerance(&mut self) {
-        let tol = 0.15 / (self.transform.transform_vector(&Vector::new(1., 0.)).norm() * screen_width() / 2.);
+        let fb_w = self.viewport.2.max(1) as f32;
+        let tol = 0.15 / (self.transform.transform_vector(&Vector::new(1., 0.)).norm() * fb_w / 2.);
         self.fill_options.tolerance = tol;
         self.stroke_options.tolerance = tol;
     }
@@ -1678,9 +1679,10 @@ impl<'a> Ui<'a> {
         let gl = igl.quad_gl;
         let rect = self.rect_to_global(rect);
         let vp = get_viewport();
+        let fb_h = (vp.1 + vp.3) as f32;
         let pt = (
             vp.0 as f32 + (rect.x + 1.) / 2. * vp.2 as f32,
-            (screen_height() - (vp.1 + vp.3) as f32) + (rect.y * vp.2 as f32 / vp.3 as f32 + 1.) / 2. * vp.3 as f32,
+            (fb_h - (vp.1 + vp.3) as f32) + (rect.y * vp.2 as f32 / vp.3 as f32 + 1.) / 2. * vp.3 as f32,
         );
 
         let old = self.scissor;

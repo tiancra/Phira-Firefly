@@ -22,6 +22,9 @@ use crate::{
     time::TimeManager,
     ui::{RectButton, TextPainter, Ui},
 };
+
+#[cfg(target_os = "windows")]
+use crate::smtc::{SmtcCommand, SmtcSession};
 use anyhow::{bail, Context, Result};
 use concat_string::concat_string;
 use inputbox::InputBox;
@@ -272,6 +275,11 @@ pub struct GameScene {
     active_lyrics: Vec<LyricDisplay>,
     lyric_index: usize,
     text_height: f32,
+
+    #[cfg(target_os = "windows")]
+    smtc: Option<SmtcSession>,
+    #[cfg(target_os = "windows")]
+    smtc_last_timeline: f64,
 }
 
 macro_rules! reset {
@@ -420,6 +428,23 @@ impl GameScene {
         }
 
         let info_offset = info.offset;
+
+        // SMTC 所需的元数据：在把 config/info move 进 Resource 之前先存下来
+        #[cfg(target_os = "windows")]
+        let smtc_enabled = config.smtc_integration;
+        #[cfg(target_os = "windows")]
+        let smtc_title = info.name.clone();
+        #[cfg(target_os = "windows")]
+        let smtc_artist = info.composer.clone();
+
+        // SMTC 封面字节：在把 fs move 进 Resource 之前，先把曲绘读出来
+        #[cfg(target_os = "windows")]
+        let smtc_cover: Vec<u8> = if smtc_enabled {
+            fs.load_file(&info.illustration).await.unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+
         let mut res = Resource::new(
             config,
             info,
@@ -515,6 +540,24 @@ impl GameScene {
             active_lyrics: Vec::new(),
             lyric_index: 0,
             text_height: 0.0,
+
+            #[cfg(target_os = "windows")]
+            smtc: if smtc_enabled {
+                match SmtcSession::new(&smtc_title, &smtc_artist, &smtc_cover, false) {
+                    Ok(s) => {
+                        tracing::info!("SMTC session started: {}", smtc_title);
+                        Some(s)
+                    }
+                    Err(e) => {
+                        tracing::warn!("failed to start SMTC session: {e:?}");
+                        None
+                    }
+                }
+            } else {
+                None
+            },
+            #[cfg(target_os = "windows")]
+            smtc_last_timeline: -1000.0,
         })
     }
 
@@ -1412,6 +1455,11 @@ impl Scene for GameScene {
             self.music.pause()?;
             tm.pause();
             self.game_paused = true;
+            #[cfg(target_os = "windows")]
+            if let Some(s) = &self.smtc {
+                let _ = s.set_paused(true);
+                let _ = s.update_timeline(0.0, self.res.track_length, self.music.position());
+            }
         }
         #[cfg(target_env = "ohos")]
         miniquad::native::set_interceptor_state(false);
@@ -1426,14 +1474,74 @@ impl Scene for GameScene {
         }
         self.game_paused = false;
         #[cfg(target_os = "windows")]
+        if let Some(s) = &self.smtc {
+            let _ = s.set_paused(false);
+            let _ = s.update_timeline(0.0, self.res.track_length, self.music.position());
+        }
+        #[cfg(target_os = "windows")]
         windows_ime::disable();
         Ok(())
     }
 
     fn update(&mut self, tm: &mut TimeManager) -> Result<()> {
+        // 处理来自 SMTC 的按钮命令（Windows 独占）：先收集，释放借用后再执行
+        #[cfg(target_os = "windows")]
+        {
+            let mut cmds: Vec<SmtcCommand> = Vec::new();
+            if let Some(s) = &self.smtc {
+                while let Some(c) = s.try_recv() {
+                    cmds.push(c);
+                }
+            }
+            for cmd in cmds {
+                match cmd {
+                    SmtcCommand::Play => {
+                        if tm.paused() {
+                            self.music.play()?;
+                            tm.resume();
+                            self.game_paused = false;
+                            if let Some(s) = &self.smtc {
+                                let _ = s.set_paused(false);
+                            }
+                        }
+                    }
+                    SmtcCommand::Pause => {
+                        if !tm.paused() {
+                            self.pause(tm)?;
+                        }
+                    }
+                    SmtcCommand::Next => {
+                        if !self.skip_done && !self.track_skipped {
+                            self.skip_done = true;
+                            self.track_skipped = true;
+                            self.skip_bar_active = false;
+                            self.skip_bar_retracting = false;
+                            self.skip_bar_from_corners = false;
+                            self.skip_transition_progress = 0.0;
+                            self.skip_wait_timer = 0.0;
+                            self.skip_fade_out_progress = 0.0;
+                            self.skip_instant = true;
+                        }
+                    }
+                    SmtcCommand::Previous => {
+                        self.should_exit = true;
+                    }
+                }
+            }
+        }
         self.res.audio.recover_if_needed()?;
         if matches!(self.state, State::Playing) {
             tm.update(self.music.position());
+        }
+        #[cfg(target_os = "windows")]
+        if let Some(s) = &self.smtc {
+            let now = tm.real_time();
+            if now - self.smtc_last_timeline > 0.25 {
+                self.smtc_last_timeline = now;
+                let end = self.res.track_length;
+                let pos = self.music.position();
+                let _ = s.update_timeline(0.0, end, pos);
+            }
         }
         if self.mode == GameMode::Exercise && tm.now() > self.exercise_range.end && !tm.paused() {
             let state = self.state.clone();
@@ -1936,7 +2044,7 @@ impl Scene for GameScene {
             .or(res.camera.render_target);
         if let Some(dbg) = &mut res.dynamic_bg {
             let vp = ui.viewport;
-            dbg.update(tm.now() as f32, vp, Some(self.music.position() as f32));
+            dbg.update(tm.now() as f32, vp, Some(tm.now() as f32));
             // 同步 Resource 持有的背景纹理句柄，因为 DynamicBackground 的 Clone 会创建独立的输出纹理
             res.background = dbg.texture();
         }

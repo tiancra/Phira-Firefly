@@ -22,6 +22,10 @@ use std::{
     sync::atomic::AtomicU32,
 };
 
+/// Override the music track length when running in headless render mode.
+thread_local! {
+    pub static TRACK_LENGTH_OVERRIDE: RefCell<Option<f64>> = const { RefCell::new(None) };
+}
 pub const MAX_SIZE: usize = 256; // 每个 mesh 最多 256 个四边形，减少 draw call 拆分
 pub static DPI_VALUE: AtomicU32 = AtomicU32::new(250);
 pub const BUFFER_SIZE: usize = 1024;
@@ -534,7 +538,7 @@ impl Resource {
                 }
             }
         }
-        let track_length = music.length();
+        let track_length = TRACK_LENGTH_OVERRIDE.with(|o| o.borrow().unwrap_or_else(|| music.length()));
         let buffer_size = Some(BUFFER_SIZE);
         let sfx_click = audio.create_sfx(res_pack.sfx_click.clone(), buffer_size)?;
         let sfx_drag = audio.create_sfx(res_pack.sfx_drag.clone(), buffer_size)?;

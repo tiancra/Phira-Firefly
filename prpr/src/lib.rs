@@ -11,6 +11,8 @@ pub mod parse;
 pub mod particle;
 pub mod perf_monitor;
 pub mod render_backend;
+#[cfg(target_os = "windows")]
+pub mod smtc;
 pub mod scene;
 pub mod task;
 pub mod time;

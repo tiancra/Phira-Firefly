@@ -890,6 +890,8 @@ struct ChartList {
     use_keyboard_btn: DRectButton,
     #[cfg(not(target_os = "android"))]
     vsync_btn: DRectButton,
+    #[cfg(target_os = "windows")]
+    smtc_btn: DRectButton,
     dynamic_bg_btn: ChooseButton,
     speed_slider: Slider,
     size_slider: Slider,
@@ -908,6 +910,8 @@ impl ChartList {
             use_keyboard_btn: DRectButton::new(),
             #[cfg(not(target_os = "android"))]
             vsync_btn: DRectButton::new(),
+            #[cfg(target_os = "windows")]
+            smtc_btn: DRectButton::new(),
             dynamic_bg_btn: ChooseButton::new()
                 .with_options(vec![
                     tl!("dynamic-bg-off").to_string(),
@@ -957,6 +961,11 @@ impl ChartList {
         }
         if self.use_keyboard_btn.touch(touch, t) {
             config.use_keyboard ^= true;
+            return Ok(Some(true));
+        }
+        #[cfg(target_os = "windows")]
+        if self.smtc_btn.touch(touch, t) {
+            config.smtc_integration ^= true;
             return Ok(Some(true));
         }
         #[cfg(not(target_os = "android"))]
@@ -1040,6 +1049,11 @@ impl ChartList {
         item! {
             render_title(ui, tl!("item-use-keyboard"), Some(tl!("item-use-keyboard-sub")));
             render_switch(ui, rr, t, &mut self.use_keyboard_btn, config.use_keyboard);
+        }
+        #[cfg(target_os = "windows")]
+        item! {
+            render_title(ui, "兼容系统播放控件", Some(Cow::Borrowed("将游玩中的谱面音乐接入系统播放控件（SMTC），此时你将可以通过系统播放控件控制谱面播放，也可以使用Lyricify等软件显示歌词")));
+            render_switch(ui, rr, t, &mut self.smtc_btn, config.smtc_integration);
         }
         #[cfg(not(target_os = "android"))]
         item! {

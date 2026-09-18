@@ -1,4 +1,4 @@
-use macroquad::{
+﻿use macroquad::{
     texture::{RenderTarget, Texture2D},
     window::get_internal_gl,
 };
@@ -36,7 +36,7 @@ impl MSRenderTarget {
             use miniquad::gl::*;
             glGenRenderbuffers(1, &mut rbo as *mut _);
             glBindRenderbuffer(GL_RENDERBUFFER, rbo);
-            glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples as _, GL_RGB8, dim.0 as _, dim.1 as _);
+            glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples as _, GL_RGBA8, dim.0 as _, dim.1 as _);
             glGenFramebuffers(1, &mut fbo as *mut _);
             glBindFramebuffer(GL_FRAMEBUFFER, fbo);
             glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, rbo);
@@ -47,7 +47,7 @@ impl MSRenderTarget {
             miniquad::TextureParams {
                 width: dim.0,
                 height: dim.1,
-                format: TextureFormat::RGB8,
+                format: TextureFormat::RGBA8,
                 ..Default::default()
             },
         );
@@ -84,7 +84,7 @@ impl MSRenderTarget {
                 miniquad::TextureParams {
                     width: self.dim.0,
                     height: self.dim.1,
-                    format: TextureFormat::RGB8,
+                    format: TextureFormat::RGBA8,
                     ..Default::default()
                 },
             );

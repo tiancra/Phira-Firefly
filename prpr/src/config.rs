@@ -111,6 +111,8 @@ pub struct Config {
     pub preferred_sample_rate: Option<u32>,
     pub res_pack_path: Option<String>,
     pub render_backend: RenderBackend,
+    #[serde(default)]
+    pub smtc_integration: bool,
     pub sample_count: u32,
     pub show_acc: bool,
     pub show_avg_fps: bool,
@@ -159,6 +161,7 @@ impl Default for Config {
             preferred_sample_rate: None,
             res_pack_path: None,
             render_backend: RenderBackend::default(),
+            smtc_integration: false,
             sample_count: 1,
             show_acc: false,
             show_avg_fps: false,

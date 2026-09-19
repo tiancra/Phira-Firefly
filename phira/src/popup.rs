@@ -93,6 +93,18 @@ impl Popup {
             self.rect.x = self.rect.x.clamp(area.x, area.right() - self.rect.w);
             self.rect.y = self.rect.y.clamp(area.y, area.bottom() - self.rect.h);
         }
+        // 弹窗不能超出屏幕：一旦整体比屏幕还高，可视高度就等于内容高度，
+        // 滚动范围恒为 0，下面的选项就永远选不到了。把高度限制在屏幕内，
+        // 放不下的部分交给内部 Scroll。
+        let screen = Rect::new(-1., -ui.top, 2., ui.top * 2.);
+        let margin = 0.03;
+        let max_h = (screen.h - margin * 2.).max(0.1);
+        if self.rect.h > max_h {
+            self.rect.h = max_h;
+        }
+        let min_y = screen.y + margin;
+        let max_y = screen.bottom() - margin - self.rect.h;
+        self.rect.y = if max_y > min_y { self.rect.y.clamp(min_y, max_y) } else { min_y };
         self.showing = true;
         self.fader.sub(t);
     }

@@ -15,7 +15,7 @@ use inputbox::InputBox;
 use macroquad::prelude::*;
 use once_cell::sync::Lazy;
 use prpr::{
-    config::{DynamicBackgroundMode, RenderBackend},
+    config::DynamicBackgroundMode,
     core::BOLD_FONT,
     ext::{open_url, poll_future, semi_white, LocalTask, RectExt, SafeTexture},
     scene::{request_input, return_input, show_error, show_message, take_input, NextScene},
@@ -25,7 +25,7 @@ use prpr::{
 use prpr_l10n::{LANGS, LANG_NAMES};
 use reqwest::Url;
 use serde::Deserialize;
-use std::{borrow::Cow, fs, io, net::ToSocketAddrs, path::PathBuf, sync::atomic::Ordering};
+use std::{borrow::Cow, fs, io, path::PathBuf, sync::atomic::Ordering};
 
 const ITEM_HEIGHT: f32 = 0.15;
 const INTERACT_WIDTH: f32 = 0.26;
@@ -427,7 +427,6 @@ struct GeneralList {
     enable_anys_btn: DRectButton,
     anys_gateway_btn: DRectButton,
     watch_tutorial_btn: DRectButton,
-    render_backend_btn: ChooseButton,
 
     cache_size: Option<u64>,
     cache_task: Option<Task<Result<u64>>>,
@@ -464,18 +463,6 @@ impl GeneralList {
             enable_anys_btn: DRectButton::new(),
             anys_gateway_btn: DRectButton::new(),
             watch_tutorial_btn: DRectButton::new(),
-            render_backend_btn: ChooseButton::new()
-                .with_options(vec![
-                    tl!("item-render-backend-auto").to_string(),
-                    tl!("item-render-backend-wgpu").to_string(),
-                    tl!("item-render-backend-opengl").to_string(),
-                ])
-                .with_selected(match get_data().config.render_backend {
-                    RenderBackend::Auto => 0,
-                    RenderBackend::Wgpu => 1,
-                    RenderBackend::OpenGl => 2,
-                })
-                .with_bottom(false),
 
             cache_size: None,
             cache_task: None,
@@ -488,9 +475,6 @@ impl GeneralList {
 
     pub fn top_touch(&mut self, touch: &Touch, t: f32) -> bool {
         if self.lang_btn.top_touch(touch, t) {
-            return true;
-        }
-        if self.render_backend_btn.top_touch(touch, t) {
             return true;
         }
         false
@@ -575,9 +559,6 @@ impl GeneralList {
             request_input("anys_gateway", InputBox::new().default_text(&data.anys_gateway));
             return Ok(Some(true));
         }
-        if self.render_backend_btn.touch(touch, t) {
-            return Ok(Some(false));
-        }
         if self.watch_tutorial_btn.touch(touch, t) {
             self.start_tutorial = true;
             return Ok(Some(false));
@@ -587,16 +568,7 @@ impl GeneralList {
 
     pub fn update(&mut self, t: f32) -> Result<bool> {
         self.lang_btn.update(t);
-        self.render_backend_btn.update(t);
         let data = get_data_mut();
-        if self.render_backend_btn.changed() {
-            data.config.render_backend = match self.render_backend_btn.selected() {
-                0 => RenderBackend::Auto,
-                1 => RenderBackend::Wgpu,
-                _ => RenderBackend::OpenGl,
-            };
-            return Ok(true);
-        }
         if self.lang_btn.changed() {
             data.language = Some(LANGS[self.lang_btn.selected()].to_owned());
             sync_data();
@@ -706,22 +678,7 @@ impl GeneralList {
             render_title(ui, tl!("item-watch-tutorial"), Some(tl!("item-watch-tutorial-sub")));
             self.watch_tutorial_btn.render_text(ui, rr, t, tl!("item-watch-tutorial-btn"), 0.5, true);
         }
-        item! {
-            self.render_backend_btn.set_options(vec![
-                tl!("item-render-backend-auto").to_string(),
-                tl!("item-render-backend-wgpu").to_string(),
-                tl!("item-render-backend-opengl").to_string(),
-            ]);
-            self.render_backend_btn.set_selected(match config.render_backend {
-                RenderBackend::Auto => 0,
-                RenderBackend::Wgpu => 1,
-                RenderBackend::OpenGl => 2,
-            });
-            render_title(ui, tl!("item-render-backend"), Some(tl!("item-render-backend-sub")));
-            self.render_backend_btn.render(ui, rr, t);
-        }
         self.lang_btn.render_top(ui, t, 1.);
-        self.render_backend_btn.render_top(ui, t, 1.);
         (w, h)
     }
 

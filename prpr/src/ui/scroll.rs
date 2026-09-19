@@ -322,7 +322,10 @@ impl Scroll {
     }
 
     pub fn update(&mut self, t: f32) {
-        let extra_scroll = if let Some(matrix) = self.matrix {
+        // 取走矩阵：只有本帧 render 过（矩阵被重新写入）的 Scroll 才能消费滚轮。
+        // 否则隐藏中的控件会拿着上次显示时的矩形把滚轮“吞掉”，
+        // 光标刚好落在那个旧位置时下层的列表就滚不动了。
+        let extra_scroll = if let Some(matrix) = self.matrix.take() {
             let (mx, my) = mouse_position();
             let vp = crate::ext::get_viewport();
             let pt = Point::new(

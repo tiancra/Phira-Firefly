@@ -13,6 +13,35 @@ use std::thread;
 
 use crate::dir;
 
+/// 本地谱面包（打包 / 解包）允许的最大体积上限。
+/// 本地谱面可能包含大体积音频/视频，若不设上限，打包（[`pack_chart_dir`]）与
+/// 解包（[`download_chart`]）都会一次性在内存中物化整包，存在耗尽内存的风险。
+pub const MAX_CHART_ARCHIVE_SIZE: u64 = 512 * 1024 * 1024;
+
+/// 删除会话生成的本地谱面临时目录（`download/{chart_id}` 与 `download/sync_{chart_id}`）。
+/// `chart_id` 为空或为在线谱面数字 id 时不做任何处理，只清理本会话生成的 UUID 目录。
+pub fn remove_staged_chart(chart_id: &str) {
+    if chart_id.is_empty() || chart_id.chars().all(|c| c.is_ascii_digit()) {
+        return;
+    }
+    let Ok(charts) = dir::charts() else { return };
+    for name in [format!("download/{chart_id}"), format!("download/sync_{chart_id}")] {
+        remove_path(std::path::Path::new(&format!("{charts}/{name}")));
+    }
+}
+
+/// 删除文件或目录（不存在时静默返回）。
+fn remove_path(path: &std::path::Path) {
+    if !path.exists() {
+        return;
+    }
+    let _ = if path.is_file() {
+        std::fs::remove_file(path)
+    } else {
+        std::fs::remove_dir_all(path)
+    };
+}
+
 /// 把本地谱面 `local_path`（相对 `dir::charts()` 的子路径，如 `download/123` 或自定义路径）
 /// 对应的目录复制到 `download/{uuid}`，供后续 serve / download 使用同一 UUID 目录。
 pub fn stage_local_chart(local_path: &str, uuid: &str) -> Result<()> {
@@ -23,13 +52,7 @@ pub fn stage_local_chart(local_path: &str, uuid: &str) -> Result<()> {
     }
     let dst = format!("{}/download/{uuid}", dir::charts()?);
     let dst_path = std::path::Path::new(&dst);
-    if dst_path.exists() {
-        if dst_path.is_file() {
-            std::fs::remove_file(dst_path)?;
-        } else {
-            std::fs::remove_dir_all(dst_path)?;
-        }
-    }
+    remove_path(dst_path);
     copy_dir(src_path, dst_path)?;
     Ok(())
 }
@@ -69,6 +92,7 @@ pub fn pack_chart_dir(chart_id: &str) -> Result<Vec<u8>> {
             options: zip::write::SimpleFileOptions,
             base: &std::path::Path,
             path: &std::path::Path,
+            total: &mut u64,
         ) -> Result<()> {
             for entry in std::fs::read_dir(path).with_context(|| format!("read dir {}", path.display()))? {
                 let entry = entry?;
@@ -77,8 +101,13 @@ pub fn pack_chart_dir(chart_id: &str) -> Result<Vec<u8>> {
                 if p.is_dir() {
                     let name = format!("{}/", rel.to_string_lossy());
                     zip.add_directory(name, options)?;
-                    visit(zip, options, base, &p)?;
+                    visit(zip, options, base, &p, total)?;
                 } else {
+                    // 打包前累计体积并校验上限，避免超大的谱面在内存中物化整包
+                    *total = total.saturating_add(entry.metadata().map(|m| m.len()).unwrap_or(0));
+                    if *total > MAX_CHART_ARCHIVE_SIZE {
+                        anyhow::bail!("chart is too large to share (limit {MAX_CHART_ARCHIVE_SIZE} bytes)");
+                    }
                     zip.start_file(rel.to_string_lossy().to_string(), options)?;
                     let mut f = std::fs::File::open(&p)?;
                     std::io::copy(&mut f, zip)?;
@@ -87,7 +116,8 @@ pub fn pack_chart_dir(chart_id: &str) -> Result<Vec<u8>> {
             Ok(())
         }
 
-        visit(&mut zip, options, root, root)?;
+        let mut total = 0u64;
+        visit(&mut zip, options, root, root, &mut total)?;
         zip.finish()?;
     }
     Ok(out)
@@ -142,10 +172,12 @@ impl ChartServer {
     }
 
     /// 当前可连接的地址（V4 形式，若是 :: 则返回 0.0.0.0）
+    #[allow(dead_code)]
     pub fn addr(&self) -> &str {
         &self.addr
     }
 
+    #[allow(dead_code)]
     pub fn port(&self) -> u16 {
         self.port
     }
@@ -322,37 +354,37 @@ pub async fn download_chart(
     syncing.mark_started();
     let bytes = client.download_chart(chart_id.to_string()).await?;
 
-    // 解压到临时目录
+    // 解包前校验体积，避免超大的谱面在解压时占用过多内存/磁盘
+    if bytes.len() as u64 > MAX_CHART_ARCHIVE_SIZE {
+        anyhow::bail!("chart archive is too large ({} bytes, limit {MAX_CHART_ARCHIVE_SIZE})", bytes.len());
+    }
+
+    // 解压到临时目录；失败时清理，避免残留 sync_ 目录
     let tmp = format!("{}/download/sync_{chart_id}", dir::charts()?);
     let tmp_path = std::path::Path::new(&tmp);
-    if tmp_path.exists() {
-        if tmp_path.is_file() {
-            std::fs::remove_file(tmp_path)?;
-        } else {
-            std::fs::remove_dir_all(tmp_path)?;
-        }
-    }
+    remove_path(tmp_path);
     std::fs::create_dir_all(tmp_path)?;
-    {
-        let chart_dir = prpr::dir::Dir::new(tmp_path)?;
-        prpr::ext::unzip_into(std::io::Cursor::new(bytes), &chart_dir, false)?;
+    if let Err(err) = extract_archive(bytes, tmp_path) {
+        remove_path(tmp_path);
+        return Err(err);
     }
 
     // 移动到 download/{chart_id}
     let to = format!("{}/download/{chart_id}", dir::charts()?);
     let to_path = std::path::Path::new(&to);
-    if to_path.exists() {
-        if to_path.is_file() {
-            std::fs::remove_file(to_path)?;
-        } else {
-            std::fs::remove_dir_all(to_path)?;
-        }
-    }
+    remove_path(to_path);
     if let Some(parent) = to_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     std::fs::rename(tmp_path, to_path)?;
 
     syncing.mark_done();
+    Ok(())
+}
+
+/// 把谱面包（zip）解压到 `dst` 目录。失败时由调用方负责清理 `dst`。
+fn extract_archive(bytes: Vec<u8>, dst: &std::path::Path) -> Result<()> {
+    let chart_dir = prpr::dir::Dir::new(dst)?;
+    prpr::ext::unzip_into(std::io::Cursor::new(bytes), &chart_dir, false)?;
     Ok(())
 }

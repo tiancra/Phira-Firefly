@@ -263,6 +263,20 @@ impl ChooseButton {
         self
     }
 
+    /// Text size of the button label and of the popup rows.
+    #[inline]
+    pub fn with_size(mut self, size: f32) -> Self {
+        self.popup = self.popup.with_size(size);
+        self
+    }
+
+    /// Height of a single popup row.
+    #[inline]
+    pub fn with_height(mut self, height: f32) -> Self {
+        self.height = height;
+        self
+    }
+
     /// Set popup direction: \	rue\ pops downward (default), \alse\ pops upward.
     #[inline]
     pub fn with_bottom(mut self, bottom: bool) -> Self {

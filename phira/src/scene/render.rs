@@ -9,13 +9,17 @@ use anyhow::Result;
 use macroquad::prelude::*;
 use prpr::{
     core::BOLD_FONT,
-    ext::open_url,
+    ext::{open_url, semi_white, RectExt, SafeTexture},
     info::ChartInfo,
+    replay::ReplayData,
     scene::{show_message, NextScene, Scene},
     time::TimeManager,
-    ui::{DRectButton, Dialog, Slider, Ui},
+    ui::{button_hit, rounded_rect_shadow, Dialog, DRectButton, RectButton, ShadowConfig, Ui},
 };
-use crate::popup::ChooseButton;
+use crate::{
+    popup::ChooseButton,
+    scene::{TEX_BACKGROUND, TEX_ICON_BACK},
+};
 use serde::Deserialize;
 use std::{
     cell::RefCell,
@@ -84,6 +88,23 @@ const RESOLUTIONS: &[(u32, u32)] = &[(1920, 1080), (2560, 1440), (3840, 2160), (
 const FPS_OPTIONS: &[u32] = &[30, 60, 120, 240, 360, 480, 640];
 const CODEC_NAMES: &[&str] = &["H.264", "HEVC", "AV1"];
 const RES_NAMES: &[&str] = &["1920×1080", "2560×1440", "3840×2160", "1280×720"];
+const ENDING_MIN: f32 = 1.0;
+const ENDING_MAX: f32 = 10.0;
+const ENDING_STEP: f32 = 0.5;
+
+/// Half of the viewport height of a 16:9 window, which is what the settings
+/// page is laid out for.
+const REFERENCE_TOP: f32 = 1.125;
+
+/// Left-aligned label of an option row inside the options card.
+fn render_label(ui: &mut Ui, text: &str, x: f32, cy: f32, size: f32) {
+    ui.text(text)
+        .pos(x, cy)
+        .anchor(0., 0.5)
+        .no_baseline()
+        .size(size)
+        .draw();
+}
 
 thread_local! {
     /// (pending output path, confirmed flag, job to start)
@@ -93,6 +114,11 @@ thread_local! {
 pub struct RenderSettingsScene {
     chart_path: String,
     info: ChartInfo,
+    /// When set, the video is a playback of this replay (recorded judgements
+    /// and score) instead of an autoplay preview of the chart.
+    replay: Option<ReplayData>,
+    /// XC-SIM charts use their own judgement windows and scoring rules.
+    xcsim: bool,
 
     res_idx: usize,
     fps_idx: usize,
@@ -101,14 +127,18 @@ pub struct RenderSettingsScene {
     hardware: bool,
 
     btn_render: DRectButton,
-    btn_back: DRectButton,
-    slider_ending: Slider,
+    /// Back arrow: same icon and hit rect as every other scene, so it is a
+    /// plain `RectButton` instead of a drawn button.
+    btn_back: RectButton,
+    icon_back: Option<SafeTexture>,
+    btn_ending_dec: DRectButton,
+    btn_ending_inc: DRectButton,
     btn_res: ChooseButton,
     btn_fps: ChooseButton,
     btn_codec: ChooseButton,
     btn_hw: DRectButton,
 
-    bg: Option<Texture2D>,
+    bg: Option<SafeTexture>,
     // Client config snapshot
     player_name: String,
     player_rks: f32,
@@ -129,26 +159,39 @@ pub struct RenderSettingsScene {
 
 impl RenderSettingsScene {
     pub fn new(chart_path: String, info: ChartInfo, cfg: &prpr::config::Config, player_name: String, player_rks: f32, avatar_bytes: Option<Vec<u8>>) -> Self {
+        // XC-SIM charts live in `data/charts/xcsim`, which is never part of the
+        // chart folder name of anything else, so the path is enough to tell.
+        let xcsim = chart_path.contains("xcsim");
         Self {
             chart_path,
             info,
+            replay: None,
+            xcsim,
             res_idx: 0,
             fps_idx: 1,
             ending: 3.0,
             codec_idx: 0,
             hardware: true,
             btn_render: DRectButton::new(),
-            btn_back: DRectButton::new(),
-            slider_ending: Slider::new(1.0..10.0, 0.5),
+            btn_back: RectButton::new(),
+            icon_back: None,
+            btn_ending_dec: DRectButton::new(),
+            btn_ending_inc: DRectButton::new(),
             btn_res: ChooseButton::new()
                 .with_options(RES_NAMES.iter().map(|s| s.to_string()).collect())
-                .with_selected(0),
+                .with_selected(0)
+                .with_size(0.5)
+                .with_height(0.125),
             btn_fps: ChooseButton::new()
                 .with_options(FPS_OPTIONS.iter().map(|f| format!("{f}")).collect())
-                .with_selected(1),
+                .with_selected(1)
+                .with_size(0.5)
+                .with_height(0.125),
             btn_codec: ChooseButton::new()
                 .with_options(CODEC_NAMES.iter().map(|s| s.to_string()).collect())
-                .with_selected(0),
+                .with_selected(0)
+                .with_size(0.5)
+                .with_height(0.125),
             btn_hw: DRectButton::new(),
             bg: None,
             player_name,
@@ -168,6 +211,24 @@ impl RenderSettingsScene {
         }
     }
 
+    /// Render a playback of `replay` instead of an autoplay preview of the
+    /// chart. The chart must already be resolved to a local chart directory
+    /// and `info` must be loaded from it.
+    pub fn with_replay(mut self, replay: ReplayData) -> Self {
+        // Replays render at 1x: the worker mixes the audio at 1x and the
+        // records are stored in chart time, so this keeps audio and video in
+        // sync without affecting any judgement.
+        self.speed = 1.0;
+        self.replay = Some(replay);
+        self
+    }
+
+    /// Override the XC-SIM flag (otherwise inferred from the chart path).
+    pub fn with_xcsim(mut self, xcsim: bool) -> Self {
+        self.xcsim = xcsim;
+        self
+    }
+
     fn codec(&self) -> RenderCodec {
         match self.codec_idx {
             1 => RenderCodec::HEVC,
@@ -180,11 +241,13 @@ impl RenderSettingsScene {
 impl Scene for RenderSettingsScene {
     fn enter(&mut self, tm: &mut TimeManager, _target: Option<RenderTarget>) -> Result<()> {
         tm.reset();
+        if self.icon_back.is_none() {
+            // The global back arrow, loaded once by the main scene.
+            self.icon_back = TEX_ICON_BACK.with(|it| it.borrow().clone());
+        }
         if self.bg.is_none() {
-            self.bg = Some(Texture2D::from_image(&Image::from_file_with_format(
-                &std::fs::read("assets/background.jpg")?,
-                Some(ImageFormat::Jpeg),
-            )));
+            // Same background as the home page.
+            self.bg = TEX_BACKGROUND.with(|it| it.borrow().clone());
         }
         Ok(())
     }
@@ -222,8 +285,9 @@ impl Scene for RenderSettingsScene {
                 ending_length: self.ending as f64,
                 codec: self.codec(),
                 hardware_accel: self.hardware,
-                xcsim: self.chart_path.contains("xcsim"),
+                xcsim: self.xcsim,
                 output_path: path.to_string_lossy().to_string(),
+                replay: self.replay.clone(),
                 player_name: self.player_name.clone(),
                 player_rks: self.player_rks,
                 avatar_bytes: self.avatar_bytes.clone(),
@@ -245,86 +309,155 @@ impl Scene for RenderSettingsScene {
         let t = tm.now() as f32;
         clear_background(BLACK);
         if let Some(bg) = &self.bg {
+            // Cover the screen (crop the overflow) instead of stretching, the
+            // same way the home page draws its background.
             let screen = ui.screen_rect();
-            draw_texture_ex(*bg, screen.x, screen.y, WHITE, DrawTextureParams {
-                dest_size: Some(screen.size()),
-                ..Default::default()
-            });
+            ui.fill_rect(screen, (**bg, screen));
         }
         ui.fill_rect(ui.screen_rect(), Color::new(0., 0., 0., 0.7));
 
         let top = ui.top; // y=-top is TOP, y=+top is BOTTOM
-        let content_w = 1.1;
-        let left = -content_w / 2.;
+        // On windows that are wider (and therefore shorter) than 16:9 the
+        // whole page is scaled down so the card and the buttons still fit.
+        let s = (top / REFERENCE_TOP).min(1.);
 
-        // Back button top-left
-        self.btn_back.render_text(ui, Rect::new(-0.95, -top + 0.1, 0.2, 0.08), t, "<", 0.4, false);
+        let content_w: f32 = 1.5;
+        let left = -content_w / 2.;
+        let rows = 5usize;
+        let pad = 0.05 * s;
+        // The title sits next to the back arrow, so the header only needs room
+        // for itself and for the chart subtitle underneath.
+        let header_h = 0.34;
+        let footer_h = 0.46 * s;
+        // Let the option rows grow (up to a comfortable maximum) with the
+        // available height instead of leaving a hole above the bottom bar.
+        let row_h = ((top * 2. - header_h - footer_h - pad * 2.) / rows as f32).clamp(0.10 * s, 0.20 * s);
+        let card_h = rows as f32 * row_h + pad * 2.;
+        // Centre the card in the space between the header and the bottom bar.
+        let card_top = -top + header_h;
+        let card_bottom = top - footer_h - card_h;
+        let card_y = if card_bottom > card_top { (card_top + card_bottom) / 2. } else { card_top };
+        let label_size = 0.56 * s;
+        let value_size = 0.48 * s;
+        let ctrl_w = 0.62 * s;
+        let ctrl_h = 0.115 * s;
+        let ctrl_x = content_w - pad - ctrl_w;
+
+        // Back arrow and page title, laid out like the game's own pages.
+        let back_r = ui.back_rect();
+        self.btn_back.set(ui, back_r);
+        if let Some(icon) = &self.icon_back {
+            ui.fill_rect(back_r, (**icon, back_r));
+        }
+        // Title, drawn exactly like the game's own page title: one glyph at a
+        // time with a little extra tracking between them.
+        let h = ui.text("L").size(1.2).no_baseline().measure_using(&BOLD_FONT).h;
+        let ty = back_r.center().y - h / 2.;
+        let mut x = -0.87;
+        for c in if self.replay.is_some() { "渲染回放" } else { "渲染谱面" }.chars() {
+            x += ui
+                .text(c.to_string())
+                .pos(x, ty)
+                .anchor(0., 0.)
+                .size(1.2)
+                .color(WHITE)
+                .draw_using(&BOLD_FONT)
+                .w
+                + 0.012;
+        }
+        // Subtitle underneath, like the composer line of a chart page.
+        let mode = if self.replay.is_some() { "回放" } else { "自动演示" };
+        let subtitle = if self.info.level.is_empty() {
+            format!("{}  ·  {mode}", self.info.name)
+        } else {
+            format!("{}  ·  {}  ·  {mode}", self.info.name, self.info.level)
+        };
+        ui.text(subtitle)
+            .pos(-0.95, back_r.bottom() + 0.05)
+            .size(0.5)
+            .max_width(1.9)
+            .color(semi_white(0.65))
+            .draw();
+
+        // Options card
+        let card = Rect::new(left, card_y, content_w, card_h);
+        rounded_rect_shadow(ui, card, &ShadowConfig {
+            radius: 0.03,
+            elevation: 0.02,
+            ..Default::default()
+        });
+        ui.fill_path(&card.rounded(0.03), Color { a: 0.72, ..ui.background() });
 
         ui.scope(|ui| {
             ui.dx(left);
-            ui.dy(-top + 0.12);
-
-            // Title centered
-            ui.text("渲染谱面")
-                .pos(content_w / 2., 0.0)
-                .anchor(0.5, 0.)
-                .size(0.45)
-                .draw_using(&BOLD_FONT);
-
-            // Row 0: Resolution
-            let y0 = 0.1;
-            ui.text("视频分辨率")
-                .pos(0., y0)
-                .anchor(0., 1.)
-                .size(0.25)
-                .draw();
-            self.btn_res.render(ui, Rect::new(0., y0 + 0.01, content_w, 0.08), t);
-
-            // Row 1: FPS
-            let y1 = y0 + 0.12;
-            ui.text("视频帧率")
-                .pos(0., y1)
-                .anchor(0., 1.)
-                .size(0.25)
-                .draw();
-            self.btn_fps.render(ui, Rect::new(0., y1 + 0.01, content_w, 0.08), t);
-
-            // Row 2: Ending slider
-            let y2 = y1 + 0.12;
-            let slider_w = 1.1;
-            let slider_x = 0.7 - 0.4 * slider_w;
-            self.slider_ending.render(
-                ui,
-                Rect::new(slider_x, y2, slider_w, 0.06),
-                t,
-                self.ending,
-                format!("结算时长: {:.1}s", self.ending),
-            );
-
-            // Row 3: Codec
-            let y3 = y2 + 0.12;
-            ui.text("视频编码器")
-                .pos(0., y3)
-                .anchor(0., 1.)
-                .size(0.25)
-                .draw();
-            self.btn_codec.render(ui, Rect::new(0., y3 + 0.01, content_w, 0.08), t);
-
-            // Row 4: Hardware accel toggle
-            let y4 = y3 + 0.12;
-            let hw_text = if self.hardware { "硬件加速: 开启 (GPU)" } else { "硬件加速: 关闭 (CPU)" };
-            self.btn_hw.render_text(ui, Rect::new(0., y4, content_w, 0.08), t, hw_text, 0.25, false);
+            ui.dy(card_y + pad);
+            for i in 0..rows {
+                let y = i as f32 * row_h;
+                let cy = y + row_h / 2.;
+                let ctrl = Rect::new(ctrl_x, cy - ctrl_h / 2., ctrl_w, ctrl_h);
+                if i > 0 {
+                    ui.fill_rect(Rect::new(pad, y, content_w - pad * 2., 0.0015 * s), semi_white(0.08));
+                }
+                match i {
+                    0 => {
+                        render_label(ui, "视频分辨率", pad, cy, label_size);
+                        self.btn_res.render(ui, ctrl, t);
+                    }
+                    1 => {
+                        render_label(ui, "视频帧率", pad, cy, label_size);
+                        self.btn_fps.render(ui, ctrl, t);
+                    }
+                    2 => {
+                        render_label(ui, "结算时长", pad, cy, label_size);
+                        let bw = 0.11 * s;
+                        let vw = 0.26 * s;
+                        let x = ctrl_x + ctrl_w - (bw * 2. + vw);
+                        let dec = Rect::new(x, cy - ctrl_h / 2., bw, ctrl_h);
+                        let val = Rect::new(x + bw, cy - ctrl_h / 2., vw, ctrl_h);
+                        let inc = Rect::new(x + bw + vw, cy - ctrl_h / 2., bw, ctrl_h);
+                        self.btn_ending_dec.render_text(ui, dec, t, "-", 0.6 * s, true);
+                        self.btn_ending_inc.render_text(ui, inc, t, "+", 0.6 * s, true);
+                        ui.text(format!("{:.1}s", self.ending))
+                            .pos(val.center().x, cy)
+                            .anchor(0.5, 0.5)
+                            .no_baseline()
+                            .size(value_size)
+                            .draw();
+                    }
+                    3 => {
+                        render_label(ui, "视频编码器", pad, cy, label_size);
+                        self.btn_codec.render(ui, ctrl, t);
+                    }
+                    _ => {
+                        render_label(ui, "硬件加速", pad, cy, label_size);
+                        let text = if self.hardware { "开启 (GPU)" } else { "关闭 (CPU)" };
+                        self.btn_hw.render_text(ui, ctrl, t, text, value_size, self.hardware);
+                    }
+                }
+            }
         });
 
-        // Render button bottom-right
-        self.btn_render.render_text(
-            ui,
-            Rect::new(0.55, top - 0.12, 0.4, 0.08),
-            t,
-            "渲染",
-            0.4,
-            false,
+        // Summary line + render button
+        let summary = format!(
+            "{}×{} · {}fps · {} · {}",
+            RESOLUTIONS[self.res_idx].0,
+            RESOLUTIONS[self.res_idx].1,
+            FPS_OPTIONS[self.fps_idx],
+            CODEC_NAMES[self.codec_idx],
+            if self.hardware { "GPU" } else { "CPU" },
         );
+        let btn_w = 0.5 * s;
+        let btn_h = 0.13 * s;
+        let btn_r = Rect::new(content_w / 2. - btn_w, top - 0.10 * s - btn_h, btn_w, btn_h);
+        ui.text(summary)
+            .pos(0., btn_r.y - 0.13 * s)
+            .anchor(0.5, 0.5)
+            .no_baseline()
+            .size(0.36 * s)
+            .max_width(content_w)
+            .color(semi_white(0.6))
+            .draw();
+        self.btn_render.render_text(ui, btn_r, t, "开始渲染", 0.55 * s, false);
 
         // Popups on top
         self.btn_res.render_top(ui, t, 1.0);
@@ -339,7 +472,8 @@ impl Scene for RenderSettingsScene {
         if self.btn_res.top_touch(touch, t) || self.btn_fps.top_touch(touch, t) || self.btn_codec.top_touch(touch, t) {
             return Ok(true);
         }
-        if self.btn_back.touch(touch, t) {
+        if self.btn_back.touch(touch) {
+            button_hit();
             self.next = None;
             // Signal back via a flag — use next_scene Pop
             self.go_back = true;
@@ -352,7 +486,14 @@ impl Scene for RenderSettingsScene {
             self.hardware = !self.hardware;
             return Ok(true);
         }
-        if let Some(true) = self.slider_ending.touch(touch, t, &mut self.ending) {
+        if self.btn_ending_dec.touch(touch, t) {
+            button_hit();
+            self.ending = (self.ending - ENDING_STEP).max(ENDING_MIN);
+            return Ok(true);
+        }
+        if self.btn_ending_inc.touch(touch, t) {
+            button_hit();
+            self.ending = (self.ending + ENDING_STEP).min(ENDING_MAX);
             return Ok(true);
         }
         if self.btn_render.touch(touch, t) {
@@ -366,9 +507,10 @@ impl Scene for RenderSettingsScene {
                 let c = confirmed.clone();
                 Dialog::plain(
                     "确认渲染".to_string(),
-                    format!("即将渲染到:\n{}\n\n谱面: {}\n分辨率: {}x{}\n帧率: {}\n编码器: {}\n硬件加速: {}",
+                    format!("即将渲染到:\n{}\n\n谱面: {}\n内容: {}\n分辨率: {}x{}\n帧率: {}\n编码器: {}\n硬件加速: {}",
                         path.display(),
                         self.info.name,
+                        if self.replay.is_some() { "回放" } else { "自动演示" },
                         RESOLUTIONS[self.res_idx].0,
                         RESOLUTIONS[self.res_idx].1,
                         FPS_OPTIONS[self.fps_idx],
@@ -576,7 +718,7 @@ impl Scene for RenderProgressScene {
                 ui.text("正在混合音频...")
                     .pos(bar_w / 2., 0.0)
                     .anchor(0.5, 0.)
-                    .size(0.5)
+                    .size(0.6)
                     .color(WHITE)
                     .draw();
             } else if state.total_frames > 0 {
@@ -589,23 +731,23 @@ impl Scene for RenderProgressScene {
                 ui.text(format!("{:.1}%", p * 100.0))
                     .pos(bar_w / 2., 0.0)
                     .anchor(0.5, 0.)
-                    .size(0.5)
+                    .size(0.6)
                     .draw();
-                ui.dy(0.15);
+                ui.dy(0.17);
 
                 ui.text(format!("FPS: {:.0}", state.fps))
                     .pos(bar_w / 2., 0.0)
                     .anchor(0.5, 0.)
-                    .size(0.4)
+                    .size(0.52)
                     .color(Color::new(1., 1., 1., 0.8))
                     .draw();
-                ui.dy(0.08);
+                ui.dy(0.1);
 
                 if let Some(eta) = state.eta() {
                     ui.text(format!("预计剩余: {:.0} 秒", eta))
                         .pos(bar_w / 2., 0.0)
                         .anchor(0.5, 0.)
-                        .size(0.4)
+                        .size(0.52)
                         .color(Color::new(1., 1., 1., 0.8))
                         .draw();
                 }
@@ -614,9 +756,9 @@ impl Scene for RenderProgressScene {
 
         // Bottom hint
         ui.text("正在渲染谱面，请不要关机或退出游戏")
-            .pos(0.0, top - 0.12)
+            .pos(0.0, top - 0.14)
             .anchor(0.5, 0.)
-            .size(0.35)
+            .size(0.5)
             .color(Color::new(1., 1., 1., 0.6))
             .draw();
         Ok(())

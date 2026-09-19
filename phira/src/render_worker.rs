@@ -13,6 +13,7 @@ use prpr::{
     ext::RectExt,
     fs,
     info::ChartInfo,
+    replay::{ReplayData, ReplayHandoff},
     scene::{BasicPlayer, GameMode, GameScene, LoadingScene, Main},
     time::TimeManager,
     ui::{FontArc, TextPainter},
@@ -60,6 +61,11 @@ pub struct RenderJob {
     pub xcsim: bool,
     /// Absolute path of the output mp4.
     pub output_path: String,
+    /// When set, the chart is played back as this replay instead of the usual
+    /// autoplay preview: the video then shows the recorded judgements and the
+    /// resulting score.
+    #[serde(default)]
+    pub replay: Option<ReplayData>,
     // Client config passthrough
     pub player_name: String,
     pub player_rks: f32,
@@ -211,6 +217,7 @@ async fn run_inner() -> Result<()> {
     eprintln!("[render_worker] ffmpeg found: {}", ffmpeg.display());
 
     eprintln!("[render_worker] creating config...");
+    let replay = job.replay;
     let mut config = Config::default();
     config.mods = Mods::AUTOPLAY;
     config.sample_count = 4;
@@ -225,13 +232,34 @@ async fn run_inner() -> Result<()> {
     config.ap_fc_indicator = job.ap_fc_indicator;
     config.show_acc = job.show_acc;
     config.dynamic_background = job.dynamic_background;
+    if replay.is_some() {
+        // Replay playback mirrors the in-game replay path: no autoplay (the
+        // judgements come from the records), offline, and no re-recording.
+        // The audio mix below is always produced at 1x, so the timeline has to
+        // run at 1x as well; replay records are stored in chart time, so this
+        // does not change the judgements or the final score.
+        config.mods = Mods::default();
+        config.offline_mode = true;
+        config.auto_record = false;
+        config.speed = 1.0;
+    }
     // Mute all audio output in the render child process;
     // we mix audio manually into ffmpeg.
     config.volume_music = 0.0;
     config.volume_sfx = 0.0;
     config.volume_bgm = 0.0;
 
-    let info = job.info;
+    let mut info = job.info;
+    if let Some(replay) = &replay {
+        // Honour the chart identity and offset recorded with the replay so the
+        // records line up with the music.
+        if info.id.is_none() {
+            info.id = replay.chart_id;
+        }
+        if let Some(chart_offset) = replay.chart_offset {
+            info.offset = chart_offset;
+        }
+    }
 
     eprintln!("[render_worker] loading chart...");
     let (chart, ..) = GameScene::load_chart(fs.deref_mut(), &info)
@@ -393,7 +421,7 @@ async fn run_inner() -> Result<()> {
                 None,
                 job.xcsim,
                 None,
-                None,
+                replay.map(ReplayHandoff::Playback),
                 None,
             )
             .await?,

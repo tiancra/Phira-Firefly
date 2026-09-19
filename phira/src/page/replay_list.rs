@@ -37,6 +37,9 @@ pub struct ReplayListPage {
     folder_btns: Vec<DRectButton>,
     play_btns: Vec<DRectButton>,
     favorite_btns: Vec<DRectButton>,
+    /// Opens the render settings page for the replay (non-mobile only).
+    #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+    render_btns: Vec<DRectButton>,
     rename_btns: Vec<DRectButton>,
     delete_btns: Vec<DRectButton>,
     favorite_filter_btn: DRectButton,
@@ -83,6 +86,8 @@ impl ReplayListPage {
             folder_btns: Vec::new(),
             play_btns: Vec::new(),
             favorite_btns: Vec::new(),
+            #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+            render_btns: Vec::new(),
             rename_btns: Vec::new(),
             delete_btns: Vec::new(),
             favorite_filter_btn: DRectButton::new(),
@@ -102,6 +107,10 @@ impl ReplayListPage {
             self.entries.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
             self.play_btns = (0..self.entries.len()).map(|_| DRectButton::new()).collect();
             self.favorite_btns = (0..self.entries.len()).map(|_| DRectButton::new()).collect();
+            #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+            {
+                self.render_btns = (0..self.entries.len()).map(|_| DRectButton::new()).collect();
+            }
             self.rename_btns = (0..self.entries.len()).map(|_| DRectButton::new()).collect();
             self.delete_btns = (0..self.entries.len()).map(|_| DRectButton::new()).collect();
         } else {
@@ -155,53 +164,26 @@ impl ReplayListPage {
         request_input("replay_rename", InputBox::new().default_text(&text));
     }
 
-    fn launch_replay_async(&mut self, file_name: String) -> Result<()> {
-        let path = Self::replay_path(&file_name)?;
+    /// Read `file_name`'s replay file and match it back to a local chart
+    /// directory.
+    fn resolve_replay(file_name: &str) -> Result<(String, ReplayData)> {
+        let path = Self::replay_path(file_name)?;
         let content = std::fs::read_to_string(&path)?;
         let replay: ReplayData = serde_json::from_str(&content)?;
+        let local_path = replay_local_path(&replay)?;
+        Ok((local_path, replay))
+    }
 
-        // Match the recorded chart back to a local entry, preferring the
-        // host's exact local_path when present. Two locally imported charts
-        // with the same display name no longer collide because `local_path`
-        // is unique per chart directory.
-        let local_path = get_data()
-            .charts
-            .iter()
-            .find(|c| !replay.chart_local_path.is_empty() && c.local_path == replay.chart_local_path)
-            .or_else(|| get_data().charts.iter().find(|c| replay.chart_id.is_some_and(|id| c.info.id == Some(id))))
-            .or_else(|| get_data().charts.iter().find(|c| c.info.name == replay.chart_name))
-            .map(|c| c.local_path.clone())
-            .ok_or_else(|| anyhow::anyhow!(tl!("chart-not-found", "chart" => replay.chart_name.as_str())))?;
-
-        let replay_clone = replay;
+    fn launch_replay_async(&mut self, file_name: String) -> Result<()> {
+        let (local_path, replay) = Self::resolve_replay(&file_name)?;
+        let xcsim = is_xcsim_chart(&local_path);
 
         self.load_task = Some(Box::pin(async move {
             let mut fs_obj = fs_from_path(&local_path)?;
             let mut info = fs::load_info(fs_obj.as_mut()).await?;
-            if info.id.is_none() {
-                info.id = replay_clone.chart_id;
-            }
-            if let Some(chart_offset) = replay_clone.chart_offset {
-                info.offset = chart_offset;
-            }
+            apply_replay_chart_info(&mut info, &replay);
 
-            let mut config = get_data().config.clone();
-            if let Some(me) = get_data().me.as_ref() {
-                config.player_name = me.name.clone();
-            }
-            config.res_pack_path = {
-                let id = get_data().respack_id;
-                if id == 0 {
-                    None
-                } else {
-                    Some(format!("{}/{}", dir::respacks()?, get_data().respacks[id - 1]))
-                }
-            };
-            config.offline_mode = true;
-            config.speed = replay_clone.speed.max(0.5);
-            config.mods = Default::default();
-            // Replay disables auto_record so we don't record-of-replay.
-            config.auto_record = false;
+            let config = replay_config(&replay)?;
 
             let preload = LoadingScene::load(fs_obj.as_mut(), &info.illustration).await?;
             let player = get_data().me.as_ref().map(|it| BasicPlayer {
@@ -220,9 +202,9 @@ impl ReplayListPage {
                 None,
                 None,
                 None,
-                false,
+                xcsim,
                 None,
-                Some(prpr::replay::ReplayHandoff::Playback(replay_clone)),
+                Some(prpr::replay::ReplayHandoff::Playback(replay)),
                 Some(preload),
             )
             .await?;
@@ -230,6 +212,113 @@ impl ReplayListPage {
         }));
         Ok(())
     }
+
+    /// Open the render settings page for `file_name`'s replay. The resulting
+    /// video plays the replay back, so it shows the recorded judgements and the
+    /// final score instead of an autoplay preview.
+    #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+    fn launch_replay_render_async(&mut self, file_name: String) -> Result<()> {
+        use crate::scene::RenderSettingsScene;
+
+        let (local_path, replay) = Self::resolve_replay(&file_name)?;
+
+        self.load_task = Some(Box::pin(async move {
+            let mut fs_obj = fs_from_path(&local_path)?;
+            let mut info = fs::load_info(fs_obj.as_mut()).await?;
+            apply_replay_chart_info(&mut info, &replay);
+            let config = replay_config(&replay)?;
+            // The render worker opens the chart itself, so it needs the
+            // absolute chart directory rather than the local path.
+            let chart_dir = format!("{}/{}", dir::charts()?, local_path);
+            let name = get_data().me.as_ref().map(|it| it.name.clone()).unwrap_or_else(|| "Guest".to_string());
+            let rks = get_data().me.as_ref().map(|it| it.rks).unwrap_or(0.);
+            let scene = RenderSettingsScene::new(chart_dir, info, &config, name, rks, None)
+                .with_replay(replay)
+                .with_xcsim(is_xcsim_chart(&local_path));
+            Ok(NextScene::Overlay(Box::new(scene)))
+        }));
+        Ok(())
+    }
+}
+
+/// Match a recorded replay back to a local chart directory.
+///
+/// The recorded `local_path` is the most reliable key: XC-SIM charts live in
+/// `data/charts/xcsim/<id>` and are not part of the local library index
+/// (`Data::charts` only scans `custom/` and `download/`), so matching them by
+/// id or by display name used to pick a different chart with the same name.
+fn replay_local_path(replay: &ReplayData) -> Result<String> {
+    let recorded = replay.chart_local_path.trim();
+    if !recorded.is_empty() && chart_exists(recorded) {
+        return Ok(recorded.to_owned());
+    }
+    // Replays recorded without a host-supplied path still carry the chart id,
+    // which is how XC-SIM charts are stored on disk.
+    if let Some(id) = replay.chart_id {
+        for candidate in [format!("xcsim/{id}"), format!("download/xcsim/{id}")] {
+            if chart_exists(&candidate) {
+                return Ok(candidate);
+            }
+        }
+    }
+    get_data()
+        .charts
+        .iter()
+        .find(|c| !recorded.is_empty() && c.local_path == recorded)
+        .or_else(|| get_data().charts.iter().find(|c| replay.chart_id.is_some_and(|id| c.info.id == Some(id))))
+        .or_else(|| get_data().charts.iter().find(|c| c.info.name == replay.chart_name))
+        .map(|c| c.local_path.clone())
+        .ok_or_else(|| anyhow::anyhow!(tl!("chart-not-found", "chart" => replay.chart_name.as_str())))
+}
+
+/// Whether `local_path` points at a chart folder we can actually open.
+fn chart_exists(local_path: &str) -> bool {
+    // `:`-prefixed paths are charts packaged inside the game assets.
+    if local_path.starts_with(':') {
+        return true;
+    }
+    dir::charts()
+        .map(|dir| std::path::Path::new(&dir).join(local_path).join("info.yml").is_file())
+        .unwrap_or(false)
+}
+
+/// XC-SIM charts live under `xcsim/` and use their own judgement windows and
+/// scoring rules, so the flag has to reach the judge.
+fn is_xcsim_chart(local_path: &str) -> bool {
+    local_path.starts_with("xcsim/") || local_path.starts_with("download/xcsim/")
+}
+
+/// Align a freshly loaded chart with how the replay was recorded.
+fn apply_replay_chart_info(info: &mut prpr::info::ChartInfo, replay: &ReplayData) {
+    if info.id.is_none() {
+        info.id = replay.chart_id;
+    }
+    if let Some(chart_offset) = replay.chart_offset {
+        info.offset = chart_offset;
+    }
+}
+
+/// Config used to play `replay` back: offline, no mods, at the recorded speed,
+/// with the current user's respack and name so the visuals match the game.
+fn replay_config(replay: &ReplayData) -> Result<prpr::config::Config> {
+    let mut config = get_data().config.clone();
+    if let Some(me) = get_data().me.as_ref() {
+        config.player_name = me.name.clone();
+    }
+    config.res_pack_path = {
+        let id = get_data().respack_id;
+        if id == 0 {
+            None
+        } else {
+            Some(format!("{}/{}", dir::respacks()?, get_data().respacks[id - 1]))
+        }
+    };
+    config.offline_mode = true;
+    config.speed = replay.speed.max(0.5);
+    config.mods = Default::default();
+    // Replay disables auto_record so we don't record-of-replay.
+    config.auto_record = false;
+    Ok(config)
 }
 
 /// Build a stable group key for a `ReplayData`. We prefer the host's
@@ -359,6 +448,15 @@ impl Page for ReplayListPage {
                     button_hit();
                     let file_name = self.entries[i].file_name.clone();
                     self.toggle_favorite(&file_name);
+                    return Ok(true);
+                }
+                #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+                if self.render_btns[i].touch(touch, t) {
+                    button_hit();
+                    let file_name = self.entries[i].file_name.clone();
+                    if let Err(e) = self.launch_replay_render_async(file_name) {
+                        show_error(e);
+                    }
                     return Ok(true);
                 }
                 if self.rename_btns[i].touch(touch, t) {
@@ -539,6 +637,14 @@ impl Page for ReplayListPage {
                             let fav_icon = if entry.favorite { &self.icons.star } else { &self.icons.star_outline };
                             ui.fill_rect(fav_r, (**fav_icon, fav_r, ScaleType::Fit, if entry.favorite { YELLOW } else { WHITE }));
                             self.favorite_btns[i].inner.set(ui, fav_r);
+
+                            // Render button, on the same row just left of the favorite star.
+                            #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+                            {
+                                let render_r = Rect::new(icon_x - icon_size - 0.012, item_r.y + 0.018, icon_size, icon_size);
+                                ui.fill_rect(render_r, (*self.icons.export, render_r, ScaleType::Fit));
+                                self.render_btns[i].inner.set(ui, render_r);
+                            }
 
                             let edit_r = Rect::new(icon_x, item_r.y + 0.068, icon_size, icon_size);
                             ui.fill_rect(edit_r, (*self.icons.edit, edit_r, ScaleType::Fit));

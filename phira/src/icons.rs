@@ -31,6 +31,7 @@ pub struct Icons {
     pub cloud_none: SafeTexture,
     pub cloud_check: SafeTexture,
     pub plus: SafeTexture,
+    pub export: SafeTexture,
     pub select: SafeTexture,
 
     pub r#abstract: SafeTexture,
@@ -66,6 +67,7 @@ impl Icons {
             cloud_none: load_texture("cloud_none.png").await?.into(),
             cloud_check: load_texture("cloud_check.png").await?.into(),
             plus: load_texture("plus.png").await?.into(),
+            export: load_texture("export.png").await?.into(),
             select: load_texture("select.png").await?.into(),
 
             r#abstract: load_texture("abstract.jpg").await?.into(),

@@ -56,6 +56,9 @@ item-opt = 激進之優
 item-opt-sub = 採激進之優化之策，增性能然或致部分譜面顯示有誤
 item-use-keyboard = 用鍵盤戲
 item-use-keyboard-sub = 啓後可用鍵盤戲，然成績不可上傳
+
+item-auto-record = 自動錄製回放
+item-auto-record-sub = 自動存錄回放，可於主頁 → 回放中觀之
 item-prefer-reduced-motion = 減動畫之效
 item-prefer-reduced-motion-sub = 減動畫與視覺之特效
 item-speed = 速

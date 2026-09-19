@@ -382,8 +382,21 @@ async fn run_inner() -> Result<()> {
     prpr::core::TRACK_LENGTH_OVERRIDE.with(|o| *o.borrow_mut() = Some(track_length));
     let mut main = Main::new(
         Box::new(
-            LoadingScene::new(GameMode::Normal, info, config, fs, Some(player), None, None, None, job.xcsim, None)
-                .await?,
+            LoadingScene::new(
+                GameMode::Normal,
+                info,
+                config,
+                fs,
+                Some(player),
+                None,
+                None,
+                None,
+                job.xcsim,
+                None,
+                None,
+                None,
+            )
+            .await?,
         ),
         tm,
         {

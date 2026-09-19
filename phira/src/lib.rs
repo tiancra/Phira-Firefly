@@ -200,6 +200,10 @@ mod dir {
     pub fn respacks() -> Result<String> {
         ensure("data/respack")
     }
+
+    pub fn replays() -> Result<String> {
+        ensure("data/replays")
+    }
 }
 
 /// 加载崩溃界面字体。优先使用 font.ttf，缺失时回退到随包自带的其他 TTF 字体，

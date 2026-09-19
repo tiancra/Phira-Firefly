@@ -129,6 +129,9 @@ pub struct Config {
     #[serde(default)]
     pub xcsim_server: String,
 
+    /// Whether to automatically record a replay file for each play.
+    pub auto_record: bool,
+
     // for compatibility
     autoplay: Option<bool>,
 }
@@ -175,6 +178,8 @@ impl Default for Config {
             vsync: false,
 
             xcsim_server: String::new(),
+
+            auto_record: true,
 
             autoplay: None,
         }

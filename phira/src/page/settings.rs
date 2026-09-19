@@ -893,6 +893,7 @@ struct ChartList {
     #[cfg(target_os = "windows")]
     smtc_btn: DRectButton,
     dynamic_bg_btn: ChooseButton,
+    auto_record_btn: DRectButton,
     speed_slider: Slider,
     size_slider: Slider,
 }
@@ -919,6 +920,7 @@ impl ChartList {
                     tl!("dynamic-bg-dynamic").to_string(),
                 ])
                 .with_selected(get_data().config.dynamic_background.as_u8() as usize),
+            auto_record_btn: DRectButton::new(),
             speed_slider: Slider::new(0.5..2., 0.05),
             size_slider: Slider::new(0.8..1.2, 0.005),
         }
@@ -976,6 +978,10 @@ impl ChartList {
         }
         if self.dynamic_bg_btn.touch(touch, t) {
             return Ok(Some(false));
+        }
+        if self.auto_record_btn.touch(touch, t) {
+            config.auto_record ^= true;
+            return Ok(Some(true));
         }
         if let wt @ Some(_) = self.speed_slider.touch(touch, t, &mut config.speed) {
             return Ok(wt);
@@ -1059,6 +1065,10 @@ impl ChartList {
         item! {
             render_title(ui, "垂直同步", Some(Cow::Borrowed("关闭此选项可以适当提升游戏帧率和降低输入延迟，但是会导致更高的资源占用，配置较差的设备可能导致画面撕裂")));
             render_switch(ui, rr, t, &mut self.vsync_btn, config.vsync);
+        }
+        item! {
+            render_title(ui, tl!("item-auto-record"), Some(tl!("item-auto-record-sub")));
+            render_switch(ui, rr, t, &mut self.auto_record_btn, config.auto_record);
         }
         item! {
             render_title(ui, tl!("item-speed"), None);

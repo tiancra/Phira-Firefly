@@ -226,10 +226,7 @@ impl ChartsView {
                                         panel.show(rt);
                                     } else {
                                         // 本地谱面（无在线 id）：作为本地谱面分享选择，生成 UUID 并发送
-                                        panel.select_local_chart(
-                                            chart.local_path.clone().unwrap_or_default(),
-                                            chart.info.name.clone(),
-                                        );
+                                        panel.select_local_chart(chart.local_path.clone().unwrap_or_default(), chart.info.name.clone());
                                         panel.show(rt);
                                     }
                                     return true;

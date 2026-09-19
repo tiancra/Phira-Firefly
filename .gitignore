@@ -40,3 +40,5 @@ inner.rs
 # OHOS
 
 /phira/dist/
+*.a
+static-lib/x86_64-pc-windows-msvc/.version

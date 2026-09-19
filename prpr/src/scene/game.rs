@@ -73,8 +73,7 @@ pub struct MpResult {
     pub miss: u32,
 }
 
-static MP_RESULT: std::sync::LazyLock<Mutex<Option<MpResult>>> =
-    std::sync::LazyLock::new(|| Mutex::new(None));
+static MP_RESULT: std::sync::LazyLock<Mutex<Option<MpResult>>> = std::sync::LazyLock::new(|| Mutex::new(None));
 
 pub fn mp_reset_result() {
     *MP_RESULT.lock().unwrap() = None;
@@ -989,7 +988,7 @@ impl Scene for GameScene {
                     } else {
                         // 记录真实成绩，供联机面板在游戏结束后上报
                         *MP_RESULT.lock().unwrap() = Some(MpResult {
-                            score: result.score as u32,
+                            score: result.score,
                             accuracy: result.accuracy as f32,
                             full_combo: result.max_combo == result.num_of_notes,
                             max_combo: result.max_combo,

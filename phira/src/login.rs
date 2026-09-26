@@ -16,7 +16,7 @@ use once_cell::sync::Lazy;
 use prpr::{
     core::BOLD_FONT,
     ext::{open_url, semi_black, semi_white, RectExt},
-    scene::{request_input, return_input, show_error, show_message, take_input},
+    scene::{request_input_inline, return_input, show_error, show_message, take_input},
     task::Task,
     ui::{button_hit, DRectButton, Dialog, RectButton, Ui},
 };
@@ -205,23 +205,23 @@ impl Login {
                 return true;
             }
             if self.input_email.touch(touch, t) {
-                request_input("email", InputBox::new().default_text(&self.t_email));
+                request_input_inline("email", InputBox::new().default_text(&self.t_email));
                 return true;
             }
             if self.input_pwd.touch(touch, t) {
-                request_input("pwd", InputBox::new().default_text(&self.t_pwd).mode(InputMode::Password));
+                request_input_inline("pwd", InputBox::new().default_text(&self.t_pwd).mode(InputMode::Password));
                 return true;
             }
             if self.input_reg_email.touch(touch, t) {
-                request_input("reg_email", InputBox::new().default_text(&self.t_reg_email));
+                request_input_inline("reg_email", InputBox::new().default_text(&self.t_reg_email));
                 return true;
             }
             if self.input_reg_name.touch(touch, t) {
-                request_input("reg_name", InputBox::new().default_text(&self.t_reg_name));
+                request_input_inline("reg_name", InputBox::new().default_text(&self.t_reg_name));
                 return true;
             }
             if self.input_reg_pwd.touch(touch, t) {
-                request_input("reg_pwd", InputBox::new().default_text(&self.t_reg_pwd).mode(InputMode::Password));
+                request_input_inline("reg_pwd", InputBox::new().default_text(&self.t_reg_pwd).mode(InputMode::Password));
                 return true;
             }
             if self.btn_to_reg.touch(touch, t) || self.btn_to_login.touch(touch, t) {

@@ -20,7 +20,7 @@ use prpr::{
     ext::{open_url, poll_future, semi_white, LocalTask, RectExt, SafeTexture},
     scene::{request_input, return_input, show_error, show_message, take_input, NextScene},
     task::Task,
-    ui::{DRectButton, Scroll, Slider, Ui, PREFER_REDUCED_MOTION},
+    ui::{Dialog, DRectButton, Scroll, Slider, Ui, PREFER_REDUCED_MOTION},
 };
 use prpr_l10n::{LANGS, LANG_NAMES};
 use reqwest::Url;
@@ -152,6 +152,9 @@ pub struct SettingsPage {
 
     sf: SFader,
     need_back: bool,
+
+    xhus2_nav: [DRectButton; 5],
+    settings_tab_rects: [Rect; 5],
 }
 
 impl SettingsPage {
@@ -179,7 +182,130 @@ impl SettingsPage {
 
             sf: SFader::new(),
             need_back: false,
+
+            xhus2_nav: [(); 5].map(|_| DRectButton::new()),
+            settings_tab_rects: [Rect::new(0., 0., 0., 0.); 5],
         }
+    }
+
+    pub fn render_xchs(&mut self, ui: &mut Ui, s2: &mut SharedState) -> Result<()> {
+        let t = s2.t;
+        let rt1 = s2.rt;
+        let top = ui.top;
+        let bar_y = -top;
+        let total_h = top * 2.;
+        const HDR_H: f32 = 0.155;
+        const MARGIN: f32 = 0.045;
+        const SECTION_HDR_H: f32 = 0.072;
+        let full_x = -1.0 + MARGIN;
+        let full_w = (1.0 - MARGIN) - full_x;
+        let c_bg = Color::new(0.15, 0.075, 0.12, 0.3);
+        let c_nav_bg = Color::new(0.15, 0.075, 0.12, 0.45);
+        let c_hdr_bg = Color::new(0.15, 0.075, 0.12, 0.7);
+        let c_sec_hdr = Color::new(0.176, 0.118, 0.188, 1.);
+        let c_sep = Color::new(1., 0.776, 0.847, 0.10);
+        let c_accent = Color::new(1.0, 0.58, 0.706, 1.0);
+        let c_cream = Color::new(0.984, 0.973, 0.886, 1.0);
+
+        let section_name: Cow<'static, str> = match self.tabs.selected() {
+            SettingListType::General => tl!("general"),
+            SettingListType::Audio => tl!("audio"),
+            SettingListType::Chart => tl!("chart"),
+            SettingListType::Debug => tl!("debug"),
+            SettingListType::About => tl!("about"),
+        };
+        let section_str = section_name.as_ref();
+
+        s2.render_fader(ui, |ui| {
+            // c_hdr_bg drawn by main scene
+            let br = ui.back_rect();
+            ui.fill_path(&br.feather(-0.004).rounded(0.02), Color::new(1.0, 0.58, 0.706, 0.14));
+            ui.text("\u{2190}")
+                .pos(br.center().x, br.center().y)
+                .anchor(0.5, 0.5).no_baseline().size(0.5)
+                .color(c_accent).draw();
+            let title_x = br.right() + 0.04;
+            let title_y = bar_y + HDR_H * 0.38;
+            let st_r = ui.text("Settings")
+                .pos(title_x, title_y)
+                .anchor(0., 0.5).no_baseline().size(0.9)
+                .color(c_cream).draw();
+            ui.text("\u{2665}")
+                .pos(st_r.right() + 0.028, st_r.center().y)
+                .anchor(0., 0.5).no_baseline().size(0.5)
+                .color(c_accent).draw();
+            ui.text(section_str)
+                .pos(title_x + 0.002, title_y + 0.058)
+                .anchor(0., 0.5).no_baseline().size(0.40)
+                .color(Color::new(1.0, 0.776, 0.847, 0.8)).draw();
+            ui.fill_path(&Rect::new(title_x, bar_y + HDR_H - 0.014, 0.13, 0.006).rounded(0.003), c_accent);
+
+            let tab_y = bar_y + HDR_H;
+            let card_top = tab_y + 0.012;
+            let card_h = (top - MARGIN) - card_top;
+            let side_w = 0.52;
+            let gap = 0.032;
+            let side_rect = Rect::new(full_x, card_top, side_w, card_h);
+            ui.fill_path(&side_rect.feather(0.008).rounded(0.035), Color::new(1.0, 0.58, 0.706, 0.10));
+            ui.fill_path(&side_rect.rounded(0.03), c_bg);
+            let sel = self.tabs.selected_idx();
+            let n = self.tabs.len();
+            let btn_h = 0.104;
+            let btn_gap = 0.02;
+            let btns_top = card_top + 0.024;
+            for i in 0..n {
+                let by = btns_top + i as f32 * (btn_h + btn_gap);
+                let tr = Rect::new(full_x + 0.02, by, side_w - 0.04, btn_h);
+                self.settings_tab_rects[i] = tr;
+                let active = i == sel;
+                if active {
+                    ui.fill_path(&tr.feather(0.006).rounded(btn_h * 0.5), Color::new(1.0, 0.58, 0.706, 0.25));
+                    ui.fill_path(&tr.rounded(btn_h * 0.5), c_accent);
+                } else {
+                    ui.fill_path(&tr.rounded(btn_h * 0.5), c_nav_bg);
+                    ui.stroke_path(&tr.rounded(btn_h * 0.5), 0.0025, Color::new(1.0, 0.776, 0.847, 0.18));
+                }
+                ui.text(format!("{} {}", if active { "\u{2665}" } else { "\u{2661}" }, self.tabs.title(i)))
+                    .pos(tr.x + 0.036, tr.center().y)
+                    .anchor(0., 0.5).no_baseline().size(0.44)
+                    .max_width(tr.w - 0.07)
+                    .color(if active { WHITE } else { semi_white(0.7) })
+                    .draw();
+                self.xhus2_nav[i].render_shadow(ui, tr, rt1, |_, _| {});
+            }
+            let panel_x = full_x + side_w + gap;
+            let panel_w = full_w - side_w - gap;
+            let content_card = Rect::new(panel_x, card_top, panel_w, card_h);
+            ui.fill_path(&content_card.feather(0.008).rounded(0.035), Color::new(1.0, 0.58, 0.706, 0.10));
+            ui.fill_path(&content_card.rounded(0.03), c_bg);
+            let sh_r = Rect::new(panel_x, card_top, panel_w, SECTION_HDR_H);
+            ui.fill_path(&Rect::new(panel_x + 0.018, card_top + 0.014, panel_w - 0.036, SECTION_HDR_H - 0.018).rounded(0.018), c_sec_hdr);
+            ui.text(section_str)
+                .pos(panel_x + 0.04, sh_r.center().y)
+                .anchor(0., 0.5).no_baseline().size(0.5)
+                .color(c_cream).draw();
+            ui.fill_path(&Rect::new(panel_x + 0.03, sh_r.bottom() + 0.002, panel_w - 0.06, 0.003).rounded(0.0015), c_sep);
+            let list_y = card_top + SECTION_HDR_H + 0.008;
+            let list_h = card_h - SECTION_HDR_H - 0.02;
+            let list_r = Rect::new(panel_x + 0.012, list_y, panel_w - 0.024, list_h);
+            self.scroll.size((panel_w - 0.08, list_h));
+            ui.scissor(list_r, |ui| {
+                ui.scope(|ui| {
+                    ui.dx(panel_x + 0.04);
+                    ui.dy(list_y);
+                    let render_r = Rect::new(0., 0., panel_w - 0.08, list_h);
+                    self.scroll.render(ui, |ui| match self.tabs.selected() {
+                        SettingListType::General => self.list_general.render(ui, render_r, t),
+                        SettingListType::Audio => self.list_audio.render(ui, render_r, t),
+                        SettingListType::Chart => self.list_chart.render(ui, render_r, t),
+                        SettingListType::Debug => self.list_debug.render(ui, render_r, t),
+                        SettingListType::About => render_about(ui, render_r, &self.icon),
+                    });
+                });
+            });
+            Ok::<(), anyhow::Error>(())
+        })?;
+        Ok(())
     }
 }
 
@@ -205,6 +331,14 @@ impl Page for SettingsPage {
 
     fn touch(&mut self, touch: &Touch, s: &mut SharedState) -> Result<bool> {
         let t = s.t;
+        if prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed) {
+            for (i, nr) in self.settings_tab_rects.iter().enumerate() {
+                if nr.w > 0. && nr.contains(touch.position) {
+                    self.tabs.goto(t, i);
+                    return Ok(true);
+                }
+            }
+        }
         if match self.tabs.selected() {
             SettingListType::General => self.list_general.top_touch(touch, t),
             SettingListType::Audio => self.list_audio.top_touch(touch, t),
@@ -267,6 +401,9 @@ impl Page for SettingsPage {
     }
 
     fn render(&mut self, ui: &mut Ui, s: &mut SharedState) -> Result<()> {
+        if prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed) {
+            return self.render_xchs(ui, s);
+        }
         let t = s.t;
         let rt = s.rt;
 
@@ -413,6 +550,8 @@ struct GeneralList {
 
     lang_btn: ChooseButton,
 
+    ui_layout_btn: ChooseButton,
+
     #[cfg(all(any(target_os = "windows", target_os = "linux"), not(target_env = "ohos")))]
     fullscreen_btn: DRectButton,
 
@@ -449,6 +588,10 @@ impl GeneralList {
                         .unwrap_or_default(),
                 ),
 
+            ui_layout_btn: ChooseButton::new()
+                .with_options(vec!["Official".to_string(), "XCHS UI".to_string()])
+                .with_selected(get_data().ui_layout),
+
             #[cfg(all(any(target_os = "windows", target_os = "linux"), not(target_env = "ohos")))]
             fullscreen_btn: DRectButton::new(),
 
@@ -475,6 +618,9 @@ impl GeneralList {
 
     pub fn top_touch(&mut self, touch: &Touch, t: f32) -> bool {
         if self.lang_btn.top_touch(touch, t) {
+            return true;
+        }
+        if self.ui_layout_btn.top_touch(touch, t) {
             return true;
         }
         false
@@ -507,6 +653,9 @@ impl GeneralList {
         let data = get_data_mut();
         let config = &mut data.config;
         if self.lang_btn.touch(touch, t) {
+            return Ok(Some(false));
+        }
+        if self.ui_layout_btn.touch(touch, t) {
             return Ok(Some(false));
         }
 
@@ -568,6 +717,23 @@ impl GeneralList {
 
     pub fn update(&mut self, t: f32) -> Result<bool> {
         self.lang_btn.update(t);
+        self.ui_layout_btn.update(t);
+        if self.ui_layout_btn.changed() {
+            let selected = self.ui_layout_btn.selected();
+            get_data_mut().ui_layout = selected;
+            save_data()?;
+            Dialog::plain(
+                "重启以应用",
+                if selected == 1 {
+                    "已切换为 XCHS UI 布局，重启游戏后生效。"
+                } else {
+                    "已切换为 Official UI 布局，重启游戏后生效。"
+                },
+            )
+            .buttons(vec!["确定".to_string()])
+            .listener(|_, _| false)
+            .show();
+        }
         let data = get_data_mut();
         if self.lang_btn.changed() {
             data.language = Some(LANGS[self.lang_btn.selected()].to_owned());
@@ -616,6 +782,10 @@ impl GeneralList {
             let r = Rect::new(rt + 0.01, (ITEM_HEIGHT - w) / 2., w, w);
             ui.fill_rect(r, (*self.icon_lang, r));
             self.lang_btn.render(ui, rr, t);
+        }
+        item! {
+            render_title(ui, "UI布局", Some(Cow::Borrowed("选择界面风格，重启游戏后生效")));
+            self.ui_layout_btn.render(ui, rr, t);
         }
 
         #[cfg(all(any(target_os = "windows", target_os = "linux"), not(target_env = "ohos")))]
@@ -679,6 +849,7 @@ impl GeneralList {
             self.watch_tutorial_btn.render_text(ui, rr, t, tl!("item-watch-tutorial-btn"), 0.5, true);
         }
         self.lang_btn.render_top(ui, t, 1.);
+        self.ui_layout_btn.render_top(ui, t, 1.);
         (w, h)
     }
 

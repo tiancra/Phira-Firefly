@@ -281,6 +281,105 @@ impl TagsDialog {
             let wr = self.dialog_rect();
             self.fader.for_sub(|f| {
                 f.render(ui, t, |ui| {
+                    if prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed) {
+                        // XCHS UI: 粉色发光的深紫面板 + 标题下划线 + 圆角按钮
+                        let accent = Color::new(0.949, 0.412, 0.580, 1.);
+                        let body_bg = Color::new(0.165, 0.110, 0.180, 1.);
+                        let dark_text = Color::new(0.984, 0.973, 0.886, 1.);
+                        let muted_text = Color::new(0.65, 0.65, 0.65, 1.);
+                        let border_col = Color::new(1.0, 0.776, 0.847, 0.45);
+                        let title_h = 0.10_f32;
+                        let bh = 0.075_f32;
+                        let btn_pad = 0.016_f32;
+                        ui.fill_path(&wr.feather(0.014).rounded(0.05), Color::new(0.949, 0.412, 0.580, 0.40));
+                        ui.fill_path(&wr.rounded(0.04), body_bg);
+                        ui.text(if self.unwanted.is_some() { tl!("filter") } else { tl!("edit") })
+                            .pos(wr.x + 0.03, wr.y + title_h * 0.5)
+                            .anchor(0., 0.5)
+                            .no_baseline()
+                            .size(0.54)
+                            .color(dark_text)
+                            .draw();
+                        ui.fill_path(&Rect::new(wr.x + 0.03, wr.y + title_h - 0.006, 0.14, 0.006).rounded(0.003), accent);
+                        let mw = wr.w - 0.08;
+                        let content_top = wr.y + title_h + btn_pad;
+                        ui.scope(|ui| {
+                            ui.dx(wr.x + 0.04);
+                            ui.dy(content_top);
+                            self.scroll.size((mw, wr.bottom() - content_top - bh - btn_pad * 2.));
+                            self.scroll.render(ui, |ui| {
+                                let pad = 0.015;
+                                let bw = mw / DIVISION_TAGS.len() as f32;
+                                let mut r = Rect::new(pad / 2., 0., bw, bh).nonuniform_feather(-0.01, -0.004);
+                                for (div, btn) in DIVISION_TAGS.iter().zip(&mut self.div_btns) {
+                                    btn.render_text(ui, r, t, tl!(*div), 0.5, self.division == *div);
+                                    r.x += bw;
+                                }
+                                let mut h = bh + 0.01;
+                                ui.dy(h);
+                                if self.unwanted.is_some() {
+                                    let mut row: SmallVec<[_; 3]> = smallvec![(&mut self.btn_me, "filter-me", self.show_me)];
+                                    if self.perms.contains(Permissions::SEE_UNREVIEWED) {
+                                        row.push((&mut self.btn_unreviewed, "filter-unreviewed", self.show_unreviewed));
+                                    }
+                                    if self.perms.contains(Permissions::SEE_STABLE_REQ) {
+                                        row.push((&mut self.btn_stabilize, "filter-stabilize", self.show_stabilize));
+                                    }
+                                    let bw = mw / row.len() as f32;
+                                    let mut r = Rect::new(pad / 2., 0., bw, bh).nonuniform_feather(-0.01, -0.004);
+                                    for (btn, text, on) in row.into_iter() {
+                                        btn.render_text(ui, r, t, tl!(text), 0.5, on);
+                                        r.x += bw;
+                                    }
+                                    let dh = bh + 0.01;
+                                    h += dh;
+                                    ui.dy(dh);
+                                }
+                                if self.unwanted.is_some() {
+                                    let th = ui.text(tl!("wanted")).size(0.5).color(muted_text).draw().h + 0.01;
+                                    ui.dy(th);
+                                    h += th;
+                                }
+                                let th = self.tags.render(ui, mw, t);
+                                ui.dy(th);
+                                h += th;
+                                if let Some(unwanted) = &mut self.unwanted {
+                                    ui.dy(0.02);
+                                    h += 0.02;
+                                    let th = ui.text(tl!("unwanted")).size(0.5).color(muted_text).draw().h + 0.01;
+                                    ui.dy(th);
+                                    h += th;
+                                    h += unwanted.render(ui, mw, t);
+                                }
+                                (mw, h)
+                            });
+                        });
+                        if self.unwanted.is_none() {
+                            let by = wr.bottom() - btn_pad - bh;
+                            let btn_w = 0.18_f32;
+                            let mut bx = wr.right() - btn_pad - btn_w;
+                            let r = Rect::new(bx, by, btn_w, bh);
+                            self.btn_confirm.render_shadow(ui, r, t, |ui, path| {
+                                ui.fill_path(&path, accent);
+                                ui.text(tl!("confirm")).pos(r.center().x, r.center().y).anchor(0.5, 0.5).no_baseline().size(0.42).color(WHITE).draw();
+                            });
+                            bx -= btn_pad + btn_w;
+                            let r = Rect::new(bx, by, btn_w, bh);
+                            self.btn_cancel.render_shadow(ui, r, t, |ui, _path| {
+                                let p = r.rounded(0.008);
+                                ui.fill_path(&p, body_bg);
+                                ui.stroke_path(&p, 0.005, border_col);
+                                ui.text(tl!("cancel")).pos(r.center().x, r.center().y).anchor(0.5, 0.5).no_baseline().size(0.42).color(dark_text).draw();
+                            });
+                        } else {
+                            let r = Rect::new(wr.x + btn_pad, wr.bottom() - btn_pad - bh, wr.w - btn_pad * 2., bh);
+                            self.btn_rating.render_shadow(ui, r, t, |ui, path| {
+                                ui.fill_path(&path, accent);
+                                ui.text(tl!("filter-by-rating")).pos(r.center().x, r.center().y).anchor(0.5, 0.5).no_baseline().size(0.42).color(WHITE).draw();
+                            });
+                        }
+                        return;
+                    }
                     ui.fill_path(&wr.rounded(0.02), ui.background());
                     let r = ui
                         .text(if self.unwanted.is_some() { tl!("filter") } else { tl!("edit") })

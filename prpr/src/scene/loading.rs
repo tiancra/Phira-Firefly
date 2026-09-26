@@ -2,14 +2,14 @@ use super::{draw_background, ending::RecordUpdateState, game::GameMode, GameScen
 use crate::{
     config::{Config, DynamicBackgroundMode},
     core::{DynamicBackground, Resource, BOLD_FONT},
-    ext::{get_viewport, poll_future, semi_black, semi_white, LocalTask, RectExt, SafeTexture},
+    ext::{draw_parallelogram, draw_text_aligned, get_viewport, poll_future, semi_black, semi_white, LocalTask, RectExt, SafeTexture},
     fs::FileSystem,
     info::ChartInfo,
     judge::Judge,
     scene::game::SimpleRecord,
     task::Task,
     time::TimeManager,
-    ui::{clip_rounded_rect, rounded_rect_shadow, LoadingParams, ShadowConfig, Ui, PREFER_REDUCED_MOTION},
+    ui::{clip_rounded_rect, rounded_rect_shadow, LoadingParams, ShadowConfig, Ui, PREFER_REDUCED_MOTION, PREFER_XCHS_UI},
 };
 use ::rand::{seq::SliceRandom, thread_rng};
 use anyhow::{Context, Result};
@@ -20,6 +20,31 @@ use tracing::warn;
 
 const BEFORE_TIME: f32 = 1.;
 const FADE_IN_TIME: f32 = 0.6;
+
+/// 与 xcsim 的 `ext::draw_illustration` 等价：按 0.076 网格把 (w, h) 换算成屏幕尺寸，
+/// 以 (x, y) 为中心用平行四边形阴影绘制，并返回绘制矩形。
+fn draw_illustration(tex: Texture2D, x: f32, y: f32, w: f32, h: f32, color: Color) -> Rect {
+    let scale = 0.076;
+    let w = scale * 13. * w;
+    let h = scale * 7. * h;
+    let r = Rect::new(x - w / 2., y - h / 2., w, h);
+    let tex_ratio = tex.width() / tex.height();
+    let rect_ratio = w / h;
+    let tex_rect = if tex_ratio > rect_ratio {
+        let new_w = rect_ratio / tex_ratio;
+        Rect::new((1. - new_w) / 2., 0., new_w, 1.)
+    } else {
+        let new_h = tex_ratio / rect_ratio;
+        Rect::new(0., (1. - new_h) / 2., 1., new_h)
+    };
+    draw_parallelogram(r, Some((tex, tex_rect)), color, true);
+    r
+}
+
+/// 与 xcsim 的 `ext::draw_text_aligned_opt_width` 等价：对齐绘制，超出 `max_width` 时裁切（不缩小字号）。
+fn draw_text_aligned_clip(ui: &mut Ui, text: &str, x: f32, y: f32, anchor: (f32, f32), size: f32, color: Color, max_width: f32) -> Rect {
+    ui.text(text).pos(x, y).anchor(anchor.0, anchor.1).size(size).color(color).max_width(max_width).draw()
+}
 
 pub type UploadFn = Arc<dyn Fn(Vec<u8>) -> Task<Result<RecordUpdateState>>>;
 pub type UpdateFn = Box<dyn FnMut(f64, &mut Resource, &mut Judge)>;
@@ -214,16 +239,80 @@ impl Scene for LoadingScene {
         draw_background(*self.background, ui.viewport);
 
         ui.alpha((t / FADE_IN_TIME).min(1.), |ui| {
-            let dx = if t > self.finish_time {
-                transition_time().map_or(1., |tt| {
-                    let p = ((t - self.finish_time) / tt).min(1.);
-                    p.powi(3) * 2.
-                })
-            } else {
-                0.
-            };
+            if PREFER_XCHS_UI.load(Ordering::Relaxed) {
+                // ---- XCHS 加载界面（照抄 xcsim-core/src/scene_core/loading_scene.rs） ----
+                let dx = if t > self.finish_time {
+                    transition_time().map_or(1., |tt| {
+                        let p = ((t - self.finish_time) / tt).min(1.);
+                        p.powi(2) * 3. + p.powi(5) * 11.
+                    })
+                } else {
+                    0.
+                };
+                // 平行四边形/插图是裸 quad_gl 绘制，不吃 ui.dx，必须用模型矩阵推动整块
+                let mat = Mat4::from_translation(vec3(dx, 0., 0.));
+                ui.with_gl(mat, |ui| {
+                    let vo = -top / 10.;
+                let voi = -top / 8.5;
+                let r = draw_illustration(*self.illustration, 0.380, voi, 1.03, 1.0, WHITE);
+                let h1 = r.h / 3.55;
+                let main = Rect::new(-0.87, vo - h1 / 2. - top / 10., 0.768, h1);
+                draw_parallelogram(main, None, Color::new(0., 0., 0., 0.6), false);
+                let p1 = (main.x + main.w * 0.085, main.y + main.h * 0.35 + 0.025);
+                let p2 = (main.x + main.w * 0.09, main.y + main.h * 0.74 - 0.0125);
+                draw_text_aligned_clip(ui, &self.info.name, p1.0, p1.1, (0., 1.), 0.73, WHITE, main.w * 0.65);
+                draw_text_aligned_clip(ui, &self.info.composer, p2.0, p2.1, (0., 0.), 0.363, WHITE, main.w * 0.60);
 
-            ui.dx(-dx);
+                // 难度板（白色平行四边形）
+                let ext = 0.04;
+                let sub = Rect::new(main.x + main.w * 0.724, main.y - main.h * ext, main.w * 0.25, main.h * (1. + ext * 2.));
+                let mut ct = sub.center();
+                ct.x += sub.w * 0.01;
+                ct.y += sub.h * 0.05;
+                draw_parallelogram(sub, None, WHITE, true);
+                // 等级文本：与 xcsim 一致 —— 大字取「最后一个空白词」里的数字（可带 . 和 ?），
+                // 小字取「第一个空白词」即难度类型。"IN Lv.14" → 大字 14 / 小字 IN
+                let lv_prefix = self.info.level.split_whitespace().next().unwrap_or("?");
+                let lv_num: String = self
+                    .info
+                    .level
+                    .split_whitespace()
+                    .last()
+                    .and_then(|w| {
+                        let i = w.find(|c: char| c.is_ascii_digit() || c == '?')?;
+                        Some(w[i..].chars().take_while(|c| c.is_ascii_digit() || *c == '.' || *c == '?').collect::<String>())
+                    })
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| "?".to_owned());
+                draw_text_aligned_clip(ui, &lv_num, ct.x, ct.y + sub.h * 0.05, (0.5, 1.), 0.90, BLACK, main.w * 0.18);
+                // 首词自身不含数字时才画（"15.2" 这种没有难度前缀的写法就不会重复显示）
+                if !lv_prefix.chars().any(|c| c.is_ascii_digit()) {
+                    draw_text_aligned_clip(ui, lv_prefix, ct.x, ct.y + sub.h * 0.09, (0.5, 0.), 0.30, BLACK, main.w * 0.16);
+                }
+
+                // 谱师 / 画师
+                let w1 = 0.031;
+                let h2 = 0.030;
+                let tc = draw_text_aligned(ui, "Chart", main.x + main.w / 6.1, main.y + main.h * 1.32, (0., 0.), 0.253, WHITE);
+                let t1 = draw_text_aligned_clip(ui, &self.charter, tc.x, tc.y + top / 22., (0., 0.), 0.415, WHITE, 0.58);
+                let t2 = draw_text_aligned(ui, "Illustration", t1.x - w1, t1.y + t1.h + h2, (0., 0.), 0.253, WHITE);
+                draw_text_aligned_clip(ui, &self.info.illustrator, t2.x - 0.002, t2.y + top / 22., (0., 0.), 0.415, WHITE, 0.58);
+
+                // 底部提示
+                let tip = self.info.tip.as_ref().unwrap();
+                draw_text_aligned_clip(ui, tip, -0.895, top * 0.88, (0., 1.), 0.47, WHITE, 1.55);
+
+                // 右上 Loading... + 扫光条
+                let t3 = draw_text_aligned(ui, "Loading...", 0.865, top * 0.865, (1., 1.), 0.41, WHITE);
+                let r1 = Rect::new(t3.x - t3.w * 0.19, t3.y - t3.h * 0.35, t3.w * 1.418, t3.h * 1.7);
+                let t4 = ((t - 0.3).max(0.) % 1.4) / 0.6;
+                let st = (t4 - 1.).clamp(0., 1.).powi(3);
+                let en = 1. - (1. - t4.min(1.)).powi(3);
+                ui.fill_rect(Rect::new(r1.x + r1.w * st, r1.y, r1.w * (en - st), r1.h), WHITE);
+                draw_text_aligned(ui, "Loading...", 0.865, top * 0.865, (1., 1.), 0.41, BLACK);
+                });
+                return;
+            }
 
             let r = Rect::default().nonuniform_feather(0.65, top * 0.7);
             let config = ShadowConfig {

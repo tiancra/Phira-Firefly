@@ -52,6 +52,10 @@ use std::{
 
 pub static PREFER_REDUCED_MOTION: AtomicBool = AtomicBool::new(false);
 
+/// Global UI layout switch: false = Official (default blue), true = XCHS UI (Firefly pink/plum).
+/// Set at startup from saved data; changes require a game restart.
+pub static PREFER_XCHS_UI: AtomicBool = AtomicBool::new(false);
+
 #[derive(Default, Clone, Copy)]
 pub struct Gravity(u8);
 
@@ -686,6 +690,8 @@ impl<'a> From<(f32, &'a mut bool)> for InputParams<'a> {
 struct InlineInputState {
     id: String,
     rect: Option<Rect>, // None=在Ui::input中原位绘制, Some=在Main::render指定位置绘制
+    /// 密码字段：显示时按字符数用 `*` 代替
+    password: bool,
     text: String,
     cursor: usize,
     active: bool,
@@ -716,6 +722,7 @@ impl Default for InlineInputState {
         Self {
             id: String::new(),
             rect: None,
+            password: false,
             text: String::new(),
             cursor: 0,
             active: false,
@@ -740,6 +747,7 @@ impl Default for InlineInputState {
 static INLINE_INPUT: std::sync::Mutex<InlineInputState> = std::sync::Mutex::new(InlineInputState {
     id: String::new(),
     rect: None,
+    password: false,
     text: String::new(),
     cursor: 0,
     active: false,
@@ -759,8 +767,9 @@ static INLINE_INPUT: std::sync::Mutex<InlineInputState> = std::sync::Mutex::new(
     pending_touches: Vec::new(),
 });
 
-/// 激活游戏内输入框。rect=None时在Ui::input中原位绘制，rect=Some时在指定位置绘制
-pub fn activate_inline_input(id: impl Into<String>, rect: Option<Rect>, default: impl Into<String>) {
+/// 激活游戏内输入框。rect=None时在Ui::input中原位绘制，rect=Some时在指定位置绘制。
+/// `password` 为真时按字符数用 `*` 显示（自动填充、搜索等密码类字段用）。
+pub fn activate_inline_input(id: impl Into<String>, rect: Option<Rect>, default: impl Into<String>, password: bool) {
     // 先弹出系统软键盘（Android），再创建输入框，避免时序问题
     set_soft_keyboard(true);
     let now = miniquad::date::now();
@@ -768,6 +777,7 @@ pub fn activate_inline_input(id: impl Into<String>, rect: Option<Rect>, default:
     let text = default.into();
     state.id = id.into();
     state.rect = rect;
+    state.password = password;
     state.cursor = text.len(); // 字节索引，支持中文等多字节字符
     state.text = text;
     state.active = true;
@@ -805,7 +815,7 @@ pub fn inline_input_rect() -> Option<Rect> {
 }
 
 /// 显示或隐藏系统软键盘（Android 上有效，其他平台为空操作）
-fn set_soft_keyboard(show: bool) {
+pub fn set_soft_keyboard(show: bool) {
     unsafe { get_internal_gl() }.quad_context.show_keyboard(show);
 }
 
@@ -817,6 +827,7 @@ pub fn confirm_inline_input() {
         state.confirmed = true;
         drop(state);
         set_soft_keyboard(false);
+        crate::scene::set_ime_enabled(false);
     }
 }
 
@@ -829,6 +840,7 @@ pub fn cancel_inline_input() {
         state.cancelled = true;
         drop(state);
         set_soft_keyboard(false);
+        crate::scene::set_ime_enabled(false);
     }
 }
 
@@ -1251,6 +1263,7 @@ pub fn update_inline_input() {
         state.confirmed = true;
         drop(state);
         set_soft_keyboard(false);
+        crate::scene::set_ime_enabled(false);
         return;
     }
 
@@ -1261,13 +1274,14 @@ pub fn update_inline_input() {
         state.cancelled = true;
         drop(state);
         set_soft_keyboard(false);
+        crate::scene::set_ime_enabled(false);
         return;
     }
 }
 
 /// 在指定 rect 处绘制输入框编辑状态（通用，调用方负责坐标上下文）
 /// draw_text: 是否渲染文字（原位模式由按钮显示文字，传 false；指定位置模式传 true）
-fn draw_input_editor(ui: &mut Ui, rect: Rect, text: &str, cursor: usize, selection: Option<(usize, usize)>, time: f64, draw_text: bool) {
+fn draw_input_editor(ui: &mut Ui, rect: Rect, text: &str, cursor: usize, selection: Option<(usize, usize)>, time: f64, draw_text: bool, password: bool) {
     // 强制 alpha=1，避免场景半透明容器导致文字透明
     let old_alpha = ui.alpha;
     ui.alpha = 1.;
@@ -1286,9 +1300,22 @@ fn draw_input_editor(ui: &mut Ui, rect: Rect, text: &str, cursor: usize, selecti
     let padding = 0.01;
     let visible_width = rect.w - padding * 2.;
 
+    // 密码模式：按字符数用 * 代替显示（* 是单字节），光标/选区的字符索引与原文本一一对应
+    let masked: String;
+    let shown: &str = if password {
+        masked = text.chars().map(|_| '*').collect();
+        &masked
+    } else {
+        text
+    };
+    let char_index = |byte: usize| text[..byte.min(text.len())].chars().count();
+    // 掩码显示时索引是字符数，否则还是原文本的字节索引
+    let to_shown = |byte: usize| if password { char_index(byte) } else { byte.min(text.len()) };
+    let cursor_shown = to_shown(cursor);
+
     // 测量文本总宽度和光标前文本宽度
-    let text_width = ui.text(text).size(font_size).no_baseline().measure().w;
-    let before_cursor = &text[..cursor.min(text.len())];
+    let text_width = ui.text(shown).size(font_size).no_baseline().measure().w;
+    let before_cursor = &shown[..cursor_shown];
     let cursor_x_abs = ui.text(before_cursor).size(font_size).no_baseline().measure().w;
 
     // 计算滚动偏移量，确保光标始终在可见范围内
@@ -1309,10 +1336,9 @@ fn draw_input_editor(ui: &mut Ui, rect: Rect, text: &str, cursor: usize, selecti
         // 选中高亮
         if let Some((sel_start, sel_end)) = selection {
             let (s, e) = if sel_start <= sel_end { (sel_start, sel_end) } else { (sel_end, sel_start) };
-            let sel_before = &text[..s.min(text.len())];
-            let sel_x = ui.text(sel_before).size(font_size).no_baseline().measure().w;
-            let sel_text = &text[s.min(text.len())..e.min(text.len())];
-            let sel_w = ui.text(sel_text).size(font_size).no_baseline().measure().w;
+            let (s, e) = (to_shown(s), to_shown(e));
+            let sel_x = ui.text(&shown[..s]).size(font_size).no_baseline().measure().w;
+            let sel_w = ui.text(&shown[s..e]).size(font_size).no_baseline().measure().w;
             ui.fill_rect(
                 Rect::new(rect.x + padding + sel_x - scroll_x, rect.y + rect.h * 0.15, sel_w, rect.h * 0.7),
                 Color::new(0.2, 0.4, 0.8, 0.6),
@@ -1320,7 +1346,7 @@ fn draw_input_editor(ui: &mut Ui, rect: Rect, text: &str, cursor: usize, selecti
         }
 
         if draw_text {
-            ui.text(text)
+            ui.text(shown)
                 .pos(rect.x + padding - scroll_x, text_y)
                 .anchor(0., 0.5)
                 .size(font_size)
@@ -1344,18 +1370,25 @@ fn draw_input_editor(ui: &mut Ui, rect: Rect, text: &str, cursor: usize, selecti
 }
 
 /// 根据触摸位置计算文本中的字节索引（用于点击定位光标和拖拽选择）
-fn position_to_offset(ui: &mut Ui, text: &str, rect: Rect, touch_x: f32, font_size: f32) -> usize {
+fn position_to_offset(ui: &mut Ui, text: &str, rect: Rect, touch_x: f32, font_size: f32, password: bool) -> usize {
     let padding = 0.01;
     let relative_x = touch_x - rect.x - padding;
     if relative_x <= 0. {
         return 0;
     }
+    // 密码模式下一个字符显示为一个 *，宽度固定，量一次就够
+    let masked_width = password.then(|| ui.text("*").size(font_size).no_baseline().measure().w);
     // 逐字符累加宽度，找到最接近的位置
     let mut offset = 0;
     let mut acc_width = 0f32;
     for (i, c) in text.char_indices() {
-        let char_text = c.to_string();
-        let char_width = ui.text(&char_text).size(font_size).no_baseline().measure().w;
+        let char_width = match masked_width {
+            Some(w) => w,
+            None => {
+                let char_text = c.to_string();
+                ui.text(&char_text).size(font_size).no_baseline().measure().w
+            }
+        };
         if relative_x < acc_width + char_width / 2. {
             return offset;
         }
@@ -1401,6 +1434,7 @@ pub fn render_inline_input(ui: &mut Ui, time: f64) {
                 state.confirmed = true;
                 drop(state);
                 set_soft_keyboard(false);
+                crate::scene::set_ime_enabled(false);
                 return;
             }
             continue;
@@ -1408,7 +1442,7 @@ pub fn render_inline_input(ui: &mut Ui, time: f64) {
         // 区域内：处理光标定位和拖拽选择
         let font_size = (rect.h * 6.0).clamp(0.3, 0.6);
         let text = state.text.clone();
-        let offset = position_to_offset(ui, &text, rect, touch_x, font_size);
+        let offset = position_to_offset(ui, &text, rect, touch_x, font_size, state.password);
         match phase {
             0 => {
                 state.cursor = offset;
@@ -1436,8 +1470,9 @@ pub fn render_inline_input(ui: &mut Ui, time: f64) {
     let text = state.text.clone();
     let cursor = state.cursor;
     let selection = state.selection;
+    let password = state.password;
     drop(state);
-    draw_input_editor(ui, rect, &text, cursor, selection, time, true);
+    draw_input_editor(ui, rect, &text, cursor, selection, time, true, password);
 }
 
 /// Ui::input 原位绘制：如果当前激活的输入框 id 匹配，在指定 rect 处绘制背景、边框、光标（文字由按钮显示）
@@ -1454,8 +1489,9 @@ pub fn render_inline_input_inline(ui: &mut Ui, id: &str, rect: Rect) -> bool {
     let text = state.text.clone();
     let cursor = state.cursor;
     let selection = state.selection;
+    let password = state.password;
     drop(state);
-    draw_input_editor(ui, rect, &text, cursor, selection, get_time(), false);
+    draw_input_editor(ui, rect, &text, cursor, selection, get_time(), false, password);
     true
 }
 
@@ -1781,11 +1817,21 @@ impl<'a> Ui<'a> {
     }
 
     pub fn accent(&self) -> Color {
-        Color::from_hex_rgb(0x2196f3)
+        if PREFER_XCHS_UI.load(Ordering::Relaxed) {
+            // XCHS UI: Firefly pink
+            Color::new(1.000, 0.580, 0.706, 1.0)
+        } else {
+            Color::from_hex_rgb(0x2196f3)
+        }
     }
 
     pub fn background(&self) -> Color {
-        Color::from_hex_rgb(0x2a323c)
+        if PREFER_XCHS_UI.load(Ordering::Relaxed) {
+            // XCHS UI: Firefly plum panel
+            Color::new(0.165, 0.110, 0.180, 1.0)
+        } else {
+            Color::from_hex_rgb(0x2a323c)
+        }
     }
 
     pub fn button(&mut self, id: &str, rect: Rect, text: impl Into<String>) -> bool {
@@ -1851,34 +1897,17 @@ impl<'a> Ui<'a> {
         let r = self.text(label.as_str()).anchor(1., 0.).size(0.47).draw();
         let lf = r.x;
         let r = Rect::new(0.02, r.y - 0.01, params.length, r.h + 0.02);
-        // 如果当前激活的是本输入框（原位模式），按钮显示编辑中的文字
-        let editing_text = {
-            let state = INLINE_INPUT.lock().unwrap();
-            if state.active && state.rect.is_none() && state.id == id {
-                Some(state.text.clone())
-            } else {
-                None
-            }
-        };
-        let display_text = if let Some(et) = &editing_text {
-            if params.mode == InputMode::Password {
-                "*".repeat(et.chars().count())
-            } else {
-                et.lines().next().unwrap_or_default().to_owned()
-            }
-        } else if params.mode == InputMode::Password {
+        let display_text = if params.mode == InputMode::Password {
             "*".repeat(value.chars().count())
         } else {
             value.lines().next().unwrap_or_default().to_owned()
         };
         if self.button(&id, r, display_text) {
-            // 点击输入框：激活游戏内输入框，原位模式（rect=None）
-            activate_inline_input(&id, None, value.as_str());
+            // 点击输入框：弹出游戏内输入对话框
+            request_input(&id, InputBox::new().default_text(value.as_str()).mode(params.mode));
         }
-        // 如果当前激活的是本输入框（原位模式），在原位置覆盖绘制背景、边框、光标（文字由按钮显示）
-        let _ = render_inline_input_inline(self, &id, r);
-        // 检查游戏内输入框的结果
-        if let Some((its_id, text)) = take_inline_result() {
+        // 检查输入对话框的结果
+        if let Some((its_id, text)) = take_input() {
             if its_id == id {
                 if let Some(changed) = params.changed {
                     *changed = true;
@@ -2038,6 +2067,49 @@ impl<'a> Ui<'a> {
         use std::f32::consts::PI;
 
         let params = params.into();
+        if PREFER_XCHS_UI.load(Ordering::Relaxed) {
+            // XCHS UI: 一圈旋转的 ♥ + 中心跳动的 ♥（替代官方的圆弧转圈）
+            const N: usize = 8;
+            let r = params.radius;
+            let pink = Color::new(0.949, 0.412, 0.580, 1.0);
+            let pink_soft = Color::new(1.0, 0.776, 0.847, 1.0);
+            let beat = 1.0 + 0.16 * (t * 6.0).sin();
+            let head = t * Self::LOADING_ROTATE_SPEED;
+            let frac = params.progress.map(|p| p.clamp(0., 1.));
+            self.scope(|ui| {
+                ui.dx(cx);
+                ui.dy(cy);
+                for i in 0..N {
+                    let alpha = if let Some(f) = frac {
+                        if (i as f32) < N as f32 * f {
+                            1.0
+                        } else {
+                            0.12
+                        }
+                    } else {
+                        0.2 + 0.8 * (1.0 - i as f32 / N as f32)
+                    };
+                    let base = if frac.is_some() { 0.0 } else { head };
+                    let a = base + i as f32 / N as f32 * PI * 2.;
+                    let (sin, cos) = a.sin_cos();
+                    ui.text("\u{2665}")
+                        .pos(sin * r, cos * r)
+                        .anchor(0.5, 0.5)
+                        .no_baseline()
+                        .size(r * 7.0)
+                        .color(Color { a: alpha, ..pink })
+                        .draw();
+                }
+                ui.text("\u{2665}")
+                    .pos(0., 0.)
+                    .anchor(0.5, 0.5)
+                    .no_baseline()
+                    .size(r * 9.0 * beat)
+                    .color(pink_soft)
+                    .draw();
+            });
+            return;
+        }
         let (st, mut len) = if let Some(p) = params.progress {
             (t * Self::LOADING_ROTATE_SPEED, p * PI * 2.)
         } else {

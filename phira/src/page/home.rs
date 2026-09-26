@@ -25,7 +25,7 @@ use prpr::{
     info::ChartInfo,
     scene::{show_error, NextScene},
     task::Task,
-    ui::{button_hit_large, clip_rounded_rect, ClipType, DRectButton, FontArc, RectButton, Scroll, Ui},
+    ui::{button_hit_large, clip_rounded_rect, ClipType, Dialog, DRectButton, FontArc, PREFER_XCHS_UI, RectButton, Scroll, Ui},
 };
 use prpr_l10n::LANG_IDENTS;
 use reqwest::StatusCode;
@@ -69,15 +69,25 @@ pub struct HomePage {
     need_back: bool,
     sf: SFader,
 
-    board_task: Option<Task<Result<Option<DynamicImage>>>>,
+    board_task: Option<Task<Result<Option<(DynamicImage, String, String, String)>>>>,
     board_last_time: f32,
     board_last: Option<String>,
     board_tex_last: Option<SafeTexture>,
     board_tex: Option<SafeTexture>,
     board_dir: bool,
+    board_name: Option<String>,
+    board_composer: Option<String>,
+    board_level: Option<String>,
 
     has_new_task: Option<Task<Result<bool>>>,
     has_new: bool,
+
+    btn_about: RectButton,
+    btn_feedback: RectButton,
+    btn_changelog: RectButton,
+    btn_exit: RectButton,
+    btn_more: RectButton,
+    credits_scroll: Scroll,
 
     check_bold_font_update_task: Option<BoldFontUpdateTask>,
 
@@ -145,9 +155,19 @@ impl HomePage {
             board_tex_last: None,
             board_tex: None,
             board_dir: false,
+            board_name: None,
+            board_composer: None,
+            board_level: None,
 
             has_new_task: None,
             has_new: false,
+
+            btn_about: RectButton::new(),
+            btn_feedback: RectButton::new(),
+            btn_changelog: RectButton::new(),
+            btn_exit: RectButton::new(),
+            btn_more: RectButton::new(),
+            credits_scroll: Scroll::new().use_clip(ClipType::Clip),
 
             check_bold_font_update_task: {
                 let cksum = BOLD_FONT_CKSUM.with(|it| it.borrow().clone());
@@ -366,6 +386,203 @@ impl HomePage {
         ui.dx(-off);
         ui.alpha = old_alpha;
     }
+
+    /// XCHS-style home layout, ported faithfully from XCHS page_app/home_page.rs.
+    fn render_xchs(&mut self, ui: &mut Ui, s: &mut SharedState) -> Result<()> {
+        let t = s.t;
+        let top = ui.top;
+
+        fn draw_soft_text(ui: &mut Ui, text: &str, x: f32, y: f32, anchor: (f32, f32), size: f32, color: Color) -> Rect {
+            const OFFS: [(f32, f32); 8] = [
+                (-0.004, 0.), (0.004, 0.), (0., -0.004), (0., 0.004),
+                (-0.003, -0.003), (0.003, -0.003), (-0.003, 0.003), (0.003, 0.003),
+            ];
+            let shadow = Color::new(0., 0., 0., 0.18 * color.a);
+            for (dx, dy) in OFFS {
+                ui.text(text).pos(x + dx, y + dy).anchor(anchor.0, anchor.1).no_baseline().size(size).color(shadow).draw();
+            }
+            ui.text(text).pos(x, y).anchor(anchor.0, anchor.1).no_baseline().size(size).color(color).draw()
+        }
+
+        fn fill_vgrad(ui: &mut Ui, r: Rect, max_alpha: f32, rgb: (f32, f32, f32)) {
+            const N: i32 = 14;
+            for i in 0..N {
+                let p0 = i as f32 / N as f32;
+                let p1 = (i + 1) as f32 / N as f32;
+                let a = max_alpha * p1 * p1;
+                ui.fill_rect(
+                    Rect::new(r.x, r.y + r.h * p0, r.w, r.h * (p1 - p0) + 0.0015),
+                    Color::new(rgb.0, rgb.1, rgb.2, a),
+                );
+            }
+        }
+
+        fn draw_clock(ui: &mut Ui, x: f32, y: f32, r: f32, color: Color) {
+            ui.stroke_circle(x, y, r, 0.006, color);
+            ui.fill_rect(Rect::new(x - 0.003, y - r * 0.62, 0.006, r * 0.62), color);
+            ui.fill_rect(Rect::new(x - 0.002, y - 0.003, r * 0.55, 0.006), color);
+        }
+
+        let c_title = Color::new(0.97, 0.98, 1.0, 1.);
+        let c_sub = Color::new(0.82, 0.86, 0.92, 0.85);
+        let c_pink = Color::new(1.000, 0.580, 0.706, 1.0);
+
+        // backdrop: plum tint + scattered hearts
+        s.render_fader(ui, |ui| {
+            ui.fill_rect(ui.screen_rect(), Color::new(0.16, 0.08, 0.13, 0.55));
+            let sr = ui.screen_rect();
+            for i in 0..7 {
+                let x = sr.x + 0.12 + i as f32 * 0.3;
+                ui.text("\u{2665}")
+                    .pos(x, sr.y + 0.06)
+                    .anchor(0.5, 0.5)
+                    .no_baseline()
+                    .size(0.5)
+                    .color(Color::new(1.0, 0.776, 0.847, 0.10))
+                    .draw();
+            }
+        });
+
+        // left vertical nav cards
+        let nav_x = -0.95;
+        let nw = 0.46;
+        let ic_play = self.icons.play.clone();
+        let ic_event = self.icons.medal.clone();
+        let ic_respack = self.icons.respack.clone();
+        let ic_msg = self.icons.msg.clone();
+        let ic_settings = self.icons.settings.clone();
+        let has_new = self.has_new;
+
+        fn nav_card(
+            ui: &mut Ui, r: Rect, t: f32, btn: &mut DRectButton,
+            icon: SafeTexture, title: &str, subtitle: &str, active: bool, dot: bool,
+        ) {
+            let bg = if active {
+                Color::new(0.176, 0.216, 0.314, 0.60)
+            } else {
+                Color::new(0.106, 0.129, 0.196, 0.52)
+            };
+            btn.config.radius = if active { 0.024 } else { 0.02 };
+            btn.render_shadow(ui, r, t, |ui, path| {
+                ui.fill_path(&path, bg);
+                let isz = if active { 0.085 } else { 0.062 };
+                let ir = Rect::new(r.x + 0.045, r.center().y - isz / 2., isz, isz);
+                ui.fill_rect(ir, (*icon, ir, ScaleType::Fit, Color::new(0.97, 0.98, 1.0, 1.)));
+                if dot {
+                    ui.fill_circle(ir.right() - 0.002, ir.y + 0.006, 0.009, RED);
+                }
+                let tx = r.x + 0.045 + isz + 0.05;
+                let tsz = if active { 0.62 } else { 0.46 };
+                draw_soft_text(ui, title, tx, r.center().y - 0.02, (0., 0.5), tsz, Color::new(0.97, 0.98, 1.0, 1.));
+                draw_soft_text(ui, subtitle, tx, r.center().y + 0.045, (0., 0.5), 0.32, Color::new(0.82, 0.86, 0.92, 0.85));
+            });
+        }
+
+        s.render_fader(ui, |ui| {
+            nav_card(ui, Rect::new(nav_x, -0.42, nw, 0.215), t, &mut self.btn_play, ic_play.clone(), "游玩", "START", true, false);
+            nav_card(ui, Rect::new(nav_x, -0.175, nw, 0.12), t, &mut self.btn_event, ic_event.clone(), "活动", "EVENT", false, false);
+            nav_card(ui, Rect::new(nav_x, -0.035, nw, 0.12), t, &mut self.btn_respack, ic_respack.clone(), "皮肤", "RESPACK", false, false);
+            nav_card(ui, Rect::new(nav_x, 0.105, nw, 0.12), t, &mut self.btn_replay, ic_play.clone(), "回放", "REPLAY", false, false);
+            nav_card(ui, Rect::new(nav_x, 0.245, nw, 0.12), t, &mut self.btn_msg, ic_msg.clone(), "消息", "MESSAGE", false, has_new);
+            nav_card(ui, Rect::new(nav_x, 0.385, nw, 0.12), t, &mut self.btn_settings, ic_settings.clone(), "设置", "SETTINGS", false, false);
+        });
+
+        // right big board with song info
+        let board_r = Rect::new(-0.47, -top + 0.165, 0.84, 2. * top - 0.325);
+        s.render_fader(ui, |ui| {
+            ui.fill_path(&board_r.rounded(0.03), Color::new(0.05, 0.06, 0.10, 1.));
+            if let Some(tex) = &self.board_tex {
+                ui.fill_path(&board_r.rounded(0.03), (**tex, board_r, ScaleType::CropCenter, Color::new(1., 1., 1., 1.)));
+            }
+            let scrim = Rect::new(board_r.x + 0.03, board_r.bottom() - 0.32, board_r.w - 0.06, 0.32);
+            fill_vgrad(ui, scrim, 0.82, (0.02, 0.03, 0.06));
+            let name = self.board_name.clone().unwrap_or_else(|| "Phira".to_string());
+            let composer = self.board_composer.clone().unwrap_or_default();
+            let level = self.board_level.clone().unwrap_or_default();
+            draw_soft_text(ui, &name, board_r.x + 0.045, board_r.bottom() - 0.075, (0., 1.), 0.5, c_title);
+            if !composer.is_empty() {
+                draw_soft_text(ui, &composer, board_r.x + 0.05, board_r.bottom() - 0.04, (0., 1.), 0.34, c_sub);
+            }
+            if !level.is_empty() {
+                draw_soft_text(ui, &level, board_r.right() - 0.04, board_r.bottom() - 0.06, (1., 1.), 0.5, c_title);
+            }
+        });
+
+        // credits panel
+        let credits_r = Rect::new(0.385, board_r.y, 0.55, board_r.h);
+        s.render_fader(ui, |ui| {
+            ui.fill_path(&credits_r.rounded(0.014), Color::new(0.063, 0.078, 0.125, 0.50));
+            let more = ui.text("更多").pos(credits_r.right() - 0.045, credits_r.y + 0.06).anchor(1., 0.5).no_baseline().size(0.4).color(c_sub).draw();
+            self.btn_more.set(ui, more.feather(0.012));
+            self.credits_scroll.size((credits_r.w - 0.09, credits_r.h - 0.14));
+            ui.scope(|ui| {
+                ui.dx(credits_r.x + 0.045);
+                ui.dy(credits_r.y + 0.11);
+                self.credits_scroll.render(ui, |ui| {
+                    ui.text("制作组").pos(0., 0.).no_baseline().size(0.52).color(c_title).draw();
+                    ui.text("小天是个小男娘").pos(0., 0.085).no_baseline().multiline().max_width(credits_r.w - 0.09).size(0.4).color(c_sub).draw();
+                    (credits_r.w - 0.09, 0.3)
+                });
+            });
+        });
+
+        // top-left user chip + center title
+        s.render_fader(ui, |ui| {
+            let rad = 0.05;
+            let cx = -0.90;
+            let cy = -top + 0.085;
+            self.btn_user.config.radius = rad;
+            let r = Rect::new(cx, cy, 0., 0.).feather(rad);
+            self.btn_user.build(ui, t, r, |ui, _| {
+                ui.avatar(cx, cy, r.w / 2., t,
+                    get_data().me.as_ref()
+                        .map(|me| UserManager::opt_avatar(me.id, &self.icons.user))
+                        .unwrap_or(Err(self.icons.user.clone())));
+            });
+            let tx = cx + rad + 0.025;
+            let uid;
+            if let Some(me) = &get_data().me {
+                uid = me.id;
+                draw_soft_text(ui, &me.name, tx, cy - 0.02, (0., 0.5), 0.5, c_title);
+                draw_soft_text(ui, &format!("RKS {:.2}", me.rks), tx, cy + 0.02, (0., 0.5), 0.4, c_pink);
+            } else {
+                uid = 0;
+                draw_soft_text(ui, "未登录", tx, cy, (0., 0.5), 0.5, c_title);
+            }
+            let chip = Rect::new(tx, cy + 0.04, 0.09, 0.028);
+            ui.fill_path(&chip.rounded(0.007), Color::new(1., 1., 1., 0.16));
+            ui.text(format!("UID {}", uid)).pos(chip.center().x, chip.center().y).anchor(0.5, 0.5).no_baseline().size(0.3).color(c_sub).draw();
+        });
+
+        // bottom link bar
+        s.render_fader(ui, |ui| {
+            let y = top - 0.11;
+            let ic = 0.045;
+            let r = Rect::new(-0.94, y - ic / 2., ic, ic);
+            ui.fill_rect(r, (*self.icons.info, r, ScaleType::Fit, c_sub));
+            let txt = draw_soft_text(ui, "关于", -0.94 + ic + 0.02, y, (0., 0.5), 0.55, c_sub);
+            self.btn_about.set(ui, Rect::new(-0.94, y - 0.035, txt.right() + 0.94, 0.07));
+
+            let r = Rect::new(-0.70, y - ic / 2., ic, ic);
+            ui.fill_rect(r, (*self.icons.msg, r, ScaleType::Fit, c_sub));
+            let txt = draw_soft_text(ui, "反馈", -0.70 + ic + 0.02, y, (0., 0.5), 0.55, c_sub);
+            self.btn_feedback.set(ui, Rect::new(-0.70, y - 0.035, txt.right() + 0.70, 0.07));
+
+            draw_clock(ui, -0.42 + ic / 2., y, ic / 2., c_sub);
+            let txt = draw_soft_text(ui, "日志", -0.42 + ic + 0.02, y, (0., 0.5), 0.55, c_sub);
+            self.btn_changelog.set(ui, Rect::new(-0.42, y - 0.035, txt.right() + 0.42, 0.07));
+
+            let txt = draw_soft_text(ui, "退出", 0.95, y, (1., 0.5), 0.62, c_sub);
+            self.btn_exit.set(ui, txt.feather(0.02));
+
+            draw_soft_text(ui, "Phira-Firefly", 0., top - 0.035, (0.5, 0.5), 0.62, c_pink);
+        });
+
+        self.login.render(ui, t);
+        self.sf.render(ui, t);
+        Ok(())
+    }
+
 }
 
 impl Page for HomePage {
@@ -433,6 +650,34 @@ impl Page for HomePage {
                 let _ = open_url("https://phira.moe/settings/account");
             }
         }
+        if self.btn_more.touch(touch) {
+            Dialog::plain("制作组", "Phira-Firefly").show();
+            return Ok(true);
+        }
+        if self.btn_about.touch(touch) {
+            Dialog::plain("关于", concat!("Phira-Firefly ", env!("CARGO_PKG_VERSION"))).show();
+            return Ok(true);
+        }
+        if self.btn_feedback.touch(touch) {
+            Dialog::plain("反馈", "请前往 QQ 群或 GitHub 反馈").show();
+            return Ok(true);
+        }
+        if self.btn_changelog.touch(touch) {
+            Dialog::plain("更新日志", "查看版本更新内容").show();
+            return Ok(true);
+        }
+        if self.btn_exit.touch(touch) {
+            Dialog::plain("退出", "确定要退出吗？")
+                .buttons(vec!["取消".to_string(), "退出".to_string()])
+                .listener(|_, id| {
+                    if id == 1 {
+                        std::process::exit(0);
+                    }
+                    false
+                })
+                .show();
+            return Ok(true);
+        }
         if self.btn_user.touch(touch, t) {
             if let Some(me) = &get_data().me {
                 self.need_back = true;
@@ -488,14 +733,12 @@ impl Page for HomePage {
             if let Some(res) = task.take() {
                 match res {
                     Err(err) => {
-                        // wtf bro
                         if format!("{err:?}").contains("invalid token") {
                             get_data_mut().me = None;
                             get_data_mut().tokens = None;
                             let _ = save_data();
                             sync_data();
                         }
-                        // TODO: better error handling
                         show_error(err.context(tl!("failed-to-update") + "\n" + tl!("note-try-login-again")));
                     }
                     Ok(val) => {
@@ -525,7 +768,7 @@ impl Page for HomePage {
                 self.board_task = Some(Task::new(async move {
                     let info: ChartInfo = serde_yaml::from_reader(dir.open("info.yml")?)?;
                     let bytes = dir.read(info.illustration)?;
-                    Ok(Some(image::load_from_memory(&bytes)?))
+                    Ok(Some((image::load_from_memory(&bytes)?, info.name, info.composer, info.level)))
                 }));
             }
         }
@@ -535,11 +778,14 @@ impl Page for HomePage {
                     Err(err) => {
                         warn!(?err, "failed to load illustration for board");
                     }
-                    Ok(image) => {
-                        if let Some(image) = image {
+                    Ok(res) => {
+                        if let Some((image, name, composer, level)) = res {
                             let tex: SafeTexture = image.into();
                             self.board_tex_last = self.board_tex.replace(tex);
                             self.board_dir = random();
+                            self.board_name = Some(name);
+                            self.board_composer = Some(composer);
+                            self.board_level = Some(level);
                         }
                     }
                 }
@@ -594,7 +840,7 @@ impl Page for HomePage {
             if let Some(res) = task.take() {
                 match res {
                     Err(err) => {
-                        warn!(?err, "fail to load char");
+                        warn!("fail to load char");
                     }
                     Ok(char) => {
                         info!(?char, "char loaded");
@@ -616,11 +862,13 @@ impl Page for HomePage {
     }
 
     fn render(&mut self, ui: &mut Ui, s: &mut SharedState) -> Result<()> {
+        if PREFER_XCHS_UI.load(Ordering::Relaxed) {
+            return self.render_xchs(ui, s);
+        }
         let t = s.t;
         let rt = s.rt;
 
         let cp = self.char_screen_p.now(rt);
-        // 主界面左侧元素从左侧边缘外滑入并渐显
         let (off, alpha) = entry_anim(t, -1.);
         let old_alpha = ui.alpha;
         ui.alpha = old_alpha * alpha;
@@ -726,7 +974,6 @@ impl Page for HomePage {
         });
 
         s.fader.roll_back();
-        // 主界面右上元素从右侧边缘外滑入并渐显
         let (off, alpha) = entry_anim(t, 1.);
         let old_alpha = ui.alpha;
         ui.alpha = old_alpha * alpha;
@@ -787,6 +1034,8 @@ impl Page for HomePage {
 
         Ok(())
     }
+
+
 
     fn next_page(&mut self) -> NextPage {
         self.next_page.take().unwrap_or_default()

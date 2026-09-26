@@ -32,6 +32,8 @@ pub struct MessagePage {
 
     action_btns: Vec<DRectButton>,
 
+    close_btn: DRectButton,
+
     sf: SFader,
     chart_task: Option<Task<Result<Arc<Chart>>>>,
     icons: Arc<Icons>,
@@ -50,6 +52,8 @@ impl MessagePage {
             scroll: Scroll::new(),
 
             action_btns: Vec::new(),
+
+            close_btn: DRectButton::new(),
 
             sf: SFader::new(),
             chart_task: None,
@@ -125,6 +129,12 @@ impl Page for MessagePage {
 
     fn touch(&mut self, touch: &Touch, s: &mut SharedState) -> Result<bool> {
         let t = s.t;
+        if prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed) && self.index.is_some() {
+            if self.close_btn.touch(touch, t) {
+                self.index = None;
+            }
+            return Ok(true);
+        }
         if self.chart_task.is_some() {
             return Ok(false);
         }
@@ -166,10 +176,13 @@ impl Page for MessagePage {
 
     fn update(&mut self, s: &mut SharedState) -> Result<()> {
         let t = s.t;
-        if self.btns_scroll.y_scroller.pulled_down {
+        let xchs = prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed);
+        if self.btns_scroll.y_scroller.pulled_down && !xchs && self.index.is_none() {
             self.load();
         }
-        self.btns_scroll.update(t);
+        if !xchs || self.index.is_none() {
+            self.btns_scroll.update(t);
+        }
         self.scroll.update(t);
         if let Some(task) = &mut self.load_task {
             if let Some(res) = task.take() {
@@ -216,13 +229,106 @@ impl Page for MessagePage {
 
     fn render(&mut self, ui: &mut Ui, s: &mut SharedState) -> Result<()> {
         let t = s.t;
+        let xchs = prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed);
+
+        if xchs {
+            let accent = Color::new(0.949, 0.412, 0.580, 1.0);
+            let card_bg = Color::new(0.255, 0.130, 0.190, 0.96);
+            let card_sel = Color::new(0.37, 0.185, 0.265, 0.99);
+            let dark_text = Color::new(0.984, 0.973, 0.886, 1.0);
+            let muted = Color::new(1.0, 0.776, 0.847, 0.66);
+            let border_c = Color::new(1.0, 0.776, 0.847, 0.40);
+            let cr = ui.content_rect();
+            let gtop = cr.y + 0.155;
+            let gh = cr.bottom() - gtop - 0.03;
+            let cols = 3usize;
+            let gap = 0.025_f32;
+            let side = 0.04_f32;
+            let cw = (cr.w - side * 2. - gap * (cols as f32 - 1.)) / cols as f32;
+            let chh = 0.18_f32;
+            let br = ui.back_rect();
+            s.render_fader(ui, |ui| {
+                ui.fill_path(&br.feather(-0.004).rounded(0.02), Color::new(1.0, 0.58, 0.706, 0.14));
+                ui.text("\u{2190}").pos(br.center().x, br.center().y).anchor(0.5, 0.5).no_baseline().size(0.5).color(accent).draw();
+                ui.text(format!("\u{2661} {}", tl!("label"))).pos(br.right() + 0.03, cr.y + 0.075).anchor(0., 0.5).no_baseline().size(0.74).color(accent).draw();
+                if let Some(msgs) = &mut self.msgs {
+                    if msgs.is_empty() {
+                        ui.text(tl!("no-msg")).pos(cr.center().x, gtop + gh * 0.4).anchor(0.5, 0.5).no_baseline().size(0.7).color(muted).draw();
+                    } else if self.index.is_none() {
+                        self.btns_scroll.size((cr.w, gh));
+                        ui.scope(|ui| {
+                            ui.dx(cr.x);
+                            ui.dy(gtop);
+                            self.btns_scroll.render(ui, |ui| {
+                                let count = msgs.len();
+                                for (index, item) in msgs.iter_mut().enumerate() {
+                                    let col = index % cols;
+                                    let row = index / cols;
+                                    let rr = Rect::new(side + col as f32 * (cw + gap), row as f32 * (chh + gap), cw, chh);
+                                    let chosen = Some(index) == self.index;
+                                    let time = item.0.time.with_timezone(&Local).format("%Y-%m-%d").to_string();
+                                    item.1.render_shadow(ui, rr, t, |ui, path| {
+                                        ui.fill_path(&path, if chosen { card_sel } else { card_bg });
+                                        ui.stroke_path(&path, 0.003, border_c);
+                                        ui.fill_path(&Rect::new(rr.x + 0.018, rr.y + 0.022, 0.006, chh - 0.044).rounded(0.003), accent);
+                                        ui.text(&item.0.title).pos(rr.x + 0.036, rr.y + 0.03).anchor(0., 0.).no_baseline().multiline().max_width(rr.w - 0.05).size(0.5).color(dark_text).draw();
+                                        ui.text(format!("\u{2661} {} \u{00b7} {}", item.0.author, time)).pos(rr.x + 0.036, rr.bottom() - 0.028).anchor(0., 1.).no_baseline().max_width(rr.w - 0.05).size(0.32).color(muted).draw();
+                                    });
+                                }
+                                let rows = count.div_ceil(cols);
+                                (cr.w, rows as f32 * (chh + gap) + 0.02)
+                            });
+                        });
+                    }
+                }
+                if self.load_task.is_some() {
+                    ui.loading(cr.center().x, gtop + gh * 0.4, t, WHITE, ());
+                }
+                if let Some(idx) = self.index {
+                    if self.msgs.as_ref().is_some_and(|m| idx < m.len()) {
+                        ui.fill_rect(ui.screen_rect(), semi_black(0.5));
+                        let ov = Rect::new(cr.x + cr.w * 0.12, cr.y + 0.06, cr.w * 0.76, cr.h - 0.12);
+                        ui.fill_path(&ov.rounded(0.02), Color::new(0.20, 0.10, 0.155, 0.99));
+                        ui.stroke_path(&ov.rounded(0.02), 0.004, border_c);
+                        let head_h = 0.085_f32;
+                        ui.fill_path(&Rect::new(ov.x, ov.y, ov.w, head_h + 0.02).rounded(0.02), accent);
+                        let msg = &self.msgs.as_ref().unwrap()[idx].0;
+                        ui.text(&msg.title).pos(ov.x + 0.03, ov.y + head_h * 0.5).anchor(0., 0.5).no_baseline().size(0.55).max_width(ov.w - 0.13).color(WHITE).draw();
+                        let cb = Rect::new(ov.right() - 0.065, ov.y + 0.016, 0.05, head_h - 0.032);
+                        self.close_btn.render_shadow(ui, cb, t, |ui, path| {
+                            ui.fill_path(&path, Color::new(1.0, 1.0, 1.0, 0.15));
+                            ui.text("✕").pos(cb.center().x, cb.center().y).anchor(0.5, 0.5).no_baseline().size(0.5).color(WHITE).draw();
+                        });
+                        let pad = 0.03_f32;
+                        let content_r = Rect::new(ov.x + pad, ov.y + head_h + pad, ov.w - pad * 2., ov.h - head_h - pad * 2.);
+                        self.scroll.size((content_r.w, content_r.h));
+                        ui.scissor(content_r, |ui| {
+                            ui.scope(|ui| {
+                                ui.dx(content_r.x);
+                                ui.dy(content_r.y);
+                                self.scroll.render(ui, |ui| {
+                                    let mw = content_r.w;
+                                    ui.text(&msg.author).size(0.35).color(muted).max_width(mw).draw();
+                                    ui.dy(0.02);
+                                    let r = ui.text(&msg.content).size(0.45).color(dark_text).multiline().max_width(mw).draw();
+                                    (content_r.w, r.bottom() + 0.02)
+                                });
+                            });
+                        });
+                    }
+                }
+            });
+            return Ok(());
+        }
+
         let mut cr = ui.content_rect();
         let d = 0.29;
         cr.x += d;
         cr.w -= d;
         let r = Rect::new(-0.92, cr.y, 0.47, cr.h);
+        let panel = semi_black(0.4);
         s.render_fader(ui, |ui| {
-            ui.fill_path(&r.rounded(0.005), semi_black(0.4));
+            ui.fill_path(&r.rounded(0.005), panel);
             let ct = r.center();
             let pad = 0.014;
             self.btns_scroll.size((r.w, r.h - pad));
@@ -254,7 +360,7 @@ impl Page for MessagePage {
             }
         });
         s.render_fader(ui, |ui| {
-            ui.fill_path(&cr.rounded(0.005), semi_black(0.4));
+            ui.fill_path(&cr.rounded(0.005), panel);
 
             if let Some(msg) = self.index.and_then(|it| self.msgs.as_ref().map(|msgs| &msgs[it].0)) {
                 let pad = 0.03;

@@ -20,7 +20,7 @@ use crate::{
     parse::{parse, parse_extra, parse_pec, parse_phigros, parse_rpe, LyricLine, LyricRole, LyricWord},
     task::Task,
     time::TimeManager,
-    ui::{RectButton, TextPainter, Ui},
+    ui::{RectButton, TextPainter, Ui, PREFER_XCHS_UI},
 };
 
 #[cfg(target_os = "windows")]
@@ -28,6 +28,7 @@ use crate::smtc::{SmtcCommand, SmtcSession};
 use anyhow::{bail, Context, Result};
 use concat_string::concat_string;
 use inputbox::InputBox;
+use std::sync::atomic::Ordering;
 use lyon::path::Path;
 use macroquad::{prelude::*, window::InternalGlContext};
 use sasa::{Music, MusicParams};
@@ -1132,29 +1133,75 @@ impl GameScene {
             let s = 0.06;
             let w = 0.05;
             let no_retry = self.mode == GameMode::NoRetry;
-            draw_texture_ex(
-                *res.icon_back,
-                -s * 3. - w,
-                -s + o,
-                c,
-                DrawTextureParams {
-                    dest_size: Some(vec2(s * 2., s * 2.)),
-                    ..Default::default()
-                },
-            );
-            let r = Rect::new(0., o, 0., 0.).feather(s);
             let disabled_color = semi_white(res.alpha * 0.4);
-            ui.fill_rect(r, (*res.icon_retry, r.feather(0.02), ScaleType::Fit, if no_retry { disabled_color } else { c }));
-            draw_texture_ex(
-                *res.icon_resume,
-                s + w,
-                -s + o,
-                if self.dead { disabled_color } else { c },
-                DrawTextureParams {
-                    dest_size: Some(vec2(s * 2., s * 2.)),
-                    ..Default::default()
-                },
-            );
+            let xchs = PREFER_XCHS_UI.load(Ordering::Relaxed);
+            // XCHS 暂停卡片（居中圆角卡 + 三行按钮），与 xcsim game_scene.rs 一致
+            let xchs_card = Rect::new(-0.34, o - 0.28, 0.68, 0.56);
+            let xchs_row = |row: i32| {
+                let btn_h = 0.105;
+                let gap = 0.022;
+                Rect::new(xchs_card.x + 0.05, xchs_card.y + 0.16 + row as f32 * (btn_h + gap), xchs_card.w - 0.10, btn_h)
+            };
+            if xchs {
+                let a = res.alpha;
+                let pink = Color::new(1.0, 0.58, 0.706, a);
+                let cream = Color::new(0.984, 0.973, 0.886, a);
+                ui.fill_path(&xchs_card.feather(0.016).rounded(0.07), Color::new(0.949, 0.412, 0.580, 0.40 * a));
+                ui.fill_path(&xchs_card.rounded(0.06), Color::new(0.165, 0.110, 0.180, 0.98 * a));
+                ui.text("PAUSED")
+                    .pos(0., xchs_card.y + 0.072)
+                    .anchor(0.5, 0.5)
+                    .no_baseline()
+                    .size(0.92)
+                    .color(cream)
+                    .draw();
+                ui.fill_path(&Rect::new(-0.06, xchs_card.y + 0.118, 0.12, 0.006).rounded(0.003), pink);
+                let pill = |ui: &mut Ui, br: Rect, tex: &SafeTexture, label: &str, primary: bool, enabled: bool| {
+                    let ea = if enabled { 1.0 } else { 0.4 };
+                    if primary && enabled {
+                        ui.fill_path(&br.rounded(0.05), Color::new(0.949, 0.412, 0.580, a));
+                    } else {
+                        ui.fill_path(&br.rounded(0.05), Color::new(0.243, 0.165, 0.255, 0.96 * a * ea));
+                    }
+                    let isz = br.h * 0.56;
+                    let ir = Rect::new(br.x + 0.045, br.center().y - isz * 0.5, isz, isz);
+                    let icon_c = if primary && enabled { cream } else { Color::new(pink.r, pink.g, pink.b, pink.a * ea) };
+                    ui.fill_rect(ir, (**tex, ir, ScaleType::Fit, icon_c));
+                    ui.text(label)
+                        .pos(ir.right() + 0.035, br.center().y)
+                        .anchor(0., 0.5)
+                        .no_baseline()
+                        .size(0.56)
+                        .color(Color::new(cream.r, cream.g, cream.b, cream.a * ea))
+                        .draw();
+                };
+                pill(ui, xchs_row(0), &res.icon_resume, "Resume", true, !self.dead);
+                pill(ui, xchs_row(1), &res.icon_retry, "Retry", false, !no_retry);
+                pill(ui, xchs_row(2), &res.icon_back, "Exit", false, true);
+            } else {
+                draw_texture_ex(
+                    *res.icon_back,
+                    -s * 3. - w,
+                    -s + o,
+                    c,
+                    DrawTextureParams {
+                        dest_size: Some(vec2(s * 2., s * 2.)),
+                        ..Default::default()
+                    },
+                );
+                let r = Rect::new(0., o, 0., 0.).feather(s);
+                ui.fill_rect(r, (*res.icon_retry, r.feather(0.02), ScaleType::Fit, if no_retry { disabled_color } else { c }));
+                draw_texture_ex(
+                    *res.icon_resume,
+                    s + w,
+                    -s + o,
+                    if self.dead { disabled_color } else { c },
+                    DrawTextureParams {
+                        dest_size: Some(vec2(s * 2., s * 2.)),
+                        ..Default::default()
+                    },
+                );
+            }
             if res.config.interactive {
                 let mut clicked = None;
                 for touch in Judge::get_touches() {
@@ -1162,6 +1209,16 @@ impl GameScene {
                         continue;
                     }
                     let p = touch.position;
+                    if xchs {
+                        if xchs_row(0).contains(p) {
+                            clicked = Some(1);
+                        } else if xchs_row(1).contains(p) {
+                            clicked = Some(0);
+                        } else if xchs_row(2).contains(p) {
+                            clicked = Some(-1);
+                        }
+                        continue;
+                    }
                     let p = Point::new(p.x, p.y);
                     for i in -1..=1 {
                         let ct = Point::new((s * 2. + w) * i as f32, o);

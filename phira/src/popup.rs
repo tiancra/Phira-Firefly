@@ -118,9 +118,60 @@ impl Popup {
         if !self.fader.transiting() && !self.showing {
             return;
         }
+        let xchs = prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed);
         let r = self.rect;
         self.scroll.size((r.w, r.h));
         self.fader.reset();
+        if xchs {
+            // XCHS UI: 不做位移，只做「自上而下展开」的裁剪 + 同步透明度
+            // （与 xcsim popup_app.rs 的 anim_p 行为一致）。
+            // p: 0 = 完全收起，1 = 完全展开
+            let p = (1. - self.fader.progress(t).abs()).clamp(0., 1.);
+            ui.abs_scope(|ui| {
+                ui.dx(r.x);
+                ui.dy(r.y);
+                ui.alpha(p * alpha, |ui| {
+                    ui.scissor(Rect::new(0., 0., r.w, r.h * p), |ui| {
+                        let accent = Color::new(0.949, 0.412, 0.580, 1.);
+                        let body_bg = Color::new(0.165, 0.110, 0.180, 1.);
+                        let text_c = Color::new(0.984, 0.973, 0.886, 1.);
+                        let sep_c = Color::new(1.0, 0.776, 0.847, 0.10);
+                        let border_c = Color::new(1.0, 0.776, 0.847, 0.45);
+                        let sel_bg = Color::new(accent.r, accent.g, accent.b, 0.20);
+                        let panel = Rect::new(0., 0., r.w, r.h);
+                        let path = panel.rounded(0.022);
+                        ui.fill_path(&path, body_bg);
+                        ui.stroke_path(&path, 0.004, border_c);
+                        self.scroll.render(ui, |ui| {
+                            for (id, (opt, btn)) in self.options.iter_mut().enumerate() {
+                                if id != 0 {
+                                    ui.fill_rect(Rect::new(0.024, -0.001, r.w - 0.048, 0.0015), sep_c);
+                                }
+                                let ir = Rect::new(0., 0., r.w, self.height);
+                                btn.set(ui, ir);
+                                let chosen = id == self.selected;
+                                let pill = Rect::new(ir.x + 0.012, ir.y + 0.006, ir.w - 0.024, ir.h - 0.012);
+                                if chosen {
+                                    ui.fill_path(&pill.rounded(0.018), sel_bg);
+                                    ui.fill_path(&Rect::new(pill.x, pill.y + 0.008, 0.005, pill.h - 0.016).rounded(0.0025), accent);
+                                }
+                                ui.text(opt.as_str())
+                                    .pos(self.left + if chosen { 0.012 } else { 0.006 }, self.height / 2.)
+                                    .anchor(0., 0.5)
+                                    .no_baseline()
+                                    .size(self.size)
+                                    .max_width(r.w - self.left * 2.)
+                                    .color(if chosen { accent } else { text_c })
+                                    .draw();
+                                ui.dy(self.height);
+                            }
+                            (r.w, self.options.len() as f32 * self.height)
+                        });
+                    });
+                });
+            });
+            return;
+        }
         ui.abs_scope(|ui| {
             ui.dx(r.x);
             ui.dy(r.y);

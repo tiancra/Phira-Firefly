@@ -9,7 +9,7 @@ use prpr::{
     config::{Config, Mods},
     info::ChartInfo,
     scene::SimpleRecord,
-    ui::PREFER_REDUCED_MOTION,
+    ui::{PREFER_REDUCED_MOTION, PREFER_XCHS_UI},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -131,6 +131,10 @@ pub struct Data {
     pub onboarding_done: bool,
 
     pub prefer_reduced_motion: bool,
+
+    /// UI layout: 0 = Official, 1 = XCHS UI. Requires restart to take effect.
+    #[serde(default)]
+    pub ui_layout: usize,
 
     #[serde(default, rename = "collections")]
     collections_legacy: Vec<LocalCollection>,
@@ -318,6 +322,7 @@ impl Data {
 
         self.config.init();
         PREFER_REDUCED_MOTION.store(self.prefer_reduced_motion, Ordering::Relaxed);
+        PREFER_XCHS_UI.store(self.ui_layout == 1, Ordering::Relaxed);
         Ok(())
     }
 

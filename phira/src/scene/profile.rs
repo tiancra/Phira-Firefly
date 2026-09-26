@@ -141,6 +141,235 @@ impl ProfileScene {
             rank_icons,
         }
     }
+
+    /// XCHS UI (XCHS/xcsim/src/scene_app/profile_scene.rs) variant of the profile view.
+    fn render_xchs(&mut self, ui: &mut Ui, tm: &mut TimeManager) -> Result<()> {
+        set_camera(&ui.camera());
+        let t = tm.now() as f32;
+
+        let accent = Color::new(1.0, 0.58, 0.706, 1.0);
+        let cream = Color::new(0.984, 0.973, 0.886, 1.0);
+        let muted = Color::new(1.0, 0.776, 0.847, 0.62);
+
+        let sr = ui.screen_rect();
+        ui.fill_rect(sr, (*self.background, sr));
+        ui.fill_rect(sr, Color::new(0.075, 0.045, 0.09, 0.72));
+        for k in 0..6 {
+            ui.text("\u{2661}")
+                .pos(sr.x + 0.18 + k as f32 * 0.34, sr.y + 0.05)
+                .anchor(0.5, 0.5)
+                .no_baseline()
+                .size(0.62)
+                .color(Color::new(1.0, 0.776, 0.847, 0.05))
+                .draw();
+        }
+
+        // Header: this scene draws its own back pill in XCHS mode (the old icon_back texture is not drawn).
+        let br = ui.back_rect();
+        ui.fill_path(&br.feather(-0.004).rounded(0.02), Color::new(1.0, 0.58, 0.706, 0.14));
+        self.btn_back.set(ui, br);
+        ui.text("\u{2190}")
+            .pos(br.center().x, br.center().y)
+            .anchor(0.5, 0.5)
+            .no_baseline()
+            .size(0.5)
+            .color(accent)
+            .draw();
+        let ht = ui
+            .text("Profile")
+            .pos(br.right() + 0.04, br.center().y)
+            .anchor(0., 0.5)
+            .no_baseline()
+            .size(0.9)
+            .color(cream)
+            .draw();
+        ui.text("\u{2665}")
+            .pos(ht.right() + 0.026, ht.center().y)
+            .anchor(0., 0.5)
+            .no_baseline()
+            .size(0.5)
+            .color(accent)
+            .draw();
+        ui.fill_path(&Rect::new(br.right() + 0.04, br.bottom() - 0.006, 0.12, 0.006).rounded(0.003), accent);
+
+        let radius = 0.032;
+        let r = Rect::new(-0.85, -ui.top + 0.16, 0.62, 2.);
+        ui.fill_path(&r.feather(0.01).rounded(radius + 0.008), Color::new(1.0, 0.58, 0.706, 0.16));
+        rounded_rect_shadow(
+            ui,
+            r,
+            &ShadowConfig {
+                radius,
+                elevation: 0.014,
+                ..Default::default()
+            },
+        );
+        ui.fill_path(&r.rounded(radius), Color::new(0.145, 0.098, 0.157, 0.98));
+        ui.stroke_path(&r.rounded(radius), 0.0035, Color::new(1.0, 0.776, 0.847, 0.35));
+
+        if let Some(user) = &self.user {
+            ui.scope(|ui| {
+                ui.dx(r.x);
+                ui.dy(r.y);
+                self.pf_scroll.size((r.w, ui.top - r.y));
+                self.pf_scroll.render(ui, |ui| {
+                    ui.dx(-r.x);
+                    ui.dy(-r.y);
+                    let pad = 0.02;
+                    let mw = r.w - pad * 2.;
+                    let cx = r.center().x;
+
+                    let arad = 0.13;
+                    let ay = r.y + arad + 0.06;
+                    ui.fill_circle(cx, ay, arad + 0.014, accent);
+                    ui.fill_circle(cx, ay, arad + 0.006, Color::new(1.0, 0.776, 0.847, 0.6));
+                    let av = ui.avatar(cx, ay, arad, t, UserManager::opt_avatar(self.id, &self.icon_user));
+                    self.avatar_btn.set(ui, av);
+                    let r1 = ui
+                        .text(&user.name)
+                        .size(0.78)
+                        .pos(cx, av.bottom() + 0.032)
+                        .anchor(0.5, 0.)
+                        .max_width(mw)
+                        .color(cream)
+                        .draw();
+                    self.btn_name.set(ui, r1);
+
+                    let rks_txt = format!("\u{2665} RKS {:.2}", user.rks);
+                    let rw = ui.text(&rks_txt).size(0.5).measure().w + 0.07;
+                    let pill = Rect::new(cx - rw / 2., r1.bottom() + 0.02, rw, 0.078);
+                    ui.fill_path(&pill.rounded(0.039), Color::new(0.949, 0.412, 0.580, 0.22));
+                    ui.stroke_path(&pill.rounded(0.039), 0.003, accent);
+                    ui.text(&rks_txt)
+                        .size(0.5)
+                        .pos(cx, pill.center().y)
+                        .anchor(0.5, 0.5)
+                        .no_baseline()
+                        .color(accent)
+                        .draw();
+                    let mut r2 = pill;
+                    if !self.user_badges.is_empty() {
+                        r2 = ui
+                            .text(self.user_badges.join("  "))
+                            .pos(cx, r2.bottom() + 0.02)
+                            .anchor(0.5, 0.)
+                            .size(0.48)
+                            .color(accent)
+                            .draw();
+                    }
+                    let r3 = ui
+                        .text(user.bio.as_deref().unwrap_or(""))
+                        .pos(cx, r2.bottom() + 0.02)
+                        .anchor(0.5, 0.)
+                        .multiline()
+                        .max_width(mw)
+                        .size(0.4)
+                        .color(semi_white(0.82))
+                        .draw();
+                    let r4 = ui
+                        .text(tl!("last-login", "time" => user.last_login.with_timezone(&Local).format("%Y-%m-%d %H:%M").to_string()))
+                        .pos(cx, r3.bottom() + 0.02)
+                        .anchor(0.5, 0.)
+                        .size(0.38)
+                        .color(muted)
+                        .draw();
+                    let hw = 0.21;
+                    let mut r5 = Rect::new(cx - hw, r4.bottom() + 0.03, hw * 2., 0.1);
+                    self.btn_open_web.render_text(ui, r5, t, ttl!("open-in-web"), 0.6, true);
+                    r5.y += r5.h + 0.02;
+                    if get_data().me.as_ref().is_some_and(|it| it.id == self.id) {
+                        self.btn_logout.render_text(ui, r5, t, tl!("logout"), 0.6, true);
+                        r5.y += r5.h + 0.02;
+                        self.btn_delete.render_text(ui, r5, t, tl!("delete"), 0.6, true);
+                    }
+                    (r.w, r5.bottom() - r.y + 0.04)
+                });
+            });
+        } else {
+            ui.loading(r.center().x, (r.y + r.bottom().min(ui.top)) / 2., t, WHITE, ());
+        }
+
+        let r6 = Rect::new(r.right() + 0.06, r.y, 0.9 - r.right() - 0.06, 1.5);
+        ui.text("\u{2661} Records")
+            .pos(r6.x + 0.01, r6.y - 0.018)
+            .anchor(0., 1.)
+            .no_baseline()
+            .size(0.62)
+            .color(cream)
+            .draw();
+        if let Some(items) = &mut self.record_items {
+            self.fader.reset();
+            self.fader.for_sub(|f| {
+                ui.scope(|ui| {
+                    ui.dx(r6.x);
+                    ui.dy(-ui.top);
+                    let o = self.scroll.y_scroller.offset;
+                    self.scroll.size((r6.w, ui.top * 2.));
+                    self.scroll.render(ui, |ui| {
+                        let n = items.len();
+                        let cols = 3usize;
+                        let h = 0.2;
+                        let pad1 = 0.018;
+                        let cw = r6.w / cols as f32;
+                        let mut iter = items.iter_mut();
+                        for i in 0..n.div_ceil(cols) {
+                            for j in 0..(n - i * cols).min(cols) {
+                                let Some(item) = iter.next() else { unreachable!() };
+                                f.render(ui, t, |ui| {
+                                    let cd = Rect::new(j as f32 * cw + pad1, r6.y + ui.top + i as f32 * h, cw - pad1 * 2., h - pad1 * 2.);
+                                    if cd.y - o > ui.top * 2. || cd.bottom() - o < 0. {
+                                        return;
+                                    }
+                                    item.illu.notify();
+                                    ui.fill_path(&cd.feather(0.006).rounded(0.02), Color::new(1.0, 0.58, 0.706, 0.12));
+                                    item.btn.render_shadow(ui, cd, t, |ui, path| {
+                                        ui.fill_path(&path, (*item.illu.texture.0, cd));
+                                        ui.fill_path(&path, Color::new(0.12, 0.06, 0.11, 0.55));
+                                        ui.stroke_path(&path, 0.0035, Color::new(1.0, 0.776, 0.847, 0.5));
+                                    });
+
+                                    let icon = icon_index(item.record.score as _, item.record.full_combo);
+                                    let s = 0.062_f32;
+                                    let ir = Rect::new(cd.x + pad1, cd.y + pad1, s, s);
+                                    ui.fill_rect(ir, (*self.rank_icons[icon], ir, ScaleType::Fit));
+
+                                    if let Some(Ok(name)) = item.name.get().as_ref() {
+                                        ui.text(name)
+                                            .pos(cd.x + pad1, ir.bottom() + 0.012)
+                                            .anchor(0., 0.)
+                                            .no_baseline()
+                                            .max_width(cd.w - pad1 * 2.)
+                                            .size(0.44)
+                                            .color(WHITE)
+                                            .draw();
+                                    }
+
+                                    ui.text(format!("\u{2661} {:07} {}", item.record.score, if item.record.full_combo { "[FC]" } else { "" }))
+                                        .pos(cd.x + pad1, cd.bottom() - pad1)
+                                        .anchor(0., 1.)
+                                        .size(0.42)
+                                        .max_width(cd.w - pad1 * 2.)
+                                        .color(accent)
+                                        .draw();
+                                });
+                            }
+                        }
+                        (r6.w, r6.y + ui.top + h * n.div_ceil(cols) as f32 + 0.04)
+                    })
+                });
+            });
+        } else {
+            let ct = r6.center();
+            ui.loading(ct.x, ct.y, t, WHITE, ());
+        }
+
+        self.sf.render(ui, t);
+
+        if self.avatar_task.is_some() {
+            ui.full_loading(tl!("uploading-avatar"), t);
+        }
+        Ok(())
+    }
 }
 
 impl Scene for ProfileScene {
@@ -309,6 +538,9 @@ impl Scene for ProfileScene {
     }
 
     fn render(&mut self, tm: &mut TimeManager, ui: &mut Ui) -> Result<()> {
+        if prpr::ui::PREFER_XCHS_UI.load(Ordering::Relaxed) {
+            return self.render_xchs(ui, tm);
+        }
         set_camera(&ui.camera());
         let t = tm.now() as f32;
 

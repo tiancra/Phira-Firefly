@@ -10,7 +10,7 @@ use chrono::{Local, TimeZone};
 use inputbox::InputBox;
 use macroquad::prelude::*;
 use prpr::{
-    ext::{poll_future, semi_black, semi_white, LocalTask, SafeTexture, ScaleType},
+    ext::{poll_future, semi_black, semi_white, LocalTask, RectExt, SafeTexture, ScaleType},
     fs,
     judge::icon_index,
     replay::ReplayData,
@@ -529,6 +529,31 @@ impl Page for ReplayListPage {
     }
 
     fn render(&mut self, ui: &mut Ui, s: &mut SharedState) -> Result<()> {
+        if prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed) {
+            const HDR_H: f32 = 0.155;
+            let accent = Color::new(1.0, 0.58, 0.706, 1.0);
+            let cream = Color::new(0.984, 0.973, 0.886, 1.0);
+            s.render_fader(ui, |ui| {
+                let bar_y = -ui.top;
+                let br = ui.back_rect();
+                ui.fill_path(&br.feather(-0.004).rounded(0.02), Color::new(1.0, 0.58, 0.706, 0.14));
+                ui.text("\u{2190}")
+                    .pos(br.center().x, br.center().y)
+                    .anchor(0.5, 0.5).no_baseline().size(0.5)
+                    .color(accent).draw();
+                let title_x = br.right() + 0.04;
+                let title_y = bar_y + HDR_H * 0.38;
+                let title = ui.text("Replays")
+                    .pos(title_x, title_y)
+                    .anchor(0., 0.5).no_baseline().size(0.9)
+                    .color(cream).draw();
+                ui.text("\u{2665}")
+                    .pos(title.right() + 0.028, title.center().y)
+                    .anchor(0., 0.5).no_baseline().size(0.5)
+                    .color(accent).draw();
+                ui.fill_path(&Rect::new(title_x, bar_y + HDR_H - 0.014, 0.13, 0.006).rounded(0.003), accent);
+            });
+        }
         let t = s.t;
 
         s.render_fader(ui, |ui| {

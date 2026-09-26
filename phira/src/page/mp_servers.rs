@@ -323,15 +323,40 @@ impl Page for MpServerPage {
         // The first frame can render before `update` has initialized these controls.
         self.sync_server_buttons();
         let t = s.t;
+        let xchs = prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed);
         let panel = ui.content_rect().feather(-0.04);
+        let br = ui.back_rect();
         s.render_fader(ui, |ui| {
-            ui.fill_path(&panel.rounded(0.01), semi_black(0.45));
-            ui.text(tl!("mp-server-page"))
-                .pos(panel.x + 0.03, panel.y + 0.045)
-                .anchor(0., 0.5)
-                .no_baseline()
-                .size(0.7)
-                .draw();
+            if xchs {
+                // XCHS UI: 与其他页面一致的标准头部（返回胶囊 + 标题 + ♡ + 下划线）
+                let accent = Color::new(1.0, 0.58, 0.706, 1.0);
+                let cream = Color::new(0.984, 0.973, 0.886, 1.0);
+                let bar_y = -ui.top;
+                ui.fill_path(&br.feather(-0.004).rounded(0.02), Color::new(1.0, 0.58, 0.706, 0.14));
+                ui.text("\u{2190}")
+                    .pos(br.center().x, br.center().y)
+                    .anchor(0.5, 0.5).no_baseline().size(0.5)
+                    .color(accent).draw();
+                let title_x = br.right() + 0.04;
+                let title = ui.text(tl!("mp-server-page"))
+                    .pos(title_x, bar_y + 0.155 * 0.38)
+                    .anchor(0., 0.5).no_baseline().size(0.9)
+                    .color(cream).draw();
+                ui.text("\u{2665}")
+                    .pos(title.right() + 0.028, title.center().y)
+                    .anchor(0., 0.5).no_baseline().size(0.5)
+                    .color(accent).draw();
+                ui.fill_path(&Rect::new(title_x, bar_y + 0.155 - 0.014, 0.13, 0.006).rounded(0.003), accent);
+            }
+            ui.fill_path(&panel.rounded(0.01), if xchs { Color::new(0.165, 0.110, 0.180, 0.96) } else { semi_black(0.45) });
+            if !xchs {
+                ui.text(tl!("mp-server-page"))
+                    .pos(panel.x + 0.03, panel.y + 0.045)
+                    .anchor(0., 0.5)
+                    .no_baseline()
+                    .size(0.7)
+                    .draw();
+            }
 
             let add_rect = Rect::new(panel.right() - 0.14, panel.y + 0.015, 0.11, 0.06);
             self.add_btn.render_text(ui, add_rect, t, "+", 0.7, false);

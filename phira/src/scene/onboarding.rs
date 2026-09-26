@@ -23,7 +23,7 @@ use prpr::{
     config::DynamicBackgroundMode,
     core::{ParticleEmitter, ResourcePack, NOTE_WIDTH_RATIO_BASE, BOLD_FONT},
     ext::{create_audio_manger, open_url, poll_future, semi_black, semi_white, LocalTask, RectExt, SafeTexture, ScaleType},
-    scene::{request_input, return_input, show_error, show_message, take_input, NextScene, Scene},
+    scene::{request_input_inline, return_input, show_error, show_message, take_input, NextScene, Scene},
     task::Task,
     time::TimeManager,
     ui::{button_hit, DRectButton, Dialog, Slider, Scroll, Ui},
@@ -757,11 +757,11 @@ impl OnboardingScene {
             }
             2 => {
                 if self.input_qq.touch(touch, t) {
-                    request_input("ob_qq", InputBox::new().default_text(&self.t_qq));
+                    request_input_inline("ob_qq", InputBox::new().default_text(&self.t_qq));
                     return Ok(true);
                 }
                 if self.input_key.touch(touch, t) {
-                    request_input("ob_key", InputBox::new().default_text(&self.t_key));
+                    request_input_inline("ob_key", InputBox::new().default_text(&self.t_key));
                     return Ok(true);
                 }
                 if self.btn_apply.touch(touch, t) {
@@ -832,7 +832,7 @@ impl OnboardingScene {
                         return Ok(true);
                     }
                     if self.mp_addr_btn.touch(touch, t) {
-                        request_input("ob_mp_addr", InputBox::new().default_text(&config.mp_address));
+                        request_input_inline("ob_mp_addr", InputBox::new().default_text(&config.mp_address));
                         return Ok(true);
                     }
                     if self.dynamic_bg_btn.touch(touch, t) {
@@ -853,15 +853,15 @@ impl OnboardingScene {
             6 => {
                 if self.in_reg {
                     if self.input_reg_email.touch(touch, t) {
-                        request_input("ob_reg_email", InputBox::new().default_text(&self.t_reg_email));
+                        request_input_inline("ob_reg_email", InputBox::new().default_text(&self.t_reg_email));
                         return Ok(true);
                     }
                     if self.input_reg_name.touch(touch, t) {
-                        request_input("ob_reg_name", InputBox::new().default_text(&self.t_reg_name));
+                        request_input_inline("ob_reg_name", InputBox::new().default_text(&self.t_reg_name));
                         return Ok(true);
                     }
                     if self.input_reg_pwd.touch(touch, t) {
-                        request_input("ob_reg_pwd", InputBox::new().default_text(&self.t_reg_pwd).mode(InputMode::Password));
+                        request_input_inline("ob_reg_pwd", InputBox::new().default_text(&self.t_reg_pwd).mode(InputMode::Password));
                         return Ok(true);
                     }
                     if self.btn_to_login.touch(touch, t) {
@@ -877,11 +877,11 @@ impl OnboardingScene {
                     }
                 } else {
                     if self.input_email.touch(touch, t) {
-                        request_input("ob_email", InputBox::new().default_text(&self.t_email));
+                        request_input_inline("ob_email", InputBox::new().default_text(&self.t_email));
                         return Ok(true);
                     }
                     if self.input_pwd.touch(touch, t) {
-                        request_input("ob_pwd", InputBox::new().default_text(&self.t_pwd).mode(InputMode::Password));
+                        request_input_inline("ob_pwd", InputBox::new().default_text(&self.t_pwd).mode(InputMode::Password));
                         return Ok(true);
                     }
                     if self.btn_to_reg.touch(touch, t) {

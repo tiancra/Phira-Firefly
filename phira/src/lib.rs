@@ -876,31 +876,31 @@ pub extern "C" fn Java_quad_1native_QuadNative_antiAddictionCallback(_env: EnvUn
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "C" fn Java_quad_1native_QuadNative_inputSelectAll(_env: EnvUnowned, _class: JClass) {
-    prpr::ui::inline_input_select_all();
+    prpr::scene::input_select_all();
 }
 
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "C" fn Java_quad_1native_QuadNative_inputBackspace(_env: EnvUnowned, _class: JClass) {
-    prpr::ui::inline_input_backspace();
+    prpr::scene::input_backspace();
 }
 
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "C" fn Java_quad_1native_QuadNative_inputCopy(_env: EnvUnowned, _class: JClass) {
-    prpr::ui::inline_input_copy();
+    prpr::scene::input_copy();
 }
 
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "C" fn Java_quad_1native_QuadNative_inputCut(_env: EnvUnowned, _class: JClass) {
-    prpr::ui::inline_input_cut();
+    prpr::scene::input_cut();
 }
 
 #[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "C" fn Java_quad_1native_QuadNative_inputPaste(_env: EnvUnowned, _class: JClass) {
-    prpr::ui::inline_input_paste();
+    prpr::scene::input_paste();
 }
 
 #[cfg(target_env = "ohos")]

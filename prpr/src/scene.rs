@@ -16,17 +16,15 @@ mod loading;
 pub use loading::{BasicPlayer, LoadingScene, SaveFn, UpdateFn, UploadFn};
 
 use crate::{
-    ext::{screen_aspect, LocalTask, SafeTexture},
+    core::BOLD_FONT,
+    ext::{semi_white, LocalTask, RectExt, SafeTexture},
     judge::Judge,
     time::TimeManager,
-    ui::{BillBoard, Dialog, Message, MessageHandle, MessageKind, TextPainter, Ui},
+    ui::{BillBoard, Dialog, DRectButton, Message, MessageHandle, MessageKind, TextPainter, Ui},
 };
 use anyhow::{Error, Result};
 use cfg_if::cfg_if;
-use inputbox::{
-    backend::{default_backend, Backend},
-    InputBox,
-};
+use inputbox::{InputBox, InputMode};
 use macroquad::prelude::*;
 use std::{
     any::Any,
@@ -53,6 +51,8 @@ thread_local! {
     pub static BILLBOARD: RefCell<(BillBoard, TimeManager)> = RefCell::new((BillBoard::new(), TimeManager::default()));
     pub static DIALOG: RefCell<Option<Dialog>> = const { RefCell::new(None) };
     pub static FULL_LOADING: RefCell<Option<FullLoadingView>> = const { RefCell::new(None) };
+    /// 游戏内输入对话框
+    pub static INPUT_DIALOG: RefCell<Option<InputDialog>> = const { RefCell::new(None) };
 }
 
 pub struct FullLoadingView {
@@ -152,35 +152,508 @@ pub fn show_message(msg: impl Into<String>) -> MessageBuilder {
 }
 
 pub static INPUT_TEXT: Mutex<(Option<String>, Option<String>)> = Mutex::new((None, None));
+/// 用户取消输入（点“取消”或按 Esc）时记录的输入框 id，供 [`take_input_cancelled`]
+/// 取走。与 [`INPUT_TEXT`] 区分：取消时 [`take_input`] 永远返回 `None`，调用方借此
+/// 知道用户是取消了而不是还没提交。
+pub static INPUT_CANCELLED: Mutex<Option<String>> = Mutex::new(None);
 #[cfg(not(target_arch = "wasm32"))]
 pub static CHOSEN_FILE: Mutex<(Option<String>, Option<String>)> = Mutex::new((None, None));
 
-fn show_inputbox(config: InputBox, backend: &dyn Backend) {
-    let result = config.show_with_async(backend, |result| match result {
-        Ok(Some(text)) => {
-            INPUT_TEXT.lock().unwrap().1 = Some(text);
+/// 光标左移一位（按字符边界，避免拆开多字节字符）
+fn prev_boundary(text: &str, idx: usize) -> usize {
+    let mut idx = idx.saturating_sub(1);
+    while idx > 0 && !text.is_char_boundary(idx) {
+        idx -= 1;
+    }
+    idx
+}
+
+/// 光标右移一位（按字符边界）
+fn next_boundary(text: &str, idx: usize) -> usize {
+    let mut idx = (idx + 1).min(text.len());
+    while idx < text.len() && !text.is_char_boundary(idx) {
+        idx += 1;
+    }
+    idx
+}
+
+/// 游戏内输入对话框（机制移植自 Phira-Vrenxz / 上游实现，外观沿用游戏内弹窗风格）：
+/// 标题 + 提示 + 输入框 + 取消/确定，自带光标、选区、剪贴板与 IME 开关；
+/// 单行回车确认、Esc 取消，多行回车换行。
+pub struct InputDialog {
+    id: String,
+    title: String,
+    prompt: String,
+    text: String,
+    password: bool,
+    multiline: bool,
+    ok_label: String,
+    cancel_label: String,
+    ok_btn: DRectButton,
+    cancel_btn: DRectButton,
+    cursor: usize,
+    cursor_timer: f32,
+    selection: Option<(usize, usize)>,
+}
+
+impl InputDialog {
+    fn new(id: String, config: InputBox) -> Self {
+        let password = matches!(config.mode, InputMode::Password);
+        let multiline = matches!(config.mode, InputMode::Multiline);
+        let text = config.default.to_string();
+        // 清空打开前累积的字符事件，避免一进输入框就自动打出一串字符
+        while get_char_pressed().is_some() {}
+        Self {
+            id,
+            title: config.title.map(|s| s.to_string()).unwrap_or_default(),
+            prompt: config.prompt.map(|s| s.to_string()).unwrap_or_default(),
+            cursor: text.len(),
+            text,
+            password,
+            multiline,
+            ok_label: config.ok_label.map(|s| s.to_string()).unwrap_or_else(|| ttl!("confirm").to_string()),
+            cancel_label: config.cancel_label.map(|s| s.to_string()).unwrap_or_else(|| ttl!("cancel").to_string()),
+            ok_btn: DRectButton::new(),
+            cancel_btn: DRectButton::new(),
+            cursor_timer: 0.,
+            selection: None,
         }
-        Ok(None) => {}
-        Err(err) => {
-            warn!(?err, "failed to get input");
+    }
+
+    fn confirm(&self) {
+        INPUT_TEXT.lock().unwrap().1 = Some(self.text.clone());
+        set_ime_enabled(false);
+        android_show_keyboard(false);
+    }
+
+    fn cancel(&self) {
+        *INPUT_CANCELLED.lock().unwrap() = Some(self.id.clone());
+        set_ime_enabled(false);
+        android_show_keyboard(false);
+    }
+
+    /// 删除当前选区（若有），返回是否真的删除了内容
+    fn delete_selection(&mut self) -> bool {
+        if let Some((s, e)) = self.selection.take() {
+            self.text.replace_range(s..e, "");
+            self.cursor = s;
+            true
+        } else {
+            false
         }
-    });
-    if let Err(err) = result {
-        warn!(?err, "failed to show input box");
+    }
+
+    /// 把光标移动到 `pos`；`extend`（Shift）为真时扩展选区
+    fn move_cursor(&mut self, pos: usize, extend: bool) {
+        if !extend {
+            self.selection = None;
+            self.cursor = pos;
+            return;
+        }
+        // 锚点：已有选区时取不靠光标的那一端，否则取原光标位置
+        let anchor = match self.selection {
+            Some((s, e)) if e == self.cursor => s,
+            Some((s, e)) if s == self.cursor => e,
+            _ => self.cursor,
+        };
+        self.cursor = pos;
+        self.selection = (anchor != pos).then(|| (anchor.min(pos), anchor.max(pos)));
+    }
+
+    /// 全选
+    fn select_all(&mut self) {
+        self.selection = Some((0, self.text.len()));
+        self.cursor = self.text.len();
+    }
+
+    /// 复制选区
+    fn copy(&self) {
+        if let Some((s, e)) = self.selection {
+            unsafe { get_internal_gl() }.quad_context.clipboard_set(&self.text[s..e]);
+        }
+    }
+
+    /// 剪切选区
+    fn cut(&mut self) {
+        self.copy();
+        self.delete_selection();
+    }
+
+    /// 粘贴剪贴板内容
+    fn paste(&mut self) {
+        if let Some(mut clip) = unsafe { get_internal_gl() }.quad_context.clipboard_get() {
+            // 单行输入框里丢掉换行，避免粘贴多行文本后显示异常
+            if !self.multiline {
+                clip.retain(|c| c != '\r' && c != '\n');
+            }
+            self.delete_selection();
+            self.text.insert_str(self.cursor, &clip);
+            self.cursor += clip.len();
+        }
+    }
+
+    /// 退格：有选区则删除选区，否则删除光标前一个字符
+    fn backspace(&mut self) {
+        if !self.delete_selection() && self.cursor > 0 {
+            let idx = prev_boundary(&self.text, self.cursor);
+            self.text.replace_range(idx..self.cursor, "");
+            self.cursor = idx;
+        }
+    }
+
+    /// 删除：有选区则删除选区，否则删除光标后一个字符
+    fn delete_forward(&mut self) {
+        if !self.delete_selection() && self.cursor < self.text.len() {
+            let idx = next_boundary(&self.text, self.cursor);
+            self.text.replace_range(self.cursor..idx, "");
+        }
+    }
+
+    /// 处理键盘输入。返回 false 表示对话框已确认或取消，应当被关闭。
+    fn update_keyboard(&mut self) -> bool {
+        let ctrl = is_key_down(KeyCode::LeftControl) || is_key_down(KeyCode::RightControl);
+        let shift = is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift);
+
+        if ctrl && is_key_pressed(KeyCode::A) {
+            self.select_all();
+        }
+        if ctrl && is_key_pressed(KeyCode::C) {
+            self.copy();
+        }
+        if ctrl && is_key_pressed(KeyCode::X) {
+            self.cut();
+        }
+        if ctrl && is_key_pressed(KeyCode::V) {
+            self.paste();
+        }
+
+        // 字符输入（含 IME 上屏）
+        let mut input = String::new();
+        while let Some(c) = get_char_pressed() {
+            if c == '\r' || c == '\n' {
+                if self.multiline {
+                    input.push('\n');
+                } else {
+                    self.confirm();
+                    return false;
+                }
+                continue;
+            }
+            // 退格/删除交给下面的按键处理，避免重复
+            if c == '\u{8}' || c == '\u{7f}' {
+                continue;
+            }
+            if c.is_control() && c != '\t' {
+                continue;
+            }
+            input.push(c);
+        }
+        if !input.is_empty() {
+            self.delete_selection();
+            // get_char_pressed 是从队列尾部取（后进先出），所以一次提交的一批字符
+            // （输入法上屏多个字、一帧内连敲多个键）顺序是反的，反转回来才是实际输入顺序
+            let reversed: String = input.chars().rev().collect();
+            self.text.insert_str(self.cursor, &reversed);
+            self.cursor += reversed.len();
+        }
+
+        if is_key_pressed(KeyCode::Backspace) {
+            self.backspace();
+        }
+        if is_key_pressed(KeyCode::Delete) {
+            self.delete_forward();
+        }
+        if is_key_pressed(KeyCode::Left) {
+            let pos = prev_boundary(&self.text, self.cursor);
+            self.move_cursor(pos, shift);
+        }
+        if is_key_pressed(KeyCode::Right) {
+            let pos = next_boundary(&self.text, self.cursor);
+            self.move_cursor(pos, shift);
+        }
+        if is_key_pressed(KeyCode::Home) {
+            self.move_cursor(0, shift);
+        }
+        if is_key_pressed(KeyCode::End) {
+            let end = self.text.len();
+            self.move_cursor(end, shift);
+        }
+
+        if is_key_pressed(KeyCode::Enter) && !self.multiline {
+            self.confirm();
+            return false;
+        }
+        if is_key_pressed(KeyCode::Escape) {
+            self.cancel();
+            return false;
+        }
+        true
+    }
+
+    /// 处理触摸。返回 false 表示对话框已确认或取消，应当被关闭。
+    fn touch(&mut self, touch: &Touch, t: f32) -> bool {
+        if self.ok_btn.touch(touch, t) {
+            self.confirm();
+            return false;
+        }
+        if self.cancel_btn.touch(touch, t) {
+            self.cancel();
+            return false;
+        }
+        true
+    }
+
+    fn render(&mut self, ui: &mut Ui, t: f32) {
+        self.cursor_timer += get_frame_time();
+
+        // 与 Dialog 保持一致：半透明遮罩 + 圆角卡片，无入场动画
+        ui.fill_rect(ui.screen_rect(), Color::new(0., 0., 0., 0.6));
+
+        let field_h: f32 = if self.multiline { 0.26 } else { 0.09 };
+        let title_h: f32 = 0.16;
+        let prompt_h: f32 = if self.prompt.is_empty() { 0. } else { 0.08 };
+        let btn_h: f32 = 0.09;
+        let pad: f32 = 0.05;
+        let w: f32 = 1.0;
+        let h: f32 = (pad * 2. + title_h + prompt_h + 0.04 + field_h + 0.06 + btn_h).min(ui.top * 2. * 0.8);
+        let wr = Rect::new(-w / 2., -h / 2., w, h);
+        ui.fill_path(&wr.rounded(0.01), ui.background());
+
+        let cx = wr.x + pad;
+        let cw = wr.w - pad * 2.;
+        let mut y = wr.y + pad;
+        ui.text(self.title.as_str())
+            .pos(cx, y)
+            .size(0.5)
+            .max_width(cw)
+            .color(semi_white(0.95))
+            .draw_using(&BOLD_FONT);
+        y += title_h;
+        if !self.prompt.is_empty() {
+            ui.text(self.prompt.as_str())
+                .pos(cx, y)
+                .size(0.34)
+                .max_width(cw)
+                .multiline()
+                .color(semi_white(0.6))
+                .draw();
+            y += prompt_h;
+        }
+        y += 0.04;
+
+        // 输入框
+        let field = Rect::new(cx, y, cw, field_h);
+        ui.fill_path(&field.rounded(0.008), Color::new(0., 0., 0., 0.35));
+        ui.stroke_path(&field.rounded(0.008), 0.002, semi_white(0.16));
+
+        let text_size = 0.4;
+        let text_x = field.x + 0.02;
+        let text_max_w = field.w - 0.04;
+        let text_y = field.y + field_h / 2.;
+
+        fn mask(text: &str, password: bool) -> String {
+            if password {
+                text.chars().map(|_| '*').collect()
+            } else {
+                text.to_string()
+            }
+        }
+        let display = mask(&self.text, self.password);
+        let before_cursor = mask(&self.text[..self.cursor], self.password);
+        let placeholder = self.text.is_empty() && !self.prompt.is_empty();
+
+        // 选区高亮
+        if let Some((s, e)) = self.selection {
+            if s < e {
+                let off = ui.text(mask(&self.text[..s], self.password)).size(text_size).measure().w;
+                let sel_w = ui.text(mask(&self.text[s..e], self.password)).size(text_size).measure().w;
+                ui.fill_rect(Rect::new(text_x + off, field.y + 0.012, sel_w, field_h - 0.024), Color { a: 0.45, ..ui.accent() });
+            }
+        }
+
+        // 文本 / 占位提示
+        if placeholder {
+            ui.text(self.prompt.as_str())
+                .pos(text_x, text_y)
+                .anchor(0., 0.5)
+                .no_baseline()
+                .max_width(text_max_w)
+                .size(text_size)
+                .color(semi_white(0.35))
+                .draw();
+        } else {
+            ui.text(display.as_str())
+                .pos(text_x, text_y)
+                .anchor(0., 0.5)
+                .no_baseline()
+                .max_width(text_max_w)
+                .size(text_size)
+                .color(Color::new(1., 1., 1., 1.))
+                .draw();
+        }
+
+        // 光标（闪烁）
+        if !placeholder && (self.cursor_timer % 1.0) < 0.5 {
+            let off = ui.text(before_cursor.as_str()).size(text_size).measure().w;
+            ui.fill_rect(Rect::new(text_x + off, field.y + 0.014, 0.0025, field_h - 0.028), ui.accent());
+        }
+
+        // 按钮（与 Dialog 一致的样式）
+        let gap = 0.02;
+        let bw = (cw - gap) / 2.;
+        let by = wr.bottom() - pad - btn_h;
+        let cancel_r = Rect::new(cx, by, bw, btn_h);
+        let ok_r = Rect::new(cx + bw + gap, by, bw, btn_h);
+        self.cancel_btn.render_text(ui, cancel_r, t, self.cancel_label.as_str(), 0.5, false);
+        self.ok_btn.render_text(ui, ok_r, t, self.ok_label.as_str(), 0.5, true);
     }
 }
 
+/// 对当前输入对话框执行操作（供 Android 软键盘等外部输入源调用）
+fn with_input_dialog(f: impl FnOnce(&mut InputDialog)) {
+    INPUT_DIALOG.with(|it| {
+        if let Some(dlg) = it.borrow_mut().as_mut() {
+            f(dlg);
+        }
+    });
+}
+
+/// 全选当前输入框内容
+pub fn input_dialog_select_all() {
+    with_input_dialog(|d| d.select_all());
+}
+
+/// 当前输入框退格
+pub fn input_dialog_backspace() {
+    with_input_dialog(|d| d.backspace());
+}
+
+/// 复制当前输入框选区
+pub fn input_dialog_copy() {
+    with_input_dialog(|d| d.copy());
+}
+
+/// 剪切当前输入框选区
+pub fn input_dialog_cut() {
+    with_input_dialog(|d| d.cut());
+}
+
+/// 粘贴到当前输入框
+pub fn input_dialog_paste() {
+    with_input_dialog(|d| d.paste());
+}
+
+/// 外部输入源（如 Android 输入法工具栏）的编辑键：作用在当前激活的输入上，
+/// 弹窗优先，否则是原位输入
+fn with_active_input(dialog: impl FnOnce(&mut InputDialog), inline: impl FnOnce()) {
+    if INPUT_DIALOG.with(|it| it.borrow().is_some()) {
+        with_input_dialog(dialog);
+    } else {
+        inline();
+    }
+}
+
+/// 全选当前输入内容
+pub fn input_select_all() {
+    with_active_input(|d| d.select_all(), crate::ui::inline_input_select_all);
+}
+
+/// 当前输入退格
+pub fn input_backspace() {
+    with_active_input(|d| d.backspace(), crate::ui::inline_input_backspace);
+}
+
+/// 复制当前输入选区
+pub fn input_copy() {
+    with_active_input(|d| d.copy(), crate::ui::inline_input_copy);
+}
+
+/// 剪切当前输入选区
+pub fn input_cut() {
+    with_active_input(|d| d.cut(), crate::ui::inline_input_cut);
+}
+
+/// 粘贴到当前输入
+pub fn input_paste() {
+    with_active_input(|d| d.paste(), crate::ui::inline_input_paste);
+}
+
+#[cfg(windows)]
+#[link(name = "imm32")]
+extern "system" {
+    fn GetActiveWindow() -> *mut std::ffi::c_void;
+    fn ImmGetContext(hwnd: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
+    fn ImmSetOpenStatus(himc: *mut std::ffi::c_void, fopen: i32);
+    fn ImmReleaseContext(hwnd: *mut std::ffi::c_void, himc: *mut std::ffi::c_void) -> i32;
+}
+
+/// 只在 Windows 上切换系统 IME 的开关状态
+#[cfg(windows)]
+pub(crate) fn set_ime_enabled(enabled: bool) {
+    unsafe {
+        let hwnd = GetActiveWindow();
+        if hwnd.is_null() {
+            return;
+        }
+        let himc = ImmGetContext(hwnd);
+        if himc.is_null() {
+            return;
+        }
+        ImmSetOpenStatus(himc, if enabled { 1 } else { 0 });
+        ImmReleaseContext(hwnd, himc);
+    }
+}
+
+// 注意：set_ime_enabled 只在 Windows 上操作系统 IME 状态；Android 的软键盘只能
+// 在“确实打开/关闭输入框”时弹出/收起，不能在这里统一挂钩（否则退出谱面等恢复
+// IME 的调用也会误弹键盘）。
+#[cfg(not(windows))]
+pub(crate) fn set_ime_enabled(_enabled: bool) {}
+
+/// Android：打开/关闭软键盘（只在真正弹出/收起输入框时调用）
+pub fn android_show_keyboard(show: bool) {
+    crate::ui::set_soft_keyboard(show);
+}
+
 #[inline]
-pub fn request_input(id: impl Into<String>, config: InputBox) {
+pub fn request_input(id: impl Into<String>, mut config: InputBox) {
     let id = id.into();
-    let default = config.default.to_string();
+    *INPUT_TEXT.lock().unwrap() = (Some(id.clone()), None);
+    *INPUT_CANCELLED.lock().unwrap() = None;
+    if config.title.is_none() {
+        config = config.title(ttl!("input"));
+    }
+    if config.prompt.is_none() {
+        config = config.prompt(ttl!("input-msg"));
+    }
+    if config.cancel_label.is_none() {
+        config = config.cancel_label(ttl!("cancel"));
+    }
+    if config.ok_label.is_none() {
+        config = config.ok_label(ttl!("confirm"));
+    }
+    INPUT_DIALOG.with(|it| *it.borrow_mut() = Some(InputDialog::new(id, config)));
+    set_ime_enabled(true);
+    android_show_keyboard(true);
+}
+
+/// 原位输入（不弹对话框）：在刚点击的控件位置就地编辑。登录/注册字段、搜索框、
+/// 首启向导字段这类“表单类”输入走这条路，其他一次性提示仍用 [`request_input`]。
+/// 结果用 [`take_input`] 取，取消用 [`take_input_cancelled`] 取。
+#[inline]
+pub fn request_input_inline(id: impl Into<String>, config: InputBox) {
+    let id = id.into();
+    *INPUT_TEXT.lock().unwrap() = (Some(id.clone()), None);
+    *INPUT_CANCELLED.lock().unwrap() = None;
+    let password = matches!(config.mode, InputMode::Password);
     // 优先使用最后点击的按钮位置（原位显示），没有则屏幕中间
     let rect = crate::ui::take_last_clicked_rect().unwrap_or(Rect { x: -0.4, y: -0.08, w: 0.8, h: 0.1 });
-    crate::ui::activate_inline_input(id, Some(rect), default);
+    crate::ui::activate_inline_input(id, Some(rect), config.default.to_string(), password);
+    set_ime_enabled(true);
 }
 
 pub fn take_input() -> Option<(String, String)> {
-    // 优先从游戏内输入框取结果
+    // 原位输入的结果优先
     if let Some(result) = crate::ui::take_inline_result() {
         return Some(result);
     }
@@ -188,10 +661,9 @@ pub fn take_input() -> Option<(String, String)> {
     w.0.clone().zip(std::mem::take(&mut w.1))
 }
 
-/// 取出被取消的输入框 id。与 [`take_input`] 区分：取消时 `take_input` 永远返回
-/// `None`，调用方借此知道用户是取消了输入而不是还没提交。
+/// 取出被取消的输入框 id（见 [`INPUT_CANCELLED`]）
 pub fn take_input_cancelled() -> Option<String> {
-    crate::ui::take_inline_cancelled()
+    crate::ui::take_inline_cancelled().or_else(|| INPUT_CANCELLED.lock().unwrap().take())
 }
 
 pub fn return_input(id: String, text: String) {
@@ -494,32 +966,23 @@ impl Main {
         }
 
         Judge::on_new_frame();
-        // 处理游戏内输入框的键盘输入
+        // 处理原位输入框的键盘输入
         crate::ui::update_inline_input();
         let mut touches = Judge::get_touches();
         touches.iter_mut().for_each(f);
-        // 游戏内输入框触摸处理
+        // 原位输入框的触摸处理：激活期间吃掉所有触摸，不让页面响应
         if crate::ui::is_inline_input_active() {
-            if crate::ui::inline_input_rect().is_none() {
-                // 原位模式（Ui::input）：任何触摸都确认
-                if !touches.is_empty() {
-                    crate::ui::confirm_inline_input();
-                    touches.clear();
-                }
-            } else {
-                // 指定位置模式：把所有触摸事件传给输入框处理（在 render 中判断区域）
-                for touch in &touches {
-                    use macroquad::input::TouchPhase;
-                    let phase = match touch.phase {
-                        TouchPhase::Started => 0u8,
-                        TouchPhase::Moved => 1u8,
-                        TouchPhase::Ended | TouchPhase::Cancelled => 2u8,
-                        TouchPhase::Stationary => continue,
-                    };
-                    crate::ui::handle_inline_input_touch(touch.position.x, touch.position.y, phase);
-                }
-                touches.clear();
+            for touch in &touches {
+                use macroquad::input::TouchPhase;
+                let phase = match touch.phase {
+                    TouchPhase::Started => 0u8,
+                    TouchPhase::Moved => 1u8,
+                    TouchPhase::Ended | TouchPhase::Cancelled => 2u8,
+                    TouchPhase::Stationary => continue,
+                };
+                crate::ui::handle_inline_input_touch(touch.position.x, touch.position.y, phase);
             }
+            touches.clear();
         }
         if !(touches.is_empty() || FULL_LOADING.with(|it| it.borrow().is_some())) {
             let now = self.tm.now();
@@ -540,13 +1003,30 @@ impl Main {
                         false
                     } else {
                         drop(guard);
-                        self.tm.seek_to(t);
-                        match self.scenes.last_mut().unwrap().touch(&mut self.tm, touch) {
-                            Ok(val) => !val,
-                            Err(err) => {
-                                warn!(?err, "failed to handle touch");
-                                last_err = Some(err);
+                        // 输入对话框打开时优先消费触摸（不传给场景）
+                        let consumed = INPUT_DIALOG.with(|it| {
+                            let mut guard = it.borrow_mut();
+                            if let Some(dlg) = guard.as_mut() {
+                                if !dlg.touch(touch, t as _) {
+                                    drop(guard);
+                                    *it.borrow_mut() = None;
+                                }
+                                true
+                            } else {
                                 false
+                            }
+                        });
+                        if consumed {
+                            false
+                        } else {
+                            self.tm.seek_to(t);
+                            match self.scenes.last_mut().unwrap().touch(&mut self.tm, touch) {
+                                Ok(val) => !val,
+                                Err(err) => {
+                                    warn!(?err, "failed to handle touch");
+                                    last_err = Some(err);
+                                    false
+                                }
                             }
                         }
                     }
@@ -593,8 +1073,20 @@ impl Main {
             let mut gl = unsafe { get_internal_gl() };
             gl.flush();
 
-            // 渲染游戏内输入框（在 set_camera 之后，确保相机状态正确，避免文字翻转）
+            // 渲染原位输入框（在 set_camera 之后，确保相机状态正确，避免文字翻转）
             crate::ui::render_inline_input(&mut ui, self.tm.now());
+            // 输入对话框：键盘处理也放在这里，避免字符事件先被其他系统消费
+            INPUT_DIALOG.with(|it| {
+                let mut guard = it.borrow_mut();
+                if let Some(dlg) = guard.as_mut() {
+                    if !dlg.update_keyboard() {
+                        drop(guard);
+                        *it.borrow_mut() = None;
+                    } else {
+                        dlg.render(&mut ui, self.tm.now() as _);
+                    }
+                }
+            });
 
             BILLBOARD.with(|it| {
                 let mut guard = it.borrow_mut();

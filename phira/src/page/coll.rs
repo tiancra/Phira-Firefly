@@ -145,6 +145,18 @@ impl Page for CollectionPage {
     }
 
     fn render(&mut self, ui: &mut Ui, s: &mut SharedState) -> Result<()> {
+        if prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed) {
+            let top = ui.top;
+            let title = ui.text("Collection")
+                .pos(-0.9, -top + 0.10)
+                .anchor(0., 0.5).no_baseline().size(0.9)
+                .color(Color::new(1.0, 0.93, 0.96, 1.0)).draw();
+            ui.text("\u{2665}")
+                .pos(title.right() + 0.028, title.center().y)
+                .anchor(0., 0.5).no_baseline().size(0.5)
+                .color(Color::new(1.0, 0.58, 0.706, 1.0)).draw();
+            ui.fill_rect(Rect::new(-0.9, -top + 0.012, 0.13, 0.006), Color::new(1.0, 0.58, 0.706, 0.9));
+        }
         let t = s.t;
         let rt = s.rt;
 

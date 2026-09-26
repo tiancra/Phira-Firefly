@@ -19,7 +19,7 @@ use prpr::{
     scene::{return_file, show_error, show_message, take_file, NextScene, Scene},
     task::Task,
     time::TimeManager,
-    ui::{button_hit, Dialog, FontArc, RectButton, Ui, UI_AUDIO},
+    ui::{button_hit, Dialog, FontArc, PREFER_XCHS_UI, RectButton, Ui, UI_AUDIO},
 };
 use sasa::{AudioClip, Music};
 use std::{
@@ -694,6 +694,32 @@ impl Scene for MainScene {
         ui.fill_rect(ui.screen_rect(), (*self.background, ui.screen_rect()));
         gl_use_default_material();
 
+        // XCHS UI: plum tint + pink top ribbon + scattered hearts over every page
+        if PREFER_XCHS_UI.load(Ordering::Relaxed) {
+            let top = ui.top;
+            ui.fill_rect(ui.screen_rect(), Color::new(0.133, 0.071, 0.137, 0.92));
+            ui.fill_rect(Rect::new(-1., -top, 2., 0.155), Color::new(1.0, 0.58, 0.706, 0.08));
+            ui.fill_rect(Rect::new(-1., top - 0.06, 2., 0.06), Color::new(0.10, 0.05, 0.09, 0.6));
+            for i in 0..8 {
+                ui.text("\u{2665}")
+                    .pos(-0.9 + i as f32 * 0.27, -top + 0.05)
+                    .anchor(0.5, 0.5)
+                    .no_baseline()
+                    .size(0.28)
+                    .color(Color::new(1.0, 0.776, 0.847, 0.12))
+                    .draw();
+            }
+            for i in 0..5 {
+                ui.text("\u{2665}")
+                    .pos(-0.85 + i as f32 * 0.42, top - 0.035)
+                    .anchor(0.5, 0.5)
+                    .no_baseline()
+                    .size(0.22)
+                    .color(Color::new(1.0, 0.776, 0.847, 0.08))
+                    .draw();
+            }
+        }
+
         let s = &mut self.state;
         s.update(tm);
 
@@ -717,25 +743,30 @@ impl Scene for MainScene {
         s.fader.sub = false;
 
         // 2. title
-        if s.fader.transiting() {
-            let pos = self.pages.len() - 2;
-            s.fader.reset();
-            s.fader.render_title(ui, s.t, &self.pages[pos].label());
+        if !PREFER_XCHS_UI.load(Ordering::Relaxed) {
+            if s.fader.transiting() {
+                let pos = self.pages.len() - 2;
+                s.fader.reset();
+                s.fader.render_title(ui, s.t, &self.pages[pos].label());
+            }
+            s.fader.for_sub(|f| f.render_title(ui, s.t, &self.pages.last().unwrap().label()));
         }
-        s.fader.for_sub(|f| f.render_title(ui, s.t, &self.pages.last().unwrap().label()));
 
         // 3. back
         if self.pages.len() >= 2 {
+            let xchs = PREFER_XCHS_UI.load(Ordering::Relaxed);
             let mut r = ui.back_rect();
             self.btn_back.set(ui, r);
-            ui.scissor(r, |ui| {
-                r.y += match self.pages.len() {
-                    1 => 1.,
-                    2 => s.fader.for_sub(|f| f.progress(s.t)),
-                    _ => 0.,
-                } * r.h;
-                ui.fill_rect(r, (*self.icon_back, r));
-            });
+            if !xchs {
+                ui.scissor(r, |ui| {
+                    r.y += match self.pages.len() {
+                        1 => 1.,
+                        2 => s.fader.for_sub(|f| f.progress(s.t)),
+                        _ => 0.,
+                    } * r.h;
+                    ui.fill_rect(r, (*self.icon_back, r));
+                });
+            }
         }
 
         self.pages.last_mut().unwrap().render_top(ui, s)?;

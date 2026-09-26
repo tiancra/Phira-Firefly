@@ -175,6 +175,74 @@ impl RateDialog {
             let wr = self.dialog_rect();
             self.fader.for_sub(|f| {
                 f.render(ui, t, |ui| {
+                    if prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed) {
+                        // XCHS UI: 粉色发光的深紫面板 + 标题下划线 + 圆角按钮
+                        let accent = Color::new(0.949, 0.412, 0.580, 1.);
+                        let body_bg = Color::new(0.165, 0.110, 0.180, 1.);
+                        let dark_text = Color::new(0.984, 0.973, 0.886, 1.);
+                        let muted_text = Color::new(0.65, 0.65, 0.65, 1.);
+                        let border_col = Color::new(1.0, 0.776, 0.847, 0.45);
+                        let title_h = 0.10_f32;
+                        let bh = 0.075_f32;
+                        let btn_pad = 0.016_f32;
+                        let btn_w = 0.18_f32;
+                        ui.fill_path(&wr.feather(0.014).rounded(0.05), Color::new(0.949, 0.412, 0.580, 0.40));
+                        ui.fill_path(&wr.rounded(0.04), body_bg);
+                        ui.text(if self.rate_upper.is_some() { tl!("filter") } else { tl!("rate") })
+                            .pos(wr.x + 0.03, wr.y + title_h * 0.5)
+                            .anchor(0., 0.5)
+                            .no_baseline()
+                            .size(0.54)
+                            .color(dark_text)
+                            .draw();
+                        ui.fill_path(&Rect::new(wr.x + 0.03, wr.y + title_h - 0.006, 0.14, 0.006).rounded(0.003), accent);
+
+                        ui.scope(|ui| {
+                            ui.dy(wr.y + title_h + 0.04);
+                            if self.rate_upper.is_some() {
+                                let h = ui.text(tl!("lower-bound")).pos(wr.center().x, 0.).anchor(0.5, 0.).size(0.5).color(muted_text).draw().h;
+                                ui.dy(h + 0.02);
+                            } else {
+                                ui.dy(0.03);
+                            }
+                            let h = self.rate.render(ui, &self.icon_star).h;
+                            if let Some(upper) = &mut self.rate_upper {
+                                upper.score = upper.score.max(self.rate.score);
+                            }
+                            ui.dy(h + 0.03);
+                            if let Some(upper) = &mut self.rate_upper {
+                                let h = ui.text(tl!("upper-bound")).pos(wr.center().x, 0.).anchor(0.5, 0.).size(0.5).color(muted_text).draw().h;
+                                ui.dy(h + 0.02);
+                                upper.render(ui, &self.icon_star);
+                                self.rate.score = self.rate.score.min(upper.score);
+                            }
+                        });
+
+                        let by = wr.bottom() - btn_pad - bh;
+                        if self.rate_upper.is_none() {
+                            let mut bx = wr.right() - btn_pad - btn_w;
+                            let r = Rect::new(bx, by, btn_w, bh);
+                            self.btn_confirm.render_shadow(ui, r, t, |ui, path| {
+                                ui.fill_path(&path, accent);
+                                ui.text(tl!("confirm")).pos(r.center().x, r.center().y).anchor(0.5, 0.5).no_baseline().size(0.42).color(WHITE).draw();
+                            });
+                            bx -= btn_pad + btn_w;
+                            let r = Rect::new(bx, by, btn_w, bh);
+                            self.btn_cancel.render_shadow(ui, r, t, |ui, _path| {
+                                let p = r.rounded(0.008);
+                                ui.fill_path(&p, body_bg);
+                                ui.stroke_path(&p, 0.005, border_col);
+                                ui.text(tl!("cancel")).pos(r.center().x, r.center().y).anchor(0.5, 0.5).no_baseline().size(0.42).color(dark_text).draw();
+                            });
+                        } else {
+                            let r = Rect::new(wr.x + btn_pad, by, wr.w - btn_pad * 2., bh);
+                            self.btn_tags.render_shadow(ui, r, t, |ui, path| {
+                                ui.fill_path(&path, accent);
+                                ui.text(tl!("filter-by-tags")).pos(r.center().x, r.center().y).anchor(0.5, 0.5).no_baseline().size(0.42).color(WHITE).draw();
+                            });
+                        }
+                        return;
+                    }
                     ui.fill_path(&wr.rounded(0.02), ui.background());
                     let r = ui
                         .text(if self.rate_upper.is_some() { tl!("filter") } else { tl!("rate") })

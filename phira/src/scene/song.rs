@@ -1331,14 +1331,26 @@ impl SongScene {
         let pad = 0.03;
         let width = self.side_content.width() - pad;
         ui.dy(0.03);
-        self.ldb_type_btn.render_text(
-            ui,
-            Rect::new(width - 0.24, 0.01, 0.23, 0.08),
-            rt,
-            if self.ldb_std { tl!("ldb-std") } else { tl!("ldb-score") },
-            0.6,
-            true,
-        );
+        let xchs = prpr::ui::PREFER_XCHS_UI.load(Ordering::Relaxed);
+        let ldb_type_label = if self.ldb_std { tl!("ldb-std") } else { tl!("ldb-score") };
+        if xchs {
+            // XCHS：评分/分数切换为粉色胶囊
+            let rr = Rect::new(width - 0.24, 0.01, 0.23, 0.08);
+            self.ldb_type_btn.render_shadow(ui, rr, rt, |ui, path| {
+                ui.fill_path(&path, Color::new(0.37, 0.185, 0.265, 0.99));
+                ui.stroke_path(&rr.feather(0.004).rounded(0.02), 0.0035, Color::new(1.0, 0.776, 0.847, 0.45));
+                ui.text(ldb_type_label.as_ref())
+                    .pos(rr.center().x, rr.center().y)
+                    .anchor(0.5, 0.5)
+                    .no_baseline()
+                    .size(0.5)
+                    .max_width(rr.w - 0.02)
+                    .color(Color::new(0.984, 0.973, 0.886, 1.))
+                    .draw();
+            });
+        } else {
+            self.ldb_type_btn.render_text(ui, Rect::new(width - 0.24, 0.01, 0.23, 0.08), rt, ldb_type_label, 0.6, true);
+        }
         render_ldb(
             ui,
             &tl!("ldb"),
@@ -1369,6 +1381,10 @@ impl SongScene {
 
     fn side_info(&mut self, ui: &mut Ui, rt: f32) {
         let pad = 0.03;
+        let xchs = prpr::ui::PREFER_XCHS_UI.load(Ordering::Relaxed);
+        let cream = Color::new(0.984, 0.973, 0.886, 1.);
+        let muted = Color::new(1.0, 0.776, 0.847, 0.62);
+        let border = Color::new(1.0, 0.776, 0.847, 0.45);
         ui.dx(pad);
         ui.dy(0.03);
         let width = self.side_content.width() - pad;
@@ -1458,8 +1474,17 @@ impl SongScene {
             }
 
             let mut item = |title: Cow<'_, str>, content: Cow<'_, str>| {
-                dy!(ui.text(title).size(0.4).color(semi_white(0.7)).draw().h + 0.02);
-                dy!(ui.text(content).pos(pad, 0.).size(0.6).multiline().max_width(mw).draw().h + 0.03);
+                dy!(ui.text(title).size(0.4).color(if xchs { muted } else { semi_white(0.7) }).draw().h + 0.02);
+                dy!(ui
+                    .text(content)
+                    .pos(pad, 0.)
+                    .size(0.6)
+                    .multiline()
+                    .max_width(mw)
+                    .color(if xchs { cream } else { WHITE })
+                    .draw()
+                    .h
+                    + 0.03);
             };
             item(tl!("info-name"), self.info.name.as_str().into());
             item(tl!("info-composer"), self.info.composer.as_str().into());
@@ -1486,10 +1511,43 @@ impl SongScene {
                     )
                 };
                 item(tl!("info-type"), type_text.into());
-                item(tl!("info-tags"), entity.tags.iter().map(|it| format!("#{it}")).join(" ").into());
+                if !xchs {
+                    item(tl!("info-tags"), entity.tags.iter().map(|it| format!("#{it}")).join(" ").into());
+                }
             }
             if let Some(id) = self.info.id {
                 item("ID".into(), id.to_string().into());
+            }
+            if xchs {
+                // XCHS：标签胶囊（官方皮肤仍使用文本行）
+                if let Some(entity) = &self.entity {
+                    if !entity.tags.is_empty() {
+                        dy!(ui.text(tl!("info-tags")).size(0.4).color(muted).draw().h + 0.02);
+                        let mut cx = pad;
+                        let mut row_h = 0.;
+                        for tag in &entity.tags {
+                            let label = format!("#{tag}");
+                            let tw = ui.text(label.as_str()).size(0.4).measure().w + 0.036;
+                            if cx > pad && cx + tw > mw + pad {
+                                dy!(row_h + 0.012);
+                                cx = pad;
+                            }
+                            let chip = Rect::new(cx, 0., tw, 0.055);
+                            ui.fill_path(&chip.rounded(0.0275), Color::new(0.949, 0.412, 0.580, 0.20));
+                            ui.stroke_path(&chip.rounded(0.0275), 0.003, border);
+                            ui.text(label.as_str())
+                                .pos(chip.center().x, chip.center().y)
+                                .anchor(0.5, 0.5)
+                                .no_baseline()
+                                .size(0.4)
+                                .color(cream)
+                                .draw();
+                            cx += tw + 0.02;
+                            row_h = 0.055;
+                        }
+                        dy!(row_h + 0.03);
+                    }
+                }
             }
             (width, h)
         });
@@ -1497,6 +1555,10 @@ impl SongScene {
 
     fn side_mods(&mut self, ui: &mut Ui, rt: f32) {
         let pad = 0.03;
+        let accent = Color::new(1.0, 0.58, 0.706, 1.);
+        let cream = Color::new(0.984, 0.973, 0.886, 1.);
+        let muted = Color::new(1.0, 0.776, 0.847, 0.62);
+        let xchs = prpr::ui::PREFER_XCHS_UI.load(Ordering::Relaxed);
         ui.dx(pad);
         ui.dy(0.03);
         let width = self.side_content.width() - pad;
@@ -1511,7 +1573,8 @@ impl SongScene {
                     ui.dy(dy);
                 }};
             }
-            dy!(ui.text(tl!("mods")).size(0.9).draw_using(&BOLD_FONT).h + 0.02);
+            let mods_title = if xchs { format!("\u{2665} {}", tl!("mods")) } else { tl!("mods").into_owned() };
+            dy!(ui.text(mods_title).size(0.9).color(if xchs { cream } else { WHITE }).draw_using(&BOLD_FONT).h + 0.02);
             let rh = ITEM_HEIGHT * 3. / 5.;
             let rr = Rect::new(width - 0.24, (ITEM_HEIGHT - rh) / 2., 0.2, rh);
             let mut index = 0;
@@ -1535,15 +1598,21 @@ impl SongScene {
                         .size(SUBTITLE_SIZE)
                         .max_width(SUB_MAX_WIDTH)
                         .multiline()
-                        .color(semi_white(0.6))
+                        .color(if xchs { muted } else { semi_white(0.6) })
                         .draw();
-                    ui.text(title).pos(LEFT, (ITEM_HEIGHT - h) / 2.).no_baseline().size(TITLE_SIZE).draw();
+                    ui.text(title)
+                        .pos(LEFT, (ITEM_HEIGHT - h) / 2.)
+                        .no_baseline()
+                        .size(TITLE_SIZE)
+                        .color(if xchs { cream } else { WHITE })
+                        .draw();
                 } else {
                     ui.text(title)
                         .pos(LEFT, ITEM_HEIGHT / 2.)
                         .anchor(0., 0.5)
                         .no_baseline()
                         .size(TITLE_SIZE)
+                        .color(if xchs { cream } else { WHITE })
                         .draw();
                 }
                 if self.mod_btns.len() <= index {
@@ -1558,14 +1627,22 @@ impl SongScene {
                 let oh = rr.h;
                 btn.build(ui, rt, rr, |ui, path| {
                     let ct = rr.center();
-                    ui.fill_path(&path, if on { WHITE } else { ui.background() });
+                    ui.fill_path(&path, if on { if xchs { accent } else { WHITE } } else { ui.background() });
                     ui.text(if on { ttl!("switch-on") } else { ttl!("switch-off") })
                         .pos(ct.x, ct.y)
                         .anchor(0.5, 0.5)
                         .no_baseline()
                         .size(0.5 * (1. - (1. - rr.h / oh).powf(1.3)))
                         .max_width(rr.w)
-                        .color(if on { Color::new(0.3, 0.3, 0.3, 1.) } else { WHITE })
+                        .color(if on {
+                            if xchs {
+                                Color::new(0.16, 0.09, 0.13, 1.)
+                            } else {
+                                Color::new(0.3, 0.3, 0.3, 1.)
+                            }
+                        } else {
+                            WHITE
+                        })
                         .draw();
                 });
                 dy!(ITEM_HEIGHT);
@@ -1583,6 +1660,437 @@ impl SongScene {
             item(tl!("mods-no-shader"), Some(tl!("mods-no-shader-sub")), Mods::NO_SHADER);
             (width, h + 0.2)
         });
+    }
+
+    /// XCHS UI 布局：上栏（返回/品牌/收藏/信息/菜单）+ 左栏（插图卡 + 歌曲信息）
+    /// + 右栏（成绩、操作按钮、简介）。与官方布局完全独立，官方布局仍保留用于切换皮肤。
+    fn render_xchs(&mut self, tm: &mut TimeManager, ui: &mut Ui) -> Result<()> {
+        set_camera(&ui.camera());
+        let t = tm.now() as f32;
+        let rt = tm.real_time() as f32;
+        let top = ui.top;
+
+        let pink = Color::new(1.0, 0.58, 0.706, 1.);
+        let pink_deep = Color::new(0.949, 0.412, 0.580, 1.);
+        let cream = Color::new(0.984, 0.973, 0.886, 1.);
+        let muted = Color::new(1.0, 0.776, 0.847, 0.62);
+        let panel_c = Color::new(0.10, 0.07, 0.12, 0.62);
+        let border_c = Color::new(1.0, 0.776, 0.847, 0.45);
+
+        ui.fill_rect(ui.screen_rect(), (*self.illu.texture.1, ui.screen_rect()));
+        ui.fill_rect(ui.screen_rect(), semi_black(0.62));
+
+        // ---------------- 上栏 ----------------
+        let bar_h = 0.13_f32;
+        let bar_y = -top;
+        let bar_cy = bar_y + bar_h * 0.5;
+
+        let back_r = Rect::new(-0.97, bar_y + 0.025, 0.22, bar_h - 0.05);
+        self.back_btn.set(ui, back_r);
+        ui.text("\u{2190}")
+            .pos(back_r.x + 0.02, bar_cy)
+            .anchor(0., 0.5)
+            .no_baseline()
+            .size(0.5)
+            .color(cream)
+            .draw();
+
+        // 中间：品牌 \ 曲名
+        let brand = "Phira-Firefly";
+        let wm = ui
+            .text(brand)
+            .pos(-0.08, bar_cy)
+            .anchor(1., 0.5)
+            .no_baseline()
+            .size(0.62)
+            .color(pink)
+            .draw();
+        let sep = ui
+            .text("\\")
+            .pos(wm.right() + 0.02, bar_cy)
+            .anchor(0., 0.5)
+            .no_baseline()
+            .size(0.62)
+            .color(semi_white(0.5))
+            .draw();
+        ui.text(&self.info.name)
+            .pos(sep.right() + 0.03, bar_cy)
+            .anchor(0., 0.5)
+            .no_baseline()
+            .size(0.5)
+            .max_width(0.6)
+            .color(cream)
+            .draw();
+
+        // 右侧：收藏 / 信息 / 菜单
+        let fav_r = Rect::new(0.60, bar_y + 0.02, 0.11, bar_h - 0.04);
+        self.fav_btn.set(ui, fav_r);
+        let is_fav = if let Some(fav) = self.is_fav {
+            fav
+        } else {
+            let chart_ref = self.to_bare_chart_ref();
+            let fav = get_data().collections().any(|col| col.charts.iter().any(|it| it == &chart_ref));
+            self.is_fav = Some(fav);
+            fav
+        };
+        let fav_icon = if is_fav { &self.icons.star } else { &self.icons.star_outline };
+        // 图标保持正方形，否则 ScaleType::Fit 会把星形压扁
+        let fs = fav_r.h.min(fav_r.w) * 0.78;
+        let fr = Rect::new(fav_r.center().x - fs / 2., fav_r.center().y - fs / 2., fs, fs);
+        ui.fill_rect(fr, (**fav_icon, fr, ScaleType::Fit));
+
+        let info_r = Rect::new(0.73, bar_y + 0.02, 0.11, bar_h - 0.04);
+        self.info_btn.set(ui, info_r);
+        ui.stroke_circle(info_r.center().x, bar_cy, 0.032, 0.005, cream);
+        ui.text("i")
+            .pos(info_r.center().x, bar_cy)
+            .anchor(0.5, 0.5)
+            .no_baseline()
+            .size(0.56)
+            .color(cream)
+            .draw();
+
+        let menu_r = Rect::new(0.86, bar_y + 0.02, 0.11, bar_h - 0.04);
+        self.menu_btn.set(ui, menu_r);
+        ui.text("\u{22ef}")
+            .pos(menu_r.center().x, bar_cy)
+            .anchor(0.5, 0.5)
+            .no_baseline()
+            .size(0.74)
+            .color(if self.menu_options.is_empty() { semi_white(0.4) } else { cream })
+            .draw();
+        if self.need_show_menu {
+            self.need_show_menu = false;
+            self.menu.set_bottom(true);
+            self.menu.set_selected(usize::MAX);
+            self.menu.show(ui, t, Rect::new(0.62, bar_y + bar_h + 0.02, 0.35, 0.5));
+        }
+
+        let alpha = fade_in_time().map_or(1., |tt| ((t - self.fade_start) / tt).clamp(-1., 0.) + 1.);
+        let score = self.record.as_ref().map(|it| it.score).unwrap_or_default();
+        let accuracy = self.record.as_ref().map(|it| it.accuracy).unwrap_or_default();
+        let grade = self.record.as_ref().map_or(0, |it| {
+            if self.xcsim {
+                icon_index_xcsim(score as _)
+            } else {
+                icon_index(score as _, it.full_combo)
+            }
+        });
+        let play_label = "Let's Start!";
+
+        ui.alpha::<Result<()>>(alpha, |ui| {
+            let content_y = bar_y + bar_h;
+
+            // ---------------- 左栏：插图卡 + 歌曲信息 ----------------
+            let card = Rect::new(-0.95, content_y + 0.02, 0.90, 0.40);
+            let crad = 0.022_f32;
+            ui.fill_path(&card.rounded(crad), (*self.illu.texture.1, card, ScaleType::CropCenter));
+            for i in 0..10 {
+                let f0 = i as f32 / 10.;
+                let f1 = (i + 1) as f32 / 10.;
+                ui.fill_rect(
+                    Rect::new(card.x + crad, card.bottom() - 0.18 + 0.18 * f0, card.w - 2. * crad, 0.18 * (f1 - f0) + 0.002),
+                    semi_black(0.78 * f1 * f1),
+                );
+            }
+            ui.text(&self.info.name)
+                .pos(card.x + 0.035, card.bottom() - 0.03)
+                .anchor(0., 1.)
+                .no_baseline()
+                .size(0.86)
+                .max_width(card.w - 0.07)
+                .color(WHITE)
+                .draw();
+
+            let sip = Rect::new(card.x, card.bottom() + 0.03, card.w, top - card.bottom() - 0.09);
+            ui.fill_path(&sip.rounded(0.016), panel_c);
+            ui.stroke_path(&sip.rounded(0.016), 0.003, border_c);
+            ui.text(format!("\u{2665} {}", self.info.level))
+                .pos(sip.x + 0.03, sip.y + 0.05)
+                .anchor(0., 0.5)
+                .no_baseline()
+                .size(0.5)
+                .color(pink)
+                .draw();
+            ui.fill_path(&Rect::new(sip.x + 0.03, sip.y + 0.078, 0.11, 0.005).rounded(0.0025), pink_deep);
+
+            let rows: [(Cow<str>, Cow<str>); 4] = [
+                (tl!("info-name"), self.info.name.as_str().into()),
+                (tl!("info-composer"), self.info.composer.as_str().into()),
+                (tl!("info-charter"), self.info.charter.as_str().into()),
+                (tl!("info-difficulty"), format!("{} ({:.1})", self.info.level, self.info.difficulty).into()),
+            ];
+            let lx = sip.x + 0.03;
+            let vx = sip.x + 0.20;
+            let mw = sip.w - 0.23;
+            let mut iy = sip.y + 0.115;
+            for (label, value) in &rows {
+                ui.text(label.as_ref())
+                    .pos(lx, iy + 0.018)
+                    .anchor(0., 0.5)
+                    .no_baseline()
+                    .size(0.34)
+                    .color(muted)
+                    .draw();
+                ui.text(value.as_ref())
+                    .pos(vx, iy + 0.018)
+                    .anchor(0., 0.5)
+                    .no_baseline()
+                    .size(0.38)
+                    .max_width(mw)
+                    .color(cream)
+                    .draw();
+                iy += 0.062;
+            }
+            ui.text(tl!("info-desc"))
+                .pos(lx, iy + 0.018)
+                .anchor(0., 0.5)
+                .no_baseline()
+                .size(0.34)
+                .color(muted)
+                .draw();
+            let desc_r = Rect::new(vx, iy, mw, sip.bottom() - iy - 0.02);
+            ui.scissor(desc_r, |ui| {
+                ui.text(&self.info.intro)
+                    .pos(vx, iy)
+                    .size(0.36)
+                    .multiline()
+                    .max_width(mw)
+                    .color(cream)
+                    .draw();
+            });
+
+            // ---------------- 右栏：成绩 + 操作 ----------------
+            let rcx = 0.02_f32;
+            let p_r = Rect::new(rcx, content_y + 0.04, 0.13, 0.13);
+            ui.fill_path(&p_r.rounded(0.03), pink);
+            ui.text("P")
+                .pos(p_r.center().x, p_r.center().y)
+                .anchor(0.5, 0.5)
+                .no_baseline()
+                .size(1.1)
+                .color(WHITE)
+                .draw();
+            let score_t = self.record.as_ref().map_or_else(|| tl!("ldb-no-rank").into_owned(), |it| format!("{:07}", it.score));
+            ui.text(score_t)
+                .pos(p_r.right() + 0.04, p_r.center().y)
+                .anchor(0., 0.5)
+                .no_baseline()
+                .size(1.5)
+                .color(WHITE)
+                .draw();
+
+            let g_r = Rect::new(rcx, p_r.bottom() + 0.035, 0.11, 0.11);
+            ui.fill_rect(g_r, (*self.rank_icons[grade], g_r, ScaleType::Fit));
+            if self.record.is_some() {
+                ui.text(format!("{:.2}%", accuracy * 100.))
+                    .pos(g_r.right() + 0.04, g_r.center().y)
+                    .anchor(0., 0.5)
+                    .no_baseline()
+                    .size(0.8)
+                    .color(semi_white(0.85))
+                    .draw();
+            }
+
+            let pb_y = g_r.bottom() + 0.05;
+            let pb_h = 0.12_f32;
+            let play_r = Rect::new(rcx, pb_y, 0.34, pb_h);
+            self.play_btn.render_shadow(ui, play_r, t, |ui, path| {
+                ui.fill_path(&path, pink_deep);
+                ui.text("\u{25b6}")
+                    .pos(play_r.x + 0.035, play_r.center().y)
+                    .anchor(0., 0.5)
+                    .no_baseline()
+                    .size(0.6)
+                    .color(WHITE)
+                    .draw();
+                ui.text(play_label)
+                    .pos(play_r.x + 0.105, play_r.center().y)
+                    .anchor(0., 0.5)
+                    .no_baseline()
+                    .size(0.56)
+                    .max_width(play_r.w - 0.125)
+                    .color(WHITE)
+                    .draw();
+            });
+            let mod_r = Rect::new(play_r.right() + 0.03, pb_y, 0.18, pb_h);
+            ui.fill_path(&mod_r.rounded(0.012), semi_white(0.18));
+            ui.text(tl!("mods"))
+                .pos(mod_r.center().x, mod_r.center().y)
+                .anchor(0.5, 0.5)
+                .no_baseline()
+                .size(0.5)
+                .max_width(mod_r.w - 0.02)
+                .color(WHITE)
+                .draw();
+            self.mod_btn.set(ui, mod_r);
+            let set_r = Rect::new(mod_r.right() + 0.03, pb_y, pb_h, pb_h);
+            ui.fill_path(&set_r.rounded(0.012), semi_white(0.18));
+            let isz = pb_h * 0.58;
+            let sir = Rect::new(set_r.center().x - isz / 2., set_r.center().y - isz / 2., isz, isz);
+            let set_c = if self.local_path.is_some() { WHITE } else { semi_white(0.4) };
+            ui.fill_rect(sir, (*self.icons.edit, sir, ScaleType::Fit, set_c));
+            self.edit_btn.set(ui, set_r);
+
+            if self.info.id.is_some() && !self.xcsim {
+                let ldb_r = Rect::new(set_r.right() + 0.03, pb_y, 0.22, pb_h);
+                ui.fill_path(&ldb_r.rounded(0.014), pink_deep);
+                ui.text("\u{2605}")
+                    .pos(ldb_r.x + 0.035, ldb_r.center().y)
+                    .anchor(0.5, 0.5)
+                    .no_baseline()
+                    .size(0.6)
+                    .color(WHITE)
+                    .draw();
+                let rank_text = if let Some((rank, _)) = &self.ldb {
+                    if let Some(rank) = rank {
+                        format!("\u{2605} #{rank}")
+                    } else {
+                        format!("\u{2605} {}", tl!("ldb-no-rank"))
+                    }
+                } else {
+                    format!("\u{2605} {}", tl!("ldb"))
+                };
+                ui.text(rank_text)
+                    .pos(ldb_r.x + 0.066, ldb_r.center().y)
+                    .anchor(0., 0.5)
+                    .no_baseline()
+                    .size(0.42)
+                    .max_width(ldb_r.w - 0.085)
+                    .color(WHITE)
+                    .draw();
+                self.ldb_btn.set(ui, ldb_r);
+            } else {
+                self.ldb_btn.set(ui, Rect::new(-99., -99., 0.001, 0.001));
+            }
+
+            let fp = Rect::new(rcx, pb_y + pb_h + 0.04, 0.93, top - (pb_y + pb_h + 0.04) - 0.03);
+            ui.fill_path(&fp.rounded(0.016), panel_c);
+            ui.stroke_path(&fp.rounded(0.016), 0.003, border_c);
+            ui.text(format!("\u{2665} {}", tl!("info-desc")))
+                .pos(fp.x + 0.03, fp.y + 0.05)
+                .anchor(0., 0.5)
+                .no_baseline()
+                .size(0.4)
+                .color(muted)
+                .draw();
+            let body_r = Rect::new(fp.x + 0.03, fp.y + 0.08, fp.w - 0.06, fp.h - 0.11);
+            ui.scissor(body_r, |ui| {
+                ui.text(&self.info.intro)
+                    .pos(body_r.x, body_r.y)
+                    .size(0.4)
+                    .multiline()
+                    .max_width(body_r.w)
+                    .color(cream)
+                    .draw();
+            });
+
+            if let Some(dl) = &mut self.downloading {
+                dl.render(ui, t);
+            }
+
+            // ---------------- 侧栏（排行榜 / 信息 / Mods / 编辑） ----------------
+            if self.side_enter_time.is_finite() {
+                let p = edit_transit().map_or(1., |it| ((rt - self.side_enter_time.abs()) / it).min(1.));
+                let p = 1. - (1. - p).powi(3);
+                let p = if self.side_enter_time < 0. { 1. - p } else { p };
+                ui.fill_rect(ui.screen_rect(), semi_black(p * 0.6));
+                let w = self.side_content.width();
+                let lf = f32::tween(&1.04, &(1. - w), p);
+                ui.scope(|ui| {
+                    ui.dx(lf);
+                    ui.dy(-ui.top);
+                    let r = Rect::new(-0.2, 0., 0.2 + w, ui.top * 2.);
+                    ui.fill_rect(
+                        r,
+                        (Color::new(0.165, 0.110, 0.180, p), (r.x, r.y), Color::new(0.10, 0.06, 0.12, p), (r.right(), r.y)),
+                    );
+                    ui.fill_rect(Rect::new(-0.2, 0., 0.006, ui.top * 2.), Color::new(1.0, 0.58, 0.706, 0.45 * p));
+
+                    match self.side_content {
+                        SideContent::Edit => self.side_chart_info(ui, rt),
+                        SideContent::Leaderboard => {
+                            self.side_ldb(ui, rt);
+                            Ok(())
+                        }
+                        SideContent::Info => {
+                            self.side_info(ui, rt);
+                            Ok(())
+                        }
+                        SideContent::Mods => {
+                            self.side_mods(ui, rt);
+                            Ok(())
+                        }
+                    }
+                })?;
+            }
+
+            Ok(())
+        })?;
+
+        self.menu.render(ui, t, 1.);
+        self.fav_menu.render(ui, t, 1.);
+
+        if self.save_task.is_some() {
+            ui.full_loading(tl!("edit-saving"), t);
+        }
+        if self.upload_task.is_some() {
+            ui.full_loading(tl!("uploading"), t);
+        }
+        if self.review_task.is_some() {
+            ui.full_loading(tl!("review-doing"), t);
+        }
+        if self.export_task.is_some() {
+            ui.full_loading(tl!("exporting"), t);
+        }
+        if self.edit_tags_task.is_some()
+            || self.rate_task.is_some()
+            || self.overwrite_task.is_some()
+            || self.update_cksum_task.is_some()
+            || self.toggle_fav_task.is_some()
+            || self.autocomplete_task.is_some()
+        {
+            ui.full_loading("", t);
+        }
+        #[cfg(feature = "testing")]
+        if self.lan_download_task.is_some() {
+            ui.full_loading("正在同步谱面...", t);
+        } else if self.lan_host_waiting {
+            ui.full_loading("正在等待玩家同步谱面...", t);
+        } else if self.lan_loaded_tuple.is_some() && !self.lan_ready {
+            let ct = ui.screen_rect().center();
+            let r = Rect::new(ct.x, ct.y, 0., 0.).nonuniform_feather(0.14, 0.06);
+            self.lan_ready_btn.render_text(ui, r, t, "准备", 0.6, true);
+        } else if self.lan_loaded_tuple.is_some() {
+            ui.full_loading("正在等待所有人同步完成...", t);
+        }
+
+        self.tags.render(ui, rt);
+        self.rate_dialog.render(ui, rt);
+
+        if !self.tr_start.is_nan() {
+            let p = ((rt - self.tr_start - 0.2) / 0.4).clamp(0., 1.);
+            if p >= 1. {
+                self.tr_start = f32::NAN;
+            }
+            let p = 1. - (1. - p).powi(3);
+            let mut r = ui.screen_rect();
+            r.y += r.h * (1. - p);
+            rect_shadow(r, 0.01, 0.5);
+            ui.fill_rect(r, (**self.background.lock().unwrap().as_ref().unwrap(), r));
+            ui.fill_rect(r, semi_black(0.3));
+        }
+
+        self.sf.render(ui, t);
+
+        #[cfg(feature = "testing")]
+        if let Some(panel) = &mut self.lan_panel {
+            if panel.visible() {
+                panel.render(ui, rt);
+            }
+        }
+
+        Ok(())
     }
 
     fn save_edit(&mut self) {
@@ -3003,28 +3511,83 @@ impl Scene for SongScene {
     }
 
     fn render(&mut self, tm: &mut TimeManager, ui: &mut Ui) -> Result<()> {
+        if prpr::ui::PREFER_XCHS_UI.load(Ordering::Relaxed) {
+            return self.render_xchs(tm, ui);
+        }
         set_camera(&ui.camera());
         let t = tm.now() as f32;
+        let top = ui.top;
+        // XCHS UI 皮肤配色；官方皮肤保持原样。
+        let xchs = prpr::ui::PREFER_XCHS_UI.load(Ordering::Relaxed);
+        let accent = Color::new(1.0, 0.58, 0.706, 1.);
+        let accent_deep = Color::new(0.949, 0.412, 0.580, 1.);
+        let cream = Color::new(0.984, 0.973, 0.886, 1.);
+        let muted = Color::new(1.0, 0.776, 0.847, 0.62);
+        let panel_border = Color::new(1.0, 0.776, 0.847, 0.45);
         ui.fill_rect(ui.screen_rect(), (*self.illu.texture.1, ui.screen_rect()));
-        ui.fill_rect(ui.screen_rect(), semi_black(0.55));
+        ui.fill_rect(ui.screen_rect(), if xchs { Color::new(0.10, 0.06, 0.12, 0.72) } else { semi_black(0.55) });
 
         let r = ui.back_rect();
         self.back_btn.set(ui, r);
-        ui.fill_rect(r, (*self.icons.back, r, ScaleType::Fit));
+        if !xchs {
+            ui.fill_rect(r, (*self.icons.back, r, ScaleType::Fit));
+        }
 
         let alpha = fade_in_time().map_or(1., |tt| ((t - self.fade_start) / tt).clamp(-1., 0.) + 1.);
         ui.alpha::<Result<()>>(alpha, |ui| {
-            let r = ui
-                .text(&self.info.name)
-                .max_width(0.57 - r.right())
-                .size(1.2)
-                .pos(r.right() + 0.02, r.y)
-                .draw();
-            ui.text(&self.info.composer)
-                .size(0.5)
-                .pos(r.x + 0.02, r.bottom() + 0.03)
-                .color(semi_white(0.8))
-                .draw();
+            let r = if xchs {
+                // XCHS 头部：返回胶囊 + 奶油色标题 + 爱心 + 下划线
+                ui.fill_path(&r.feather(-0.004).rounded(0.02), Color::new(1.0, 0.58, 0.706, 0.14));
+                ui.text("\u{2190}")
+                    .pos(r.center().x, r.center().y)
+                    .anchor(0.5, 0.5)
+                    .no_baseline()
+                    .size(0.5)
+                    .color(accent)
+                    .draw();
+                let title = ui
+                    .text(&self.info.name)
+                    .pos(r.right() + 0.04, -top + 0.155 * 0.38)
+                    .anchor(0., 0.5)
+                    .no_baseline()
+                    .size(0.9)
+                    .max_width(0.62)
+                    .color(cream)
+                    .draw();
+                let heart = ui
+                    .text("\u{2665}")
+                    .pos(title.right() + 0.028, title.center().y)
+                    .anchor(0., 0.5)
+                    .no_baseline()
+                    .size(0.5)
+                    .color(accent)
+                    .draw();
+                ui.fill_path(&Rect::new(title.x, -top + 0.155 - 0.014, 0.13, 0.006).rounded(0.003), accent);
+                if !self.info.composer.is_empty() {
+                    ui.text(&self.info.composer)
+                        .pos(heart.right() + 0.03, title.center().y)
+                        .anchor(0., 0.5)
+                        .no_baseline()
+                        .max_width((0.97 - heart.right()).max(0.05))
+                        .size(0.45)
+                        .color(muted)
+                        .draw();
+                }
+                title
+            } else {
+                ui.text(&self.info.name)
+                    .max_width(0.57 - r.right())
+                    .size(1.2)
+                    .pos(r.right() + 0.02, r.y)
+                    .draw()
+            };
+            if !xchs {
+                ui.text(&self.info.composer)
+                    .size(0.5)
+                    .pos(r.x + 0.02, r.bottom() + 0.03)
+                    .color(semi_white(0.8))
+                    .draw();
+            }
 
             // bottom bar
             let s = 0.25;
@@ -3036,6 +3599,13 @@ impl Scene for SongScene {
                     icon_index(it.score as _, it.full_combo)
                 }
             });
+            if xchs {
+                // XCHS 最佳成绩卡片：粉色辉光 + 李子色面板 + 粉边
+                let bp = Rect::new(-0.975, ui.top - 0.50, 0.78, 0.47);
+                ui.fill_path(&bp.feather(0.009).rounded(0.032), Color::new(1.0, 0.58, 0.706, 0.14));
+                ui.fill_path(&bp.rounded(0.028), Color::new(0.145, 0.098, 0.157, 0.98));
+                ui.stroke_path(&bp.rounded(0.028), 0.0035, panel_border);
+            }
             ui.fill_rect(r, (*self.rank_icons[icon], r, ScaleType::Fit));
             let score = self.record.as_ref().map(|it| it.score).unwrap_or_default();
             let accuracy = self.record.as_ref().map(|it| it.accuracy).unwrap_or_default();
@@ -3046,12 +3616,13 @@ impl Scene for SongScene {
                 .pos(r.right() + 0.01, r.center().y)
                 .anchor(0., 1.)
                 .size(1.2)
+                .color(if xchs { cream } else { WHITE })
                 .draw();
             ui.text(format!("{:.2}%", accuracy * 100.))
                 .pos(r.x, r.bottom() + 0.01)
                 .anchor(0., 0.)
                 .size(0.7)
-                .color(semi_white(0.7))
+                .color(if xchs { muted } else { semi_white(0.7) })
                 .draw();
 
             if self.info.id.is_some() && !self.xcsim {
@@ -3059,16 +3630,31 @@ impl Scene for SongScene {
                 let mut r = Rect::new(r.x, r.y - h, h, h);
                 ui.fill_rect(r, (*self.icons.ldb, r, ScaleType::Fit));
                 if let Some((rank, _)) = &self.ldb {
-                    ui.text(if let Some(rank) = rank {
+                    let rank_text = if let Some(rank) = rank {
                         format!("#{rank}")
                     } else {
                         tl!("ldb-no-rank").into_owned()
-                    })
-                    .pos(r.right() + 0.01, r.center().y)
-                    .anchor(0., 0.5)
-                    .no_baseline()
-                    .size(0.7)
-                    .draw();
+                    };
+                    if xchs {
+                        // XCHS：名次胶囊
+                        let tr = ui
+                            .text(rank_text.as_str())
+                            .pos(r.right() + 0.01, r.center().y)
+                            .anchor(0., 0.5)
+                            .no_baseline()
+                            .size(0.7)
+                            .measure();
+                        let chip = tr.feather(0.014);
+                        ui.fill_path(&chip.rounded(0.018), Color::new(0.255, 0.130, 0.190, 0.96));
+                        ui.stroke_path(&chip.rounded(0.018), 0.0035, panel_border);
+                    }
+                    ui.text(rank_text.as_str())
+                        .pos(r.right() + 0.01, r.center().y)
+                        .anchor(0., 0.5)
+                        .no_baseline()
+                        .size(0.7)
+                        .color(if xchs { cream } else { WHITE })
+                        .draw();
                 } else {
                     ui.loading(
                         r.right() + 0.04,
@@ -3090,8 +3676,12 @@ impl Scene for SongScene {
             let w = 0.26;
             let pad = 0.08;
             let r = Rect::new(1. - pad - w, ui.top - pad - w, w, w);
+            if xchs {
+                // XCHS：主操作按钮的粉色辉光
+                ui.fill_path(&r.feather(0.012).rounded(0.034), Color::new(1.0, 0.58, 0.706, 0.16));
+            }
             self.play_btn.render_shadow(ui, r, t, |ui, path| {
-                ui.fill_path(&path, semi_white(0.3));
+                ui.fill_path(&path, if xchs { accent_deep } else { semi_white(0.3) });
                 let r = r.feather(-0.04);
                 ui.fill_rect(
                     r,
@@ -3113,6 +3703,15 @@ impl Scene for SongScene {
                 let s = 0.08;
                 let r = Rect::new(-s, 0., s, s);
                 let cc = semi_white(0.4);
+                let pill = |ui: &mut Ui, r: Rect| {
+                    if xchs {
+                        // XCHS：动作图标下的李子色胶囊
+                        let pr = r.feather(0.008);
+                        ui.fill_path(&pr.rounded(0.018), Color::new(0.255, 0.130, 0.190, 0.96));
+                        ui.stroke_path(&pr.rounded(0.018), 0.0035, panel_border);
+                    }
+                };
+                pill(ui, r);
                 ui.fill_rect(r, (*self.icons.menu, r, ScaleType::Fit, if self.menu_options.is_empty() { cc } else { WHITE }));
                 self.menu_btn.set(ui, r);
                 if self.need_show_menu {
@@ -3124,6 +3723,7 @@ impl Scene for SongScene {
                     self.menu.show(ui, t, Rect::new(r.x - d, r.bottom() + 0.02, r.w + d, h));
                 }
                 ui.dx(-r.w - 0.03);
+                pill(ui, r);
                 ui.fill_rect(r, (*self.icons.info, r, ScaleType::Fit));
                 self.info_btn.set(ui, r);
                 ui.dx(-r.w - 0.03);
@@ -3140,6 +3740,7 @@ impl Scene for SongScene {
                         fav
                     };
                     let fav_icon = if is_fav { &self.icons.star } else { &self.icons.star_outline };
+                    pill(ui, r);
                     ui.fill_rect(r, (**fav_icon, r, ScaleType::Fit));
                     self.fav_btn.set(ui, r);
                     if self.need_show_fav_menu {
@@ -3152,10 +3753,12 @@ impl Scene for SongScene {
                     }
                     ui.dx(-r.w - 0.03);
 
+                    pill(ui, r);
                     ui.fill_rect(r, (*self.icons.edit, r, ScaleType::Fit, if self.local_path.is_some() { WHITE } else { cc }));
                     self.edit_btn.set(ui, r);
                     ui.dx(-r.w - 0.03);
                 }
+                pill(ui, r);
                 ui.fill_rect(r, (*self.icons.r#mod, r, ScaleType::Fit, if self.local_path.is_some() { WHITE } else { cc }));
                 self.mod_btn.set(ui, r);
             });
@@ -3176,7 +3779,16 @@ impl Scene for SongScene {
                     ui.dx(lf);
                     ui.dy(-ui.top);
                     let r = Rect::new(-0.2, 0., 0.2 + w, ui.top * 2.);
-                    ui.fill_rect(r, (Color::default(), (r.x, r.y), Color::new(0., 0., 0., p * 0.7), (r.right(), r.y)));
+                    if xchs {
+                        // XCHS：李子色侧栏 + 粉色左边缘
+                        ui.fill_rect(
+                            r,
+                            (Color::new(0.165, 0.110, 0.180, p), (r.x, r.y), Color::new(0.10, 0.06, 0.12, p), (r.right(), r.y)),
+                        );
+                        ui.fill_rect(Rect::new(-0.2, 0., 0.006, ui.top * 2.), Color::new(1.0, 0.58, 0.706, 0.45 * p));
+                    } else {
+                        ui.fill_rect(r, (Color::default(), (r.x, r.y), Color::new(0., 0., 0., p * 0.7), (r.right(), r.y)));
+                    }
 
                     match self.side_content {
                         SideContent::Edit => self.side_chart_info(ui, rt),

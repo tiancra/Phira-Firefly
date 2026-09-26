@@ -1,4 +1,4 @@
-use crate::{anim::Anim, get_data, Result};
+﻿use crate::{anim::Anim, get_data, Result};
 use macroquad::prelude::*;
 use prpr::{
     ext::{semi_black, RectExt},
@@ -68,6 +68,18 @@ impl<T> Tabs<T> {
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
         self.items.iter_mut().map(|item| &mut item.value)
+    }
+
+    pub fn selected_idx(&self) -> usize {
+        self.selected
+    }
+
+    pub fn title(&self, idx: usize) -> Cow<'static, str> {
+        (self.items[idx].title)()
+    }
+
+    pub fn len(&self) -> usize {
+        self.items.len()
     }
 
     pub fn changed(&mut self) -> bool {

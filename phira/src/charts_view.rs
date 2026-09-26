@@ -99,8 +99,6 @@ pub struct ChartsView {
 
     pub can_refresh: bool,
 
-    pub clicked_special: bool,
-
     pub allow_edit: bool,
     editing_chart: Option<usize>,
     chart_menu: Popup,
@@ -139,8 +137,6 @@ impl ChartsView {
             row_height: 0.3,
 
             can_refresh: true,
-
-            clicked_special: false,
 
             allow_edit: false,
             editing_chart: None,
@@ -389,11 +385,6 @@ impl ChartsView {
                         self.need_show_chart_menu = true;
                         return Ok(true);
                     }
-                } else if item.btn.touch(touch, t) {
-                    self.editing_chart = None;
-                    self.edit_move_state = None;
-                    button_hit_large();
-                    self.clicked_special = true;
                 }
             }
         }
@@ -614,7 +605,8 @@ impl ChartsView {
                             let item = &mut charts[id as usize];
 
                             item.btn.render_shadow(ui, r, t, |ui, path| {
-                                let selected_color = Color::from_rgba(30, 136, 229, 255);
+                                let xchs = prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed);
+                            let selected_color = if xchs { Color::from_rgba(255, 148, 180, 255) } else { Color::from_rgba(30, 136, 229, 255) };
 
                                 if let Some(chart) = &mut item.chart {
                                     let selected = self.multi_select.as_ref().and_then(|set| {

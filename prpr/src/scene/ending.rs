@@ -4,13 +4,13 @@ use super::{draw_background, game::SimpleRecord, loading::UploadFn, NextScene, S
 use crate::{
     config::{Config, Mods},
     core::{BOLD_FONT, PGR_FONT},
-    ext::{create_audio_manger, rect_shadow, semi_black, semi_white, RectExt, SafeTexture, ScaleType},
+    ext::{create_audio_manger, draw_parallelogram, draw_parallelogram_ex, draw_text_aligned, rect_shadow, semi_black, semi_white, RectExt, SafeTexture, ScaleType, PARALLELOGRAM_SLOPE},
     info::ChartInfo,
-    judge::{icon_index, icon_index_xcsim, PlayResult},
+    judge::{icon_index, icon_index_xcsim, Judge, PlayResult},
     scene::show_message,
     task::Task,
     time::TimeManager,
-    ui::{button_hit, clip_sector, DRectButton, Dialog, MessageHandle, RectButton, Ui},
+    ui::{button_hit, clip_sector, DRectButton, Dialog, MessageHandle, RectButton, Ui, PREFER_XCHS_UI},
 };
 use anyhow::Result;
 use macroquad::prelude::*;
@@ -157,6 +157,317 @@ thread_local! {
     static RE_UPLOAD: RefCell<bool> = RefCell::default();
 }
 
+/// 与 xcsim 的 `ext::draw_illustration` 等价：按 0.076 网格换算尺寸，居中用平行四边形阴影绘制。
+fn draw_illustration(tex: Texture2D, x: f32, y: f32, w: f32, h: f32, color: Color) -> Rect {
+    let r = illustration_rect(x, y, w, h);
+    let tex_ratio = tex.width() / tex.height();
+    let rect_ratio = r.w / r.h;
+    let tex_rect = if tex_ratio > rect_ratio {
+        let new_w = rect_ratio / tex_ratio;
+        Rect::new((1. - new_w) / 2., 0., new_w, 1.)
+    } else {
+        let new_h = tex_ratio / rect_ratio;
+        Rect::new(0., (1. - new_h) / 2., 1., new_h)
+    };
+    draw_parallelogram(r, Some((tex, tex_rect)), color, true);
+    r
+}
+
+fn illustration_rect(x: f32, y: f32, w: f32, h: f32) -> Rect {
+    let scale = 0.076;
+    let w = scale * 13. * w;
+    let h = scale * 7. * h;
+    Rect::new(x - w / 2., y - h / 2., w, h)
+}
+
+impl EndingScene {
+    /// 结算页：布局照抄 Phira-Vrenxz/prpr/src/scene/ending.rs，
+    /// 并补回 Firefly 的特性（Mod 图标、RKS/新 RKS、详情展开、上传状态、退场过渡）。
+    fn render_xchs(&mut self, tm: &mut TimeManager, ui: &mut Ui) -> Result<()> {
+        fn ran(t: f32, l: f32, r: f32) -> f32 {
+            ((t - l) / (r - l)).clamp(0., 1.)
+        }
+
+        let mut cam = ui.camera();
+        let asp = -cam.zoom.y;
+        let top = 1. / asp;
+        let t = tm.now() as f32;
+        cam.render_target = self.target;
+        let sr = ui.screen_rect();
+        set_camera(&cam);
+        draw_background(*self.background, ui.viewport);
+
+        let xcsim = self.result.xcsim;
+        let score = self.result.score;
+        let accuracy = self.result.accuracy as f32;
+        let max_combo = self.result.max_combo;
+        let num_of_notes = self.result.num_of_notes;
+        let counts = self.result.counts;
+        let early = self.result.early;
+        let late = self.result.late;
+        let shiny = self.result.shiny_perfect;
+        let early_kind = self.result.early_kind;
+        let late_kind = self.result.late_kind;
+        let detail_mode = self.detail_mode;
+        let grade = if xcsim {
+            icon_index_xcsim(score)
+        } else {
+            icon_index(score, max_combo == num_of_notes)
+        };
+
+        let slope = PARALLELOGRAM_SLOPE;
+        let dx = 0.06;
+        let c = Color::new(0., 0., 0., 0.6);
+        let cb = Color::new(0., 0., 0., 1.);
+
+        let status = {
+            let spd = if (self.speed - 1.).abs() <= 1e-4 {
+                String::new()
+            } else {
+                format!(" {:.2}x", self.speed)
+            };
+            // 不带括号：Phira-Firefly / Phira-Firefly 1.50x / Phira-Firefly AUTOPLAY 1.50x
+            if self.autoplay {
+                format!("Phira-Firefly AUTOPLAY{spd}")
+            } else if !self.rated {
+                format!("Phira-Firefly{spd}")
+            } else if let Some(state) = &self.update_state {
+                if state.best {
+                    format!("Phira-Firefly{spd}  NEW BEST +{:07}", state.improvement)
+                } else {
+                    format!("Phira-Firefly{spd}")
+                }
+            } else {
+                "Uploading…".to_owned()
+            }
+        };
+        let score_text = if xcsim { format!("{score:08}") } else { format!("{score:07}") };
+
+        // 公共几何
+        let r = illustration_rect(-0.38, 0., 1., 1.2);
+        let main = Rect::new(r.right() - 0.05, r.y, r.w * 0.84, r.h / 2.);
+        let d = r.h / 16.;
+        let s1 = Rect::new(main.x - d * 4. * slope, main.bottom() + d, main.w - d * 5. * slope, d * 3.);
+        let s2 = Rect::new(s1.x - d * 4. * slope, s1.bottom() + d, s1.w, s1.h);
+
+        // ---- 曲绘 + 底部渐变 + 曲名/难度 ----
+        ui.with_gl(Mat4::from_translation(vec3((1. - ran(t, 0.1, 1.3)).powi(3) * 2., 0., 0.)), |ui| {
+            draw_illustration(*self.illustration, -0.38, 0., 1., 1.2, WHITE);
+            let ratio = 0.2;
+            draw_parallelogram_ex(
+                Rect::new(r.x, r.y + r.h * (1. - ratio), r.w - r.h * (1. - ratio) * slope, r.h * ratio),
+                None,
+                Color::default(),
+                Color::new(0., 0., 0., 0.7),
+                true,
+            );
+            let rr = draw_text_aligned(ui, &self.info.level, r.right() - r.h / 7. * 13. * 0.13 - 0.01, r.bottom() - top / 20., (1., 1.), 0.34, WHITE);
+            // 曲名：优先大号字，放不下就换小号并裁切
+            let p = (r.x + 0.04, r.bottom() - top / 20.);
+            let mw = rr.x - 0.02 - p.0;
+            let mut text = ui.text(&self.info.name).pos(p.0, p.1).anchor(0., 1.).size(0.7);
+            if text.measure().w <= mw {
+                text.draw();
+            } else {
+                drop(text);
+                ui.text(&self.info.name).pos(p.0, p.1).anchor(0., 1.).size(0.5).max_width(mw).draw();
+            }
+        });
+
+        // ---- 成绩板：状态 + 分数 + 评级图标 ----
+        ui.with_gl(Mat4::from_translation(vec3((1. - ran(t, 0.2, 1.3)).powi(3) * 2., 0., 0.)), |ui| {
+            draw_parallelogram(main, None, c, true);
+            let r2 = draw_text_aligned(ui, &status, main.x + dx, main.bottom() - 0.035, (0., 1.), 0.34, WHITE);
+            draw_text_aligned(ui, &score_text, r2.x, r2.y - 0.023, (0., 1.), 1., WHITE);
+            let ps = ran(t, 1.4, 1.9).powi(2);
+            let s = main.h * 0.67;
+            // 评级图标：相对 Vrenxz 原位置往左上挪一点
+            let ct = (main.right() - main.h * slope - s / 2. - 0.03, r2.bottom() + 0.02 - s / 2. - 0.02);
+            let s = s + s * (1. - ps) * 0.3;
+            draw_texture_ex(
+                *self.icons[grade],
+                ct.0 - s / 2.,
+                ct.1 - s / 2.,
+                Color::new(1., 1., 1., ps),
+                DrawTextureParams {
+                    dest_size: Some(vec2(s, s)),
+                    ..Default::default()
+                },
+            );
+        });
+
+        // ---- 最大连击 + 准度 ----
+        ui.with_gl(Mat4::from_translation(vec3((1. - ran(t, 0.4, 1.5)).powi(3) * 2., 0., 0.)), |ui| {
+            draw_parallelogram(s1, None, c, true);
+            let dy = 0.025;
+            let r3 = draw_text_aligned(ui, "Max Combo", s1.x + dx, s1.bottom() - dy, (0., 1.), 0.34, WHITE);
+            draw_text_aligned(ui, &max_combo.to_string(), r3.x, r3.y - 0.01, (0., 1.), 0.7, WHITE);
+            let r4 = draw_text_aligned(ui, "Accuracy", s1.right() - dx, s1.bottom() - dy, (1., 1.), 0.34, WHITE);
+            draw_text_aligned(ui, &format!("{:.2}%", accuracy * 100.), r4.right(), r4.y - 0.01, (1., 1.), 0.7, WHITE);
+        });
+
+        // ---- 判定统计 + Early/Late（Perfect+ 只有 XC-SIM 谱面才有） ----
+        ui.with_gl(Mat4::from_translation(vec3((1. - ran(t, 0.5, 1.7)).powi(3) * 2., 0., 0.)), |ui| {
+            draw_parallelogram(s2, None, c, true);
+            let dy1 = 0.025;
+            let dy2 = 0.015;
+            let bg = 0.57;
+            let sm = 0.26;
+            let draw_count = |ui: &mut Ui, ratio: f32, id: usize, name: &str, count: u32| {
+                let r5 = draw_text_aligned(ui, name, s2.x + s2.w * ratio, s2.bottom() - dy1, (0.5, 1.), sm, WHITE);
+                // Firefly 特性：详情模式下（非 XC-SIM）显示每个判定区的 Early/Late 细分
+                if detail_mode && !xcsim && id < 3 {
+                    let r = draw_text_aligned(ui, &format!("-{}", early_kind[id]), r5.center().x - 0.008, r5.y - dy2, (1., 1.), sm, Color::new(0.63, 0.83, 0.98, 1.));
+                    draw_text_aligned(ui, &format!("+{}", late_kind[id]), r.right() + 0.016, r5.y - dy2, (0., 1.), sm, Color::new(1., 0.67, 0.57, 1.));
+                } else {
+                    draw_text_aligned(ui, &count.to_string(), r5.center().x, r5.y - dy2, (0.5, 1.), bg, WHITE);
+                }
+            };
+            if xcsim {
+                draw_count(ui, 0.127, 0, "Perfect+", shiny);
+                draw_count(ui, 0.325, 1, "Perfect", counts[0].saturating_sub(shiny));
+                draw_count(ui, 0.46, 2, "Good", counts[1]);
+                draw_count(ui, 0.595, 3, "Bad", counts[2]);
+                draw_count(ui, 0.73, 4, "Miss", counts[3]);
+            } else {
+                draw_count(ui, 0.14, 0, "Perfect", counts[0]);
+                draw_count(ui, 0.33, 1, "Good", counts[1]);
+                draw_count(ui, 0.46, 2, "Bad", counts[2]);
+                draw_count(ui, 0.59, 3, "Miss", counts[3]);
+            }
+
+            let sm1 = 0.3;
+            let l1 = s2.x + s2.w * if xcsim { 0.82 } else { 0.72 };
+            let rt = s2.x + s2.w * 0.94;
+            let cy = s2.center().y;
+            let r6 = draw_text_aligned(ui, "Early", l1, cy - dy2 / 2., (0., 1.), sm1, WHITE);
+            draw_text_aligned(ui, &early.to_string(), rt, r6.bottom(), (1., 1.), sm1, WHITE);
+            let r7 = draw_text_aligned(ui, "Late", l1, cy + dy2 / 2., (0., 0.), sm1, WHITE);
+            draw_text_aligned(ui, &late.to_string(), rt, r7.y, (1., 0.), sm1, WHITE);
+        });
+
+        // ---- 左下重试 / 右下继续（斜切板 + 触摸检测，与 Phira-Vrenxz 一致） ----
+        fn touched(rect: Rect) -> bool {
+            Judge::get_touches().iter().any(|touch| touch.phase == TouchPhase::Ended && rect.contains(touch.position))
+        }
+        let dy3 = 0.006;
+        let bw = 0.17;
+        let bh = 0.1;
+        let p = (1. - ran(t, 2., 2.7)).powi(2);
+        let s3 = 0.05;
+        let hs = bh * 0.3;
+        let params = DrawTextureParams {
+            dest_size: Some(vec2(hs * 2., hs * 2.)),
+            ..Default::default()
+        };
+        let r_retry = Rect::new(-1. - bh * slope, -top + dy3, bw, bh);
+        ui.with_gl(Mat4::from_translation(vec3(-p * 0.17, 0., 0.)), |ui| {
+            draw_parallelogram(r_retry, None, cb, true);
+            draw_parallelogram(Rect::new(r_retry.x + r_retry.w * (1. - s3), r_retry.y, r_retry.w * s3, r_retry.h), None, WHITE, false);
+            let ct = r_retry.center();
+            draw_texture_ex(*self.icon_retry, ct.x - hs, ct.y - hs, WHITE, params.clone());
+        });
+        let r_proceed = Rect::new(1. + bh * slope - bw, top - dy3 - bh, bw, bh);
+        ui.with_gl(Mat4::from_translation(vec3(p * 0.17, 0., 0.)), |ui| {
+            draw_parallelogram(r_proceed, None, cb, true);
+            draw_parallelogram(Rect::new(r_proceed.x, r_proceed.y, r_proceed.w * s3, r_proceed.h), None, WHITE, false);
+            let ct = r_proceed.center();
+            draw_texture_ex(*self.icon_proceed, ct.x - hs, ct.y - hs, WHITE, params);
+        });
+        // 进场动画结束后才能点，避免动画过程中误触
+        if p <= 0. {
+            if touched(r_retry) {
+                button_hit();
+                if self.upload_task.is_some() {
+                    show_message(tl!("still-uploading"));
+                } else {
+                    self.tr_start = t;
+                    self.next = 1;
+                }
+            } else if touched(r_proceed) {
+                button_hit();
+                if self.upload_task.is_some() {
+                    show_message(tl!("still-uploading"));
+                } else {
+                    self.tr_start = t;
+                    self.next = 2;
+                }
+            }
+        }
+
+        // ---- 玩家名牌（右上）+ RKS/新 RKS ----
+        let alpha = ran(t, 1.5, 1.9);
+        let main1 = Rect::new(1. - 0.28, -top + dy3 * 2.5, 0.35, 0.1);
+        draw_parallelogram(main1, None, Color::new(0., 0., 0., 0.6 * alpha), false);
+        let sub = Rect::new(1. - 0.13, main1.center().y + 0.01, 0.12, 0.03);
+        let color = Color::new(1., 1., 1., alpha);
+        draw_parallelogram(sub, None, color, false);
+        let rks_text = if let Some(new_rks) = self.update_state.as_ref().and_then(|it| it.new_rks) {
+            format!("{new_rks:.2}")
+        } else if let Some(rks) = &self.player_rks {
+            format!("{rks:.2}")
+        } else {
+            String::new()
+        };
+        draw_text_aligned(ui, &rks_text, sub.center().x, sub.center().y, (0.5, 0.5), 0.37, Color::new(0., 0., 0., alpha));
+        let r10 = draw_illustration(*self.player, 1. - 0.21, main1.center().y, 0.12 / (0.076 * 7.), 0.12 / (0.076 * 7.), color);
+        let mut text2 = ui.text(&self.player_name).pos(r10.x - 0.015, r10.center().y - 0.002).anchor(1., 0.5).size(0.54).color(color);
+        let text_rect = text2.measure();
+        draw_parallelogram(
+            Rect::new(text_rect.x - main1.h * slope - 0.02, main1.y, r10.x - text_rect.x + main1.h * slope * 2. + 0.021, main1.h),
+            None,
+            Color::new(0., 0., 0., 0.6 * alpha),
+            false,
+        );
+        text2.draw();
+
+        // ---- Firefly 特性：Mod 图标行（左上） ----
+        let active_mod_indices: Vec<usize> = [
+            (Mods::FLIP_X, 0),
+            (Mods::FADE_OUT, 1),
+            (Mods::FADE_IN, 2),
+            (Mods::NIGHTCORE, 3),
+            (Mods::RAINBOW, 4),
+            (Mods::AUTOPLAY, 5),
+            (Mods::NO_SHADER, 6),
+        ]
+        .into_iter()
+        .filter(|(m, _)| self.mods.contains(*m))
+        .map(|(_, idx)| idx)
+        .collect();
+        if !active_mod_indices.is_empty() {
+            let mh = 0.055;
+            let mw = mh * 1.25;
+            let my = -top + 0.03;
+            let mut mx = -0.96;
+            for &idx in &active_mod_indices {
+                draw_parallelogram(Rect::new(mx, my, mw, mh), None, Color::new(0., 0., 0., 0.6 * alpha), false);
+                let isz = mh * 0.78;
+                let ir = Rect::new(mx + (mw - isz) / 2. + mh * slope * 0.5, my + (mh - isz) / 2., isz, isz);
+                ui.fill_rect(ir, (*self.mod_icons[idx], ir, ScaleType::Fit, semi_white(0.9 * alpha)));
+                mx += mw + 0.012;
+            }
+        }
+
+        // ---- Firefly 特性：退场过渡 ----
+        if !self.tr_start.is_nan() {
+            let tp = ((t - self.tr_start) / 0.5).min(1.);
+            if tp >= 1. {
+                self.tr_start = f32::NAN;
+            }
+            let tp = 1. - (1. - tp).powi(3);
+            let mut tr = sr;
+            tr.y -= tr.h * (1. - tp);
+            rect_shadow(tr, 0.01, 0.5);
+            let (tex, ta) = if self.next == 1 { (*self.background, 0.3) } else { (*self.illustration, 0.55) };
+            ui.fill_rect(tr, (tex, tr));
+            ui.fill_rect(tr, semi_black(ta));
+        }
+
+        Ok(())
+    }
+}
+
 impl Scene for EndingScene {
     fn enter(&mut self, tm: &mut TimeManager, target: Option<RenderTarget>) -> Result<()> {
         tm.reset();
@@ -244,6 +555,9 @@ impl Scene for EndingScene {
     }
 
     fn render(&mut self, tm: &mut TimeManager, ui: &mut Ui) -> Result<()> {
+        if PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed) {
+            return self.render_xchs(tm, ui);
+        }
         let mut cam = ui.camera();
         let asp = -cam.zoom.y;
         let top = 1. / asp;
@@ -432,17 +746,18 @@ impl Scene for EndingScene {
                 } else {
                     res.counts[id]
                 };
+                let xchs = PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed);
                 let r = if !res.xcsim && self.detail_mode && id != 3 {
                     let r = ui
                         .text(format!("-{}", res.early_kind[id]))
                         .pos(x + 0.03, y)
                         .size(s)
-                        .color(Color::from_hex_rgb(0x81d4fa))
+                        .color(if xchs { Color::new(0.984, 0.973, 0.886, 1.) } else { Color::from_hex_rgb(0x81d4fa) })
                         .draw_using(&BOLD_FONT);
                     ui.text(format!("+{}", res.late_kind[id]))
                         .pos(r.right() + 0.01, y)
                         .size(s)
-                        .color(Color::from_hex_rgb(0xffab91))
+                        .color(if xchs { Color::new(1.0, 0.58, 0.706, 1.) } else { Color::from_hex_rgb(0xffab91) })
                         .draw_using(&BOLD_FONT)
                 } else {
                     ui.text(count.to_string()).pos(x + 0.06, y).size(s).draw_using(&BOLD_FONT)
@@ -537,7 +852,7 @@ impl Scene for EndingScene {
             r.x -= r.w;
             r.y -= r.h;
             self.btn_proceed.render_shadow(ui, r, t, |ui, path| {
-                ui.fill_path(&path, Color::from_hex_rgb(0x3f51b5));
+                ui.fill_path(&path, if PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed) { Color::new(0.949, 0.412, 0.580, 1.) } else { Color::from_hex_rgb(0x3f51b5) });
                 let ir = Rect::new(r.x + 0.05, r.center().y, 0., 0.).feather(0.03);
                 ui.fill_rect(ir, (*self.icon_proceed, ir));
                 ui.text(tl!("proceed"))
@@ -550,7 +865,7 @@ impl Scene for EndingScene {
 
             r.x -= r.w + 0.02;
             self.btn_retry.render_shadow(ui, r, t, |ui, path| {
-                ui.fill_path(&path, Color::from_hex_rgb(0x78909c));
+                ui.fill_path(&path, if PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed) { Color::new(0.243, 0.165, 0.255, 1.) } else { Color::from_hex_rgb(0x78909c) });
                 let ir = Rect::new(r.x + 0.05, r.center().y, 0., 0.).feather(0.03);
                 ui.fill_rect(ir, (*self.icon_retry, ir));
                 ui.text(tl!("retry"))

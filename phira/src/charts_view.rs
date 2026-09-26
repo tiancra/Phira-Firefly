@@ -108,13 +108,13 @@ pub struct ChartsView {
 
     pub multi_select: Option<Vec<ChartRef>>,
 
-    /// When set, opening a not-yet-downloaded chart requires an XC-SIM login.
+    
     pub require_xcsim_login: bool,
 
-    /// 局域网联机管理器
+    
     #[cfg(feature = "testing")]
     pub lan_manager: Option<Arc<Mutex<crate::lan::LanManager>>>,
-    /// 局域网联机面板
+    
     #[cfg(feature = "testing")]
     lan_panel: Option<crate::lan::LanPanel>,
 }
@@ -206,7 +206,7 @@ impl ChartsView {
     }
 
     pub fn touch(&mut self, touch: &Touch, t: f32, rt: f32) -> Result<bool> {
-        // 局域网联机面板优先处理触摸
+        
         #[cfg(feature = "testing")]
         if let Some(panel) = &mut self.lan_panel {
             if panel.visible() {
@@ -218,8 +218,8 @@ impl ChartsView {
             return Ok(true);
         }
         if self.scroll.touch(touch, t) {
-            // 手指拖动滚动时：清除所有谱面项的长按状态，
-            // 避免滚动过程中因时间累积误触发长按菜单。
+            
+            
             if let Some(charts) = &mut self.charts {
                 for item in charts.iter_mut() {
                     item.long_touch.reset();
@@ -237,7 +237,7 @@ impl ChartsView {
                     if item.btn.touch(touch, t) {
                         item.long_touch.reset();
                         let handled_by_mp = if self.require_xcsim_login {
-                            // XC-SIM 谱面不能加入多人游戏。
+                            
                             false
                         } else {
                             MP_PANEL.with(|it| {
@@ -247,7 +247,7 @@ impl ChartsView {
                                             panel.select_chart(id);
                                             panel.show(rt);
                                         } else {
-                                            // 本地谱面（无在线 id）：作为本地谱面分享选择，生成 UUID 并发送
+                                            
                                             panel.select_local_chart(
                                                 chart.local_path.clone().unwrap_or_default(),
                                                 chart.info.name.clone(),
@@ -299,12 +299,12 @@ impl ChartsView {
                         }
 
                         button_hit_large();
-                        // XC-SIM 分区：下载（打开未下载谱面）需要先登录 XC-SIM 账号，与 Phira 账号无关。
+                        
                         if self.require_xcsim_login && chart.local_path.is_none() && !crate::client::xcsim::is_logged_in() {
                             show_message(tl!("xcsim-need-login")).error();
                             continue;
                         }
-                        // XC-SIM 谱面存放在独立目录 data/charts/xcsim，避免与官方同 ID 谱面冲突。
+                        
                         let download_path = chart.info.id.map(|it| {
                             if self.require_xcsim_login {
                                 format!("xcsim/{it}")
@@ -410,7 +410,7 @@ impl ChartsView {
         self.charts.as_ref().is_some_and(|it| it.first().is_some_and(|item| item.chart.is_none()))
     }
 
-    /// 显示谱面菜单，包含局域网联机选项
+    
     pub fn show_chart_menu_with_lan(&mut self, ui: &mut Ui, t: f32, chart_index: usize) {
         if self.editing_chart == Some(chart_index) && self.need_show_chart_menu {
             self.need_show_chart_menu = false;
@@ -437,12 +437,12 @@ impl ChartsView {
     }
 
     pub fn update(&mut self, t: f32) -> Result<bool> {
-        // 更新局域网联机面板
+        
         #[cfg(feature = "testing")]
         if let Some(panel) = &mut self.lan_panel {
             if panel.visible() {
                 panel.update(t)?;
-                // 面板可见时不再处理谱面菜单等交互
+                
                 return Ok(false);
             }
         }
@@ -477,7 +477,7 @@ impl ChartsView {
         if self.chart_menu.changed() {
             let has_header = self.has_header();
             let editing = self.editing_chart.unwrap();
-            // move 选项在菜单中的起始索引（testing 时 "局域网联机" 占 index 1）
+            
             let move_start = if cfg!(feature = "testing") { 2 } else { 1 };
             match self.chart_menu.selected() {
                 0 => {
@@ -486,7 +486,7 @@ impl ChartsView {
                 }
                 #[cfg(feature = "testing")]
                 n if n == move_start - 1 => {
-                    // 局域网联机选项
+                    
                     if let Some(manager) = self.lan_manager.clone() {
                         let panel = self.lan_panel.get_or_insert_with(|| crate::lan::LanPanel::new(manager));
                         panel.show(t);
@@ -605,7 +605,7 @@ impl ChartsView {
                             let item = &mut charts[id as usize];
 
                             item.btn.render_shadow(ui, r, t, |ui, path| {
-                                let xchs = prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed);
+                                let xchs = prpr::ui::PREFER_ALT_UI.load(std::sync::atomic::Ordering::Relaxed);
                             let selected_color = if xchs { Color::from_rgba(255, 148, 180, 255) } else { Color::from_rgba(30, 136, 229, 255) };
 
                                 if let Some(chart) = &mut item.chart {
@@ -670,7 +670,7 @@ impl ChartsView {
                                             .color(c)
                                             .draw();
                                     }
-                                    // 在本地分区也标识 XC-SIM 谱面（存储在 `xcsim/` 目录）。
+                                    
                                     if chart
                                         .local_path
                                         .as_deref()
@@ -720,7 +720,7 @@ impl ChartsView {
         });
         self.chart_menu.render(ui, t, 1.);
 
-        // 渲染局域网联机面板（覆盖在最上层）
+        
         #[cfg(feature = "testing")]
         if let Some(panel) = &mut self.lan_panel {
             if panel.visible() {

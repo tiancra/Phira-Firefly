@@ -1,6 +1,6 @@
 use crate::{
     ext::{RectExt, SafeTexture, ScaleType},
-    ui::{Ui, PREFER_XCHS_UI},
+    ui::{Ui, PREFER_ALT_UI},
 };
 use macroquad::prelude::*;
 use std::{
@@ -23,7 +23,7 @@ pub enum MessageKind {
 
 impl MessageKind {
     pub fn color(&self) -> Color {
-        let xchs = PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed);
+        let xchs = PREFER_ALT_UI.load(std::sync::atomic::Ordering::Relaxed);
         match self {
             Self::Info => {
                 if xchs {
@@ -115,7 +115,7 @@ impl BillBoard {
     }
 
     pub fn render(&mut self, ui: &mut Ui, t: f32) {
-        if PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed) {
+        if PREFER_ALT_UI.load(std::sync::atomic::Ordering::Relaxed) {
             self.render_xchs(ui, t);
             return;
         }

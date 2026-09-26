@@ -19,7 +19,7 @@ use prpr::{
     scene::{return_file, show_error, show_message, take_file, NextScene, Scene},
     task::Task,
     time::TimeManager,
-    ui::{button_hit, Dialog, FontArc, PREFER_XCHS_UI, RectButton, Ui, UI_AUDIO},
+    ui::{button_hit, Dialog, FontArc, PREFER_ALT_UI, RectButton, Ui, UI_AUDIO},
 };
 use sasa::{AudioClip, Music};
 use std::{
@@ -695,7 +695,7 @@ impl Scene for MainScene {
         gl_use_default_material();
 
         // XCHS UI: plum tint + pink top ribbon + scattered hearts over every page
-        if PREFER_XCHS_UI.load(Ordering::Relaxed) {
+        if PREFER_ALT_UI.load(Ordering::Relaxed) {
             let top = ui.top;
             ui.fill_rect(ui.screen_rect(), Color::new(0.133, 0.071, 0.137, 0.92));
             ui.fill_rect(Rect::new(-1., -top, 2., 0.155), Color::new(1.0, 0.58, 0.706, 0.08));
@@ -743,7 +743,7 @@ impl Scene for MainScene {
         s.fader.sub = false;
 
         // 2. title
-        if !PREFER_XCHS_UI.load(Ordering::Relaxed) {
+        if !PREFER_ALT_UI.load(Ordering::Relaxed) {
             if s.fader.transiting() {
                 let pos = self.pages.len() - 2;
                 s.fader.reset();
@@ -754,7 +754,7 @@ impl Scene for MainScene {
 
         // 3. back
         if self.pages.len() >= 2 {
-            let xchs = PREFER_XCHS_UI.load(Ordering::Relaxed);
+            let xchs = PREFER_ALT_UI.load(Ordering::Relaxed);
             let mut r = ui.back_rect();
             self.btn_back.set(ui, r);
             if !xchs {

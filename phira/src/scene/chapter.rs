@@ -280,8 +280,8 @@ impl Scene for ChapterScene {
     }
 
     fn render(&mut self, tm: &mut TimeManager, ui: &mut Ui) -> Result<()> {
-        if prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed) {
-            return self.render_xchs(tm, ui);
+        if prpr::ui::PREFER_ALT_UI.load(std::sync::atomic::Ordering::Relaxed) {
+            return self.render_a1(tm, ui);
         }
         set_camera(&ui.camera());
         let t = tm.now() as f32;
@@ -378,7 +378,7 @@ impl Scene for ChapterScene {
 
 impl ChapterScene {
     /// XCHS 皮肤：暗梅色面板 + 粉色描边，页眉沿用各页统一的 XCHS 配方。
-    fn render_xchs(&mut self, tm: &mut TimeManager, ui: &mut Ui) -> Result<()> {
+    fn render_a1(&mut self, tm: &mut TimeManager, ui: &mut Ui) -> Result<()> {
         set_camera(&ui.camera());
         let t = tm.now() as f32;
         let itop = -ui.top;

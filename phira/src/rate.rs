@@ -175,7 +175,7 @@ impl RateDialog {
             let wr = self.dialog_rect();
             self.fader.for_sub(|f| {
                 f.render(ui, t, |ui| {
-                    if prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed) {
+                    if prpr::ui::PREFER_ALT_UI.load(std::sync::atomic::Ordering::Relaxed) {
                         // XCHS UI: 粉色发光的深紫面板 + 标题下划线 + 圆角按钮
                         let accent = Color::new(0.949, 0.412, 0.580, 1.);
                         let body_bg = Color::new(0.165, 0.110, 0.180, 1.);

@@ -129,7 +129,7 @@ impl Page for MessagePage {
 
     fn touch(&mut self, touch: &Touch, s: &mut SharedState) -> Result<bool> {
         let t = s.t;
-        if prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed) && self.index.is_some() {
+        if prpr::ui::PREFER_ALT_UI.load(std::sync::atomic::Ordering::Relaxed) && self.index.is_some() {
             if self.close_btn.touch(touch, t) {
                 self.index = None;
             }
@@ -176,7 +176,7 @@ impl Page for MessagePage {
 
     fn update(&mut self, s: &mut SharedState) -> Result<()> {
         let t = s.t;
-        let xchs = prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed);
+        let xchs = prpr::ui::PREFER_ALT_UI.load(std::sync::atomic::Ordering::Relaxed);
         if self.btns_scroll.y_scroller.pulled_down && !xchs && self.index.is_none() {
             self.load();
         }
@@ -229,7 +229,7 @@ impl Page for MessagePage {
 
     fn render(&mut self, ui: &mut Ui, s: &mut SharedState) -> Result<()> {
         let t = s.t;
-        let xchs = prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed);
+        let xchs = prpr::ui::PREFER_ALT_UI.load(std::sync::atomic::Ordering::Relaxed);
 
         if xchs {
             let accent = Color::new(0.949, 0.412, 0.580, 1.0);

@@ -1,4 +1,4 @@
-//! Http client for Phira API.
+
 
 mod model;
 pub use model::*;
@@ -23,7 +23,6 @@ static CLIENT: Lazy<ArcSwap<reqwest::Client>> = Lazy::new(|| ArcSwap::from_point
 
 pub struct Client;
 
-// pub const API_URL: &str = "http://localhost:2924";
 pub const API_URL: &str = "https://phira.5wyxi.com";
 
 pub fn basic_client_builder() -> ClientBuilder {
@@ -35,7 +34,7 @@ pub fn basic_client_builder() -> ClientBuilder {
         }
     });
     let mut builder = reqwest::ClientBuilder::new().redirect(policy);
-    // 强制接受无效证书：官方服务器证书在部分设备上校验失败，且无法取得证书文件
+    
     builder = builder.danger_accept_invalid_certs(true);
     builder
 }

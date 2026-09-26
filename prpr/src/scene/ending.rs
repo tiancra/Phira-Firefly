@@ -10,7 +10,7 @@ use crate::{
     scene::show_message,
     task::Task,
     time::TimeManager,
-    ui::{button_hit, clip_sector, DRectButton, Dialog, MessageHandle, RectButton, Ui, PREFER_XCHS_UI},
+    ui::{button_hit, clip_sector, DRectButton, Dialog, MessageHandle, RectButton, Ui, PREFER_ALT_UI},
 };
 use anyhow::Result;
 use macroquad::prelude::*;
@@ -555,7 +555,7 @@ impl Scene for EndingScene {
     }
 
     fn render(&mut self, tm: &mut TimeManager, ui: &mut Ui) -> Result<()> {
-        if PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed) {
+        if PREFER_ALT_UI.load(std::sync::atomic::Ordering::Relaxed) {
             return self.render_xchs(tm, ui);
         }
         let mut cam = ui.camera();
@@ -746,7 +746,7 @@ impl Scene for EndingScene {
                 } else {
                     res.counts[id]
                 };
-                let xchs = PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed);
+                let xchs = PREFER_ALT_UI.load(std::sync::atomic::Ordering::Relaxed);
                 let r = if !res.xcsim && self.detail_mode && id != 3 {
                     let r = ui
                         .text(format!("-{}", res.early_kind[id]))
@@ -852,7 +852,7 @@ impl Scene for EndingScene {
             r.x -= r.w;
             r.y -= r.h;
             self.btn_proceed.render_shadow(ui, r, t, |ui, path| {
-                ui.fill_path(&path, if PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed) { Color::new(0.949, 0.412, 0.580, 1.) } else { Color::from_hex_rgb(0x3f51b5) });
+                ui.fill_path(&path, if PREFER_ALT_UI.load(std::sync::atomic::Ordering::Relaxed) { Color::new(0.949, 0.412, 0.580, 1.) } else { Color::from_hex_rgb(0x3f51b5) });
                 let ir = Rect::new(r.x + 0.05, r.center().y, 0., 0.).feather(0.03);
                 ui.fill_rect(ir, (*self.icon_proceed, ir));
                 ui.text(tl!("proceed"))
@@ -865,7 +865,7 @@ impl Scene for EndingScene {
 
             r.x -= r.w + 0.02;
             self.btn_retry.render_shadow(ui, r, t, |ui, path| {
-                ui.fill_path(&path, if PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed) { Color::new(0.243, 0.165, 0.255, 1.) } else { Color::from_hex_rgb(0x78909c) });
+                ui.fill_path(&path, if PREFER_ALT_UI.load(std::sync::atomic::Ordering::Relaxed) { Color::new(0.243, 0.165, 0.255, 1.) } else { Color::from_hex_rgb(0x78909c) });
                 let ir = Rect::new(r.x + 0.05, r.center().y, 0., 0.).feather(0.03);
                 ui.fill_rect(ir, (*self.icon_retry, ir));
                 ui.text(tl!("retry"))

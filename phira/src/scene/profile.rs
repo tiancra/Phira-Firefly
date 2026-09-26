@@ -143,7 +143,7 @@ impl ProfileScene {
     }
 
     /// XCHS UI (XCHS/xcsim/src/scene_app/profile_scene.rs) variant of the profile view.
-    fn render_xchs(&mut self, ui: &mut Ui, tm: &mut TimeManager) -> Result<()> {
+    fn render_a1(&mut self, ui: &mut Ui, tm: &mut TimeManager) -> Result<()> {
         set_camera(&ui.camera());
         let t = tm.now() as f32;
 
@@ -538,8 +538,8 @@ impl Scene for ProfileScene {
     }
 
     fn render(&mut self, tm: &mut TimeManager, ui: &mut Ui) -> Result<()> {
-        if prpr::ui::PREFER_XCHS_UI.load(Ordering::Relaxed) {
-            return self.render_xchs(ui, tm);
+        if prpr::ui::PREFER_ALT_UI.load(Ordering::Relaxed) {
+            return self.render_a1(ui, tm);
         }
         set_camera(&ui.camera());
         let t = tm.now() as f32;

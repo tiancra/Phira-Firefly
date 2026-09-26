@@ -9,7 +9,7 @@ use crate::{
     scene::game::SimpleRecord,
     task::Task,
     time::TimeManager,
-    ui::{clip_rounded_rect, rounded_rect_shadow, LoadingParams, ShadowConfig, Ui, PREFER_REDUCED_MOTION, PREFER_XCHS_UI},
+    ui::{clip_rounded_rect, rounded_rect_shadow, LoadingParams, ShadowConfig, Ui, PREFER_REDUCED_MOTION, PREFER_ALT_UI},
 };
 use ::rand::{seq::SliceRandom, thread_rng};
 use anyhow::{Context, Result};
@@ -239,7 +239,7 @@ impl Scene for LoadingScene {
         draw_background(*self.background, ui.viewport);
 
         ui.alpha((t / FADE_IN_TIME).min(1.), |ui| {
-            if PREFER_XCHS_UI.load(Ordering::Relaxed) {
+            if PREFER_ALT_UI.load(Ordering::Relaxed) {
                 // ---- XCHS 加载界面（照抄 xcsim-core/src/scene_core/loading_scene.rs） ----
                 let dx = if t > self.finish_time {
                     transition_time().map_or(1., |tt| {

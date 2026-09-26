@@ -25,7 +25,7 @@ use prpr::{
     info::ChartInfo,
     scene::{show_error, NextScene},
     task::Task,
-    ui::{button_hit_large, clip_rounded_rect, ClipType, Dialog, DRectButton, FontArc, PREFER_XCHS_UI, RectButton, Scroll, Ui},
+    ui::{button_hit_large, clip_rounded_rect, ClipType, Dialog, DRectButton, FontArc, PREFER_ALT_UI, RectButton, Scroll, Ui},
 };
 use prpr_l10n::LANG_IDENTS;
 use reqwest::StatusCode;
@@ -388,7 +388,7 @@ impl HomePage {
     }
 
     /// XCHS-style home layout, ported faithfully from XCHS page_app/home_page.rs.
-    fn render_xchs(&mut self, ui: &mut Ui, s: &mut SharedState) -> Result<()> {
+    fn render_a1(&mut self, ui: &mut Ui, s: &mut SharedState) -> Result<()> {
         let t = s.t;
         let top = ui.top;
 
@@ -862,8 +862,8 @@ impl Page for HomePage {
     }
 
     fn render(&mut self, ui: &mut Ui, s: &mut SharedState) -> Result<()> {
-        if PREFER_XCHS_UI.load(Ordering::Relaxed) {
-            return self.render_xchs(ui, s);
+        if PREFER_ALT_UI.load(Ordering::Relaxed) {
+            return self.render_a1(ui, s);
         }
         let t = s.t;
         let rt = s.rt;

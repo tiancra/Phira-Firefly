@@ -20,7 +20,7 @@ use crate::{
     parse::{parse, parse_extra, parse_pec, parse_phigros, parse_rpe, LyricLine, LyricRole, LyricWord},
     task::Task,
     time::TimeManager,
-    ui::{RectButton, TextPainter, Ui, PREFER_XCHS_UI},
+    ui::{RectButton, TextPainter, Ui, PREFER_ALT_UI},
 };
 
 #[cfg(target_os = "windows")]
@@ -1134,7 +1134,7 @@ impl GameScene {
             let w = 0.05;
             let no_retry = self.mode == GameMode::NoRetry;
             let disabled_color = semi_white(res.alpha * 0.4);
-            let xchs = PREFER_XCHS_UI.load(Ordering::Relaxed);
+            let xchs = PREFER_ALT_UI.load(Ordering::Relaxed);
             // XCHS 暂停卡片（居中圆角卡 + 三行按钮），与 xcsim game_scene.rs 一致
             let xchs_card = Rect::new(-0.34, o - 0.28, 0.68, 0.56);
             let xchs_row = |row: i32| {

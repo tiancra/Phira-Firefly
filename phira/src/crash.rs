@@ -4,7 +4,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::{sync::Mutex, time::SystemTime};
 use tracing::error;
 
-/// 崩溃界面是否展开显示 panic 详情（点击/触摸屏幕切换）。
 static SHOW_CRASH_DETAIL: AtomicBool = AtomicBool::new(false);
 
 pub struct CrashInfo {
@@ -16,7 +15,7 @@ pub struct CrashInfo {
 
 pub static CRASH_INFO: Mutex<Option<CrashInfo>> = Mutex::new(None);
 pub static CRASH_LOG_PATH: Mutex<String> = Mutex::new(String::new());
-/// crash.log 文件内容缓存，供崩溃界面在 CRASH_INFO 为空时兜底展示。
+
 static CRASH_LOG_CACHE: Mutex<String> = Mutex::new(String::new());
 
 const ERR_RENDER: &str = "0001";
@@ -70,7 +69,7 @@ pub fn classify_panic(info: &str) -> (&'static str, &'static str) {
 }
 
 pub fn write_crash_log(info: &CrashInfo) {
-    // 追加写入而非覆盖：保留每次崩溃记录，避免后续崩溃覆盖掉之前的日志
+    
     let log = format!(
         "========== 崩溃记录 ==========\n[{}]\n错误代码: {}\n错误描述: {}\n崩溃信息: {}\n\n",
         info.timestamp, info.code, info.message, info.panic_info
@@ -83,7 +82,7 @@ pub fn write_crash_log(info: &CrashInfo) {
             let _ = file.write_all(log.as_bytes());
         }
         Err(_) => {
-            // 打开失败（如目录不可写）时退回覆盖写入
+            
             let _ = std::fs::write(&path, log);
         }
     }
@@ -105,7 +104,7 @@ pub fn set_panic_hook() {
             panic_msg
         };
 
-        // 捕获调用栈并随日志保存，便于在无崩溃界面文字的情况下定位崩溃点
+        
         let backtrace = std::backtrace::Backtrace::force_capture();
         let log_detail = format!("{}\n\n调用栈:\n{}", detailed, backtrace);
 
@@ -137,8 +136,6 @@ pub fn set_error(error_msg: &str) {
     }
 }
 
-/// 从 `catch_unwind` 捕获的 panic payload 中直接提取崩溃信息并写入日志/CRASH_INFO。
-/// 作为 panic 钩子的兜底：即使钩子因某种原因未填充 CRASH_INFO，崩溃界面也能拿到详情。
 pub fn capture_panic(payload: Box<dyn std::any::Any + Send>) {
     let msg = if let Some(s) = payload.downcast_ref::<&str>() {
         (*s).to_string()
@@ -160,7 +157,6 @@ pub fn capture_panic(payload: Box<dyn std::any::Any + Send>) {
     }
 }
 
-/// 把 crash.log 文件内容读入缓存，供崩溃界面在 CRASH_INFO 为空时兜底展示。
 pub fn refresh_log_cache() {
     let path = {
         let guard = CRASH_LOG_PATH.lock().unwrap();
@@ -176,11 +172,6 @@ pub fn refresh_log_cache() {
     }
 }
 
-/// 重置被崩溃污染的 GL 状态。
-///
-/// Android 上游玩中崩溃时，GL 状态会残留游戏的相机矩阵 / 离屏 FBO / 视口 / 裁剪区域。
-/// 若不重置，后续 clear 与绘制会进入离屏纹理或被错误投影变换，最终屏幕一片空白。
-/// 因此每次绘制崩溃界面（以及崩溃后的黑屏阶段）前都必须先调用本函数恢复默认渲染状态。
 pub fn reset_gl_state() {
     set_default_camera();
     unsafe { get_internal_gl() }.quad_gl.viewport(None);
@@ -191,7 +182,7 @@ pub fn render_crash_screen(logo: Option<Texture2D>, font: Option<macroquad::text
     reset_gl_state();
     clear_background(WHITE);
 
-    // font 为 None（如 font.ttf 缺失）时回退到宏内置字体（TextParams::default 的 Font(0)）
+    
     let font = font.unwrap_or_default();
 
     let sw = screen_width();
@@ -219,8 +210,8 @@ pub fn render_crash_screen(logo: Option<Texture2D>, font: Option<macroquad::text
         );
     }
 
-    // 即使 CRASH_INFO 尚未写入（极端情况），也必须保证崩溃界面有文字，
-    // 避免只绘制 logo 后提前 return 导致"有图无字"。
+    
+    
     let (code, message, panic_info) = {
         let guard = CRASH_INFO.lock().unwrap();
         match guard.as_ref() {
@@ -294,7 +285,7 @@ pub fn render_crash_screen(logo: Option<Texture2D>, font: Option<macroquad::text
         cur_y += line_height;
     }
 
-    // 点击/触摸屏幕切换显示真实崩溃详情（panic 消息 + 调用栈），便于无电脑时直接在手机上查看
+    
     let touch_started = touches().iter().any(|t| t.phase == TouchPhase::Started);
     if touch_started
         || is_mouse_button_pressed(MouseButton::Left)
@@ -304,7 +295,7 @@ pub fn render_crash_screen(logo: Option<Texture2D>, font: Option<macroquad::text
         let new_state = !SHOW_CRASH_DETAIL.load(Ordering::Relaxed);
         SHOW_CRASH_DETAIL.store(new_state, Ordering::Relaxed);
         if new_state {
-            // 每次展开时重新读取 crash.log，保证展示的是最新内容
+            
             refresh_log_cache();
         }
     }
@@ -332,7 +323,7 @@ pub fn render_crash_screen(logo: Option<Texture2D>, font: Option<macroquad::text
                 cur_y += panic_height;
             }
         } else {
-        // panic_info 为空（CRASH_INFO 未被填充）时，兜底读取 crash.log 内容展示在屏幕上
+        
         let info_size = sh * 0.020;
         let info_height = info_size * 1.35;
         cur_y += sh * 0.012;
@@ -367,7 +358,7 @@ pub fn render_crash_screen(logo: Option<Texture2D>, font: Option<macroquad::text
             }
         }
     } else {
-        // 默认干净界面，仅显示一行轻提示
+        
         let hint = "点击屏幕查看崩溃详情";
         let hint_size = sh * 0.022;
         let hint_dims = measure_text(hint, Some(font), hint_size as u16, 1.0);

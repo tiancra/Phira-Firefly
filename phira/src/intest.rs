@@ -1,5 +1,4 @@
-//! Internal test build watermark and dialog support.
-//! Only compiled when the `intest` feature is enabled.
+
 
 use macroquad::prelude::*;
 use std::sync::Mutex;
@@ -12,8 +11,6 @@ const WATERMARK_TEXT: &str = concat!(
     "\n仅供内部测试使用，严禁对外传播"
 );
 
-/// Load the font used for watermark rendering and register the render hook.
-/// Called once at startup.
 pub async fn init() {
     for name in ["font.ttf", "bold.ttf", "phigros.ttf"] {
         if let Ok(bytes) = crate::load_file(name).await {
@@ -23,14 +20,10 @@ pub async fn init() {
             }
         }
     }
-    // Register the hook so watermark renders inside Main::render's top-level pass.
+    
     prpr::scene::set_extra_top_render(Some(render_watermark));
 }
 
-/// Render the tiled diagonal watermark. Called via the Main::render hook.
-/// At this point push_camera_state() has saved the UI camera; we switch to
-/// the default camera for pixel-coordinate text, and pop_camera_state()
-/// will restore everything afterwards.
 fn render_watermark() {
     let font_guard = INTEST_FONT.lock().unwrap();
     let Some(font_ref) = font_guard.as_ref() else {

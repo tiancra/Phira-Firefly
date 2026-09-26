@@ -54,7 +54,7 @@ pub static PREFER_REDUCED_MOTION: AtomicBool = AtomicBool::new(false);
 
 /// Global UI layout switch: false = Official (default blue), true = XCHS UI (Firefly pink/plum).
 /// Set at startup from saved data; changes require a game restart.
-pub static PREFER_XCHS_UI: AtomicBool = AtomicBool::new(false);
+pub static PREFER_ALT_UI: AtomicBool = AtomicBool::new(false);
 
 #[derive(Default, Clone, Copy)]
 pub struct Gravity(u8);
@@ -1817,7 +1817,7 @@ impl<'a> Ui<'a> {
     }
 
     pub fn accent(&self) -> Color {
-        if PREFER_XCHS_UI.load(Ordering::Relaxed) {
+        if PREFER_ALT_UI.load(Ordering::Relaxed) {
             // XCHS UI: Firefly pink
             Color::new(1.000, 0.580, 0.706, 1.0)
         } else {
@@ -1826,7 +1826,7 @@ impl<'a> Ui<'a> {
     }
 
     pub fn background(&self) -> Color {
-        if PREFER_XCHS_UI.load(Ordering::Relaxed) {
+        if PREFER_ALT_UI.load(Ordering::Relaxed) {
             // XCHS UI: Firefly plum panel
             Color::new(0.165, 0.110, 0.180, 1.0)
         } else {
@@ -2067,7 +2067,7 @@ impl<'a> Ui<'a> {
         use std::f32::consts::PI;
 
         let params = params.into();
-        if PREFER_XCHS_UI.load(Ordering::Relaxed) {
+        if PREFER_ALT_UI.load(Ordering::Relaxed) {
             // XCHS UI: 一圈旋转的 ♥ + 中心跳动的 ♥（替代官方的圆弧转圈）
             const N: usize = 8;
             let r = params.radius;

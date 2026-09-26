@@ -9,7 +9,7 @@ use prpr::{
     config::{Config, Mods},
     info::ChartInfo,
     scene::SimpleRecord,
-    ui::{PREFER_REDUCED_MOTION, PREFER_XCHS_UI},
+    ui::{PREFER_REDUCED_MOTION, PREFER_ALT_UI},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -116,7 +116,7 @@ pub struct Data {
     pub xcsim_name: Option<String>,
     pub respacks: Vec<String>,
     pub respack_id: usize,
-    // for compatibility
+    
     pub read_tos_and_policy: bool,
     pub terms_modified: Option<String>,
     pub ignored_version: Option<semver::Version>,
@@ -126,13 +126,13 @@ pub struct Data {
     #[serde(default = "default_anys_gateway")]
     pub anys_gateway: String,
 
-    /// 是否已完成首次启动引导（onboarding）
+    
     #[serde(default)]
     pub onboarding_done: bool,
 
     pub prefer_reduced_motion: bool,
 
-    /// UI layout: 0 = Official, 1 = XCHS UI. Requires restart to take effect.
+    
     #[serde(default)]
     pub ui_layout: usize,
 
@@ -141,8 +141,8 @@ pub struct Data {
     #[serde(default)]
     collection_uuids: Vec<Uuid>,
 
-    /// Need to know what path caused the problem when restarting the program next time
-    /// see: https://github.com/TeamFlos/phira/pull/689/#discussion_r2899026506
+    
+    
     #[serde(default)]
     pub import_scan_retry: HashMap<String, u8>,
 
@@ -219,7 +219,7 @@ impl Data {
                 warn!("skip startup import scan after retry limit reached: {filename}");
                 continue;
             }
-            // Persist retry count before parsing so crashes during parsing still consume one retry.
+            
             bump_retry(&mut self.import_scan_retry, &filename);
             persist_retry_state(self);
             let Ok(mut fs) = prpr::fs::fs_from_file(&path) else {
@@ -259,7 +259,7 @@ impl Data {
                 warn!("skip startup import scan after retry limit reached: {filename}");
                 continue;
             }
-            // Persist retry count before parsing so crashes during parsing still consume one retry.
+            
             bump_retry(&mut self.import_scan_retry, &filename);
             persist_retry_state(self);
             let Ok(mut fs) = prpr::fs::fs_from_file(&path) else {
@@ -296,7 +296,7 @@ impl Data {
         self.respack_id = self.respack_id.min(self.respacks.len());
         if let Some(res_pack_path) = &mut self.config.res_pack_path {
             if res_pack_path.starts_with('/') {
-                // for compatibility
+                
                 *res_pack_path = "chart.zip".to_owned();
             }
         }
@@ -322,7 +322,7 @@ impl Data {
 
         self.config.init();
         PREFER_REDUCED_MOTION.store(self.prefer_reduced_motion, Ordering::Relaxed);
-        PREFER_XCHS_UI.store(self.ui_layout == 1, Ordering::Relaxed);
+        PREFER_ALT_UI.store(self.ui_layout == 1, Ordering::Relaxed);
         Ok(())
     }
 

@@ -99,8 +99,8 @@ type OnlineTask = Task<Result<OnlineTaskResult>>;
 pub struct LibraryPage {
     tabs: Tabs<ChartList>,
 
-    xchs_tab_rects: [Rect; 6],
-    xhus2_nav: [DRectButton; 6],
+    tr1: [Rect; 6],
+    nb1: [DRectButton; 6],
 
     current_page: u64,
     online_total_page: u64,
@@ -191,8 +191,8 @@ impl LibraryPage {
                 (new_list(ChartListType::XcSim), || tl!("xcsim")),
             ] as [(ChartList, TitleFn); 6]),
 
-            xchs_tab_rects: [Rect::new(0., 0., 0., 0.); 6],
-            xhus2_nav: [(); 6].map(|_| DRectButton::new()),
+            tr1: [Rect::new(0., 0., 0., 0.); 6],
+            nb1: [(); 6].map(|_| DRectButton::new()),
 
             current_page: 0,
             online_total_page: 0,
@@ -745,8 +745,8 @@ impl Page for LibraryPage {
                 return Ok(true);
             }
         }
-        if prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed) {
-            for (i, nr) in self.xchs_tab_rects.iter().enumerate() {
+        if prpr::ui::PREFER_ALT_UI.load(std::sync::atomic::Ordering::Relaxed) {
+            for (i, nr) in self.tr1.iter().enumerate() {
                 if nr.w > 0. && nr.contains(touch.position) {
                     self.tabs.goto(s.t, i);
                     return Ok(true);
@@ -1433,8 +1433,8 @@ impl Page for LibraryPage {
     fn render(&mut self, ui: &mut Ui, s: &mut SharedState) -> Result<()> {
         self.check_fav_page(s);
 
-        if prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed) {
-            return self.render_xchs(ui, s);
+        if prpr::ui::PREFER_ALT_UI.load(std::sync::atomic::Ordering::Relaxed) {
+            return self.render_a1(ui, s);
         }
 
         let t = s.t;
@@ -1692,7 +1692,7 @@ impl Page for LibraryPage {
 }
 
 impl LibraryPage {
-    pub fn render_xchs(&mut self, ui: &mut Ui, s: &mut SharedState) -> Result<()> {
+    pub fn render_a1(&mut self, ui: &mut Ui, s: &mut SharedState) -> Result<()> {
         let t1 = s.t;
         let rt1 = s.rt;
         let top = ui.top;
@@ -1788,7 +1788,7 @@ impl LibraryPage {
             for i2 in 0..6 {
                 let by = tb_top + i2 as f32 * (tb_h + tb_gap);
                 let tr = Rect::new(full_x + 0.02, by, side_w - 0.04, tb_h);
-                self.xchs_tab_rects[i2] = tr;
+                self.tr1[i2] = tr;
                 let active = i2 == sel;
                 if active {
                     ui1.fill_path(&tr.feather(0.006).rounded(tb_h * 0.5), Color::new(1.0, 0.58, 0.706, 0.25));
@@ -1804,7 +1804,7 @@ impl LibraryPage {
                     .max_width(tr.w - 0.07)
                     .color(if active { WHITE } else { semi_white(0.7) })
                     .draw();
-                self.xhus2_nav[i2].render_shadow(ui1, tr, rt1, |_, _| {});
+                self.nb1[i2].render_shadow(ui1, tr, rt1, |_, _| {});
             }
             let panel_x = full_x + side_w + gap;
             let panel_w = full_w - side_w - gap;

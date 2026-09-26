@@ -323,7 +323,7 @@ impl Page for MpServerPage {
         // The first frame can render before `update` has initialized these controls.
         self.sync_server_buttons();
         let t = s.t;
-        let xchs = prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed);
+        let xchs = prpr::ui::PREFER_ALT_UI.load(std::sync::atomic::Ordering::Relaxed);
         let panel = ui.content_rect().feather(-0.04);
         let br = ui.back_rect();
         s.render_fader(ui, |ui| {

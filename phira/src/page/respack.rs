@@ -165,7 +165,7 @@ impl Page for ResPackPage {
 
     fn touch(&mut self, touch: &Touch, s: &mut SharedState) -> Result<bool> {
         let t = s.t;
-        let xchs = prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed);
+        let xchs = prpr::ui::PREFER_ALT_UI.load(std::sync::atomic::Ordering::Relaxed);
         if xchs && self.detail_open {
             if self.close_btn.touch(touch) {
                 self.detail_open = false;
@@ -284,7 +284,7 @@ impl Page for ResPackPage {
 
     fn render(&mut self, ui: &mut Ui, s: &mut SharedState) -> Result<()> {
         let t = s.t;
-        let xchs = prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed);
+        let xchs = prpr::ui::PREFER_ALT_UI.load(std::sync::atomic::Ordering::Relaxed);
 
         if xchs {
             let accent = Color::new(1.0, 0.58, 0.706, 1.0);

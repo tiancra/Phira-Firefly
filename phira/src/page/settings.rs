@@ -153,8 +153,8 @@ pub struct SettingsPage {
     sf: SFader,
     need_back: bool,
 
-    xhus2_nav: [DRectButton; 5],
-    settings_tab_rects: [Rect; 5],
+    nb1: [DRectButton; 5],
+    tr2: [Rect; 5],
 }
 
 impl SettingsPage {
@@ -183,12 +183,12 @@ impl SettingsPage {
             sf: SFader::new(),
             need_back: false,
 
-            xhus2_nav: [(); 5].map(|_| DRectButton::new()),
-            settings_tab_rects: [Rect::new(0., 0., 0., 0.); 5],
+            nb1: [(); 5].map(|_| DRectButton::new()),
+            tr2: [Rect::new(0., 0., 0., 0.); 5],
         }
     }
 
-    pub fn render_xchs(&mut self, ui: &mut Ui, s2: &mut SharedState) -> Result<()> {
+    pub fn render_a1(&mut self, ui: &mut Ui, s2: &mut SharedState) -> Result<()> {
         let t = s2.t;
         let rt1 = s2.rt;
         let top = ui.top;
@@ -256,7 +256,7 @@ impl SettingsPage {
             for i in 0..n {
                 let by = btns_top + i as f32 * (btn_h + btn_gap);
                 let tr = Rect::new(full_x + 0.02, by, side_w - 0.04, btn_h);
-                self.settings_tab_rects[i] = tr;
+                self.tr2[i] = tr;
                 let active = i == sel;
                 if active {
                     ui.fill_path(&tr.feather(0.006).rounded(btn_h * 0.5), Color::new(1.0, 0.58, 0.706, 0.25));
@@ -271,7 +271,7 @@ impl SettingsPage {
                     .max_width(tr.w - 0.07)
                     .color(if active { WHITE } else { semi_white(0.7) })
                     .draw();
-                self.xhus2_nav[i].render_shadow(ui, tr, rt1, |_, _| {});
+                self.nb1[i].render_shadow(ui, tr, rt1, |_, _| {});
             }
             let panel_x = full_x + side_w + gap;
             let panel_w = full_w - side_w - gap;
@@ -331,8 +331,8 @@ impl Page for SettingsPage {
 
     fn touch(&mut self, touch: &Touch, s: &mut SharedState) -> Result<bool> {
         let t = s.t;
-        if prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed) {
-            for (i, nr) in self.settings_tab_rects.iter().enumerate() {
+        if prpr::ui::PREFER_ALT_UI.load(std::sync::atomic::Ordering::Relaxed) {
+            for (i, nr) in self.tr2.iter().enumerate() {
                 if nr.w > 0. && nr.contains(touch.position) {
                     self.tabs.goto(t, i);
                     return Ok(true);
@@ -401,8 +401,8 @@ impl Page for SettingsPage {
     }
 
     fn render(&mut self, ui: &mut Ui, s: &mut SharedState) -> Result<()> {
-        if prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed) {
-            return self.render_xchs(ui, s);
+        if prpr::ui::PREFER_ALT_UI.load(std::sync::atomic::Ordering::Relaxed) {
+            return self.render_a1(ui, s);
         }
         let t = s.t;
         let rt = s.rt;

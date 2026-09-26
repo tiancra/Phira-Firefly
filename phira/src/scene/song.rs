@@ -1331,7 +1331,7 @@ impl SongScene {
         let pad = 0.03;
         let width = self.side_content.width() - pad;
         ui.dy(0.03);
-        let xchs = prpr::ui::PREFER_XCHS_UI.load(Ordering::Relaxed);
+        let xchs = prpr::ui::PREFER_ALT_UI.load(Ordering::Relaxed);
         let ldb_type_label = if self.ldb_std { tl!("ldb-std") } else { tl!("ldb-score") };
         if xchs {
             // XCHS：评分/分数切换为粉色胶囊
@@ -1381,7 +1381,7 @@ impl SongScene {
 
     fn side_info(&mut self, ui: &mut Ui, rt: f32) {
         let pad = 0.03;
-        let xchs = prpr::ui::PREFER_XCHS_UI.load(Ordering::Relaxed);
+        let xchs = prpr::ui::PREFER_ALT_UI.load(Ordering::Relaxed);
         let cream = Color::new(0.984, 0.973, 0.886, 1.);
         let muted = Color::new(1.0, 0.776, 0.847, 0.62);
         let border = Color::new(1.0, 0.776, 0.847, 0.45);
@@ -1558,7 +1558,7 @@ impl SongScene {
         let accent = Color::new(1.0, 0.58, 0.706, 1.);
         let cream = Color::new(0.984, 0.973, 0.886, 1.);
         let muted = Color::new(1.0, 0.776, 0.847, 0.62);
-        let xchs = prpr::ui::PREFER_XCHS_UI.load(Ordering::Relaxed);
+        let xchs = prpr::ui::PREFER_ALT_UI.load(Ordering::Relaxed);
         ui.dx(pad);
         ui.dy(0.03);
         let width = self.side_content.width() - pad;
@@ -1664,7 +1664,7 @@ impl SongScene {
 
     /// XCHS UI 布局：上栏（返回/品牌/收藏/信息/菜单）+ 左栏（插图卡 + 歌曲信息）
     /// + 右栏（成绩、操作按钮、简介）。与官方布局完全独立，官方布局仍保留用于切换皮肤。
-    fn render_xchs(&mut self, tm: &mut TimeManager, ui: &mut Ui) -> Result<()> {
+    fn render_a1(&mut self, tm: &mut TimeManager, ui: &mut Ui) -> Result<()> {
         set_camera(&ui.camera());
         let t = tm.now() as f32;
         let rt = tm.real_time() as f32;
@@ -3511,14 +3511,14 @@ impl Scene for SongScene {
     }
 
     fn render(&mut self, tm: &mut TimeManager, ui: &mut Ui) -> Result<()> {
-        if prpr::ui::PREFER_XCHS_UI.load(Ordering::Relaxed) {
-            return self.render_xchs(tm, ui);
+        if prpr::ui::PREFER_ALT_UI.load(Ordering::Relaxed) {
+            return self.render_a1(tm, ui);
         }
         set_camera(&ui.camera());
         let t = tm.now() as f32;
         let top = ui.top;
         // XCHS UI 皮肤配色；官方皮肤保持原样。
-        let xchs = prpr::ui::PREFER_XCHS_UI.load(Ordering::Relaxed);
+        let xchs = prpr::ui::PREFER_ALT_UI.load(Ordering::Relaxed);
         let accent = Color::new(1.0, 0.58, 0.706, 1.);
         let accent_deep = Color::new(0.949, 0.412, 0.580, 1.);
         let cream = Color::new(0.984, 0.973, 0.886, 1.);

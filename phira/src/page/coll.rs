@@ -145,7 +145,7 @@ impl Page for CollectionPage {
     }
 
     fn render(&mut self, ui: &mut Ui, s: &mut SharedState) -> Result<()> {
-        if prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed) {
+        if prpr::ui::PREFER_ALT_UI.load(std::sync::atomic::Ordering::Relaxed) {
             let top = ui.top;
             let title = ui.text("Collection")
                 .pos(-0.9, -top + 0.10)

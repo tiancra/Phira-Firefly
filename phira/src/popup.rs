@@ -118,7 +118,7 @@ impl Popup {
         if !self.fader.transiting() && !self.showing {
             return;
         }
-        let xchs = prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed);
+        let xchs = prpr::ui::PREFER_ALT_UI.load(std::sync::atomic::Ordering::Relaxed);
         let r = self.rect;
         self.scroll.size((r.w, r.h));
         self.fader.reset();

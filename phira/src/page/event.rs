@@ -217,7 +217,7 @@ impl Page for EventPage {
             });
         }
 
-        if prpr::ui::PREFER_XCHS_UI.load(std::sync::atomic::Ordering::Relaxed) {
+        if prpr::ui::PREFER_ALT_UI.load(std::sync::atomic::Ordering::Relaxed) {
             const HDR_H: f32 = 0.155;
             let accent = Color::new(1.0, 0.58, 0.706, 1.0);
             let cream = Color::new(0.984, 0.973, 0.886, 1.0);

@@ -1,4 +1,4 @@
-//! Chart-to-video rendering scenes.
+﻿//! Chart-to-video rendering scenes.
 //!
 //! - [`RenderSettingsScene`]: black settings page with resolution/fps/ending/
 //!   codec/hardware-accel controls and a render button.
@@ -110,6 +110,10 @@ thread_local! {
     /// (pending output path, confirmed flag, job to start)
     static PENDING: RefCell<Option<(PathBuf, Arc<AtomicBool>)>> = const { RefCell::new(None) };
 }
+
+/// File dialog result from a background thread (None = no dialog open).
+static FILE_DIALOG_RESULT: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+static FILE_DIALOG_OPEN: AtomicBool = AtomicBool::new(false);
 
 pub struct RenderSettingsScene {
     chart_path: String,
@@ -265,6 +269,35 @@ impl Scene for RenderSettingsScene {
         }
         if self.btn_codec.changed() {
             self.codec_idx = self.btn_codec.selected();
+        }
+        // Pick up file dialog result from background thread
+        if let Ok(mut guard) = FILE_DIALOG_RESULT.lock() {
+            if let Some(path) = guard.take() {
+                let confirmed = Arc::new(AtomicBool::new(false));
+                let c = confirmed.clone();
+                Dialog::plain(
+                    "确认渲染".to_string(),
+                    format!("即将渲染到:\n{}\n\n谱面: {}\n内容: {}\n分辨率: {}x{}\n帧率: {}\n编码器: {}\n硬件加速: {}",
+                        path.display(),
+                        self.info.name,
+                        if self.replay.is_some() { "回放" } else { "自动演示" },
+                        RESOLUTIONS[self.res_idx].0,
+                        RESOLUTIONS[self.res_idx].1,
+                        FPS_OPTIONS[self.fps_idx],
+                        CODEC_NAMES[self.codec_idx],
+                        if self.hardware { "开启" } else { "关闭" },
+                    ),
+                )
+                .buttons(vec!["取消".to_string(), "开始渲染".to_string()])
+                .listener(move |_, id| {
+                    if id == 1 {
+                        c.store(true, Ordering::SeqCst);
+                    }
+                    false
+                })
+                .show();
+                PENDING.with(|p| *p.borrow_mut() = Some((path, confirmed)));
+            }
         }
         // Pick up pending confirmation — don't consume until confirmed
         let start = PENDING.with(|p| {
@@ -496,38 +529,17 @@ impl Scene for RenderSettingsScene {
             self.ending = (self.ending + ENDING_STEP).min(ENDING_MAX);
             return Ok(true);
         }
-        if self.btn_render.touch(touch, t) {
+        if self.btn_render.touch(touch, t) && !FILE_DIALOG_OPEN.load(Ordering::SeqCst) {
             let default_name = format!("{}.mp4", self.info.name.replace('/', "_"));
-            if let Some(path) = rfd::FileDialog::new()
-                .set_file_name(&default_name)
-                .add_filter("MP4 video", &["mp4"])
-                .save_file()
-            {
-                let confirmed = Arc::new(AtomicBool::new(false));
-                let c = confirmed.clone();
-                Dialog::plain(
-                    "确认渲染".to_string(),
-                    format!("即将渲染到:\n{}\n\n谱面: {}\n内容: {}\n分辨率: {}x{}\n帧率: {}\n编码器: {}\n硬件加速: {}",
-                        path.display(),
-                        self.info.name,
-                        if self.replay.is_some() { "回放" } else { "自动演示" },
-                        RESOLUTIONS[self.res_idx].0,
-                        RESOLUTIONS[self.res_idx].1,
-                        FPS_OPTIONS[self.fps_idx],
-                        CODEC_NAMES[self.codec_idx],
-                        if self.hardware { "开启" } else { "关闭" },
-                    ),
-                )
-                .buttons(vec!["取消".to_string(), "开始渲染".to_string()])
-                .listener(move |_, id| {
-                    if id == 1 {
-                        c.store(true, Ordering::SeqCst);
-                    }
-                    false
-                })
-                .show();
-                PENDING.with(|p| *p.borrow_mut() = Some((path, confirmed)));
-            }
+            FILE_DIALOG_OPEN.store(true, Ordering::SeqCst);
+            std::thread::spawn(move || {
+                let result = rfd::FileDialog::new()
+                    .set_file_name(&default_name)
+                    .add_filter("MP4 video", &["mp4"])
+                    .save_file();
+                *FILE_DIALOG_RESULT.lock().unwrap() = result;
+                FILE_DIALOG_OPEN.store(false, Ordering::SeqCst);
+            });
             return Ok(true);
         }
         Ok(false)
@@ -575,12 +587,18 @@ impl RenderProgressScene {
 
     fn start(&mut self) -> Result<()> {
         let exe = std::env::current_exe()?;
-        let mut child = Command::new(&exe)
-            .arg("render")
+        let mut cmd = Command::new(&exe);
+        cmd.arg("render")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
+            .stderr(Stdio::piped());
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+        let mut child = cmd.spawn()?;
 
         // Write job JSON to stdin
         {

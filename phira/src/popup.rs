@@ -126,7 +126,11 @@ impl Popup {
             // XCHS UI: 不做位移，只做「自上而下展开」的裁剪 + 同步透明度
             // （与 xcsim popup_app.rs 的 anim_p 行为一致）。
             // p: 0 = 完全收起，1 = 完全展开
-            let p = (1. - self.fader.progress(t).abs()).clamp(0., 1.);
+            let p = if self.showing {
+                if self.fader.transiting() { self.fader.progress(t).abs() } else { 1. }
+            } else {
+                if self.fader.transiting() { self.fader.progress(t).abs() } else { 0. }
+            };
             ui.abs_scope(|ui| {
                 ui.dx(r.x);
                 ui.dy(r.y);
@@ -405,7 +409,7 @@ impl ChooseButton {
     }
 
     pub fn touch(&mut self, touch: &Touch, t: f32) -> bool {
-        if self.btn.touch(touch, t) {
+        if self.btn.touch(touch, t) && !self.popup.showing() {
             self.need_to_show = true;
             true
         } else {

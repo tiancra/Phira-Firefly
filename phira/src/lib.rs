@@ -1,4 +1,4 @@
-prpr_l10n::tl_file!("common" ttl crate::);
+﻿prpr_l10n::tl_file!("common" ttl crate::);
 
 #[rustfmt::skip]
 #[cfg(closed)]
@@ -617,6 +617,18 @@ fn build_global_window_conf() -> Conf {
             .is_some_and(|d| d.config.fullscreen_mode);
     }
 
+    for arg in std::env::args().skip(1) {
+        if let Some(v) = arg.strip_prefix("--weight=") {
+            if let Ok(w) = v.parse::<i32>() {
+                conf.window_width = w;
+            }
+        } else if let Some(v) = arg.strip_prefix("--height=") {
+            if let Ok(h) = v.parse::<i32>() {
+                conf.window_height = h;
+            }
+        }
+    }
+
     conf
 }
 
@@ -640,22 +652,6 @@ pub extern "C" fn quad_main() {
         conf.window_height = 1080;
         macroquad::Window::from_config(conf, async {
             prpr::core::init_assets();
-            // Minimize the window on Windows
-            #[cfg(target_os = "windows")]
-            {
-                use std::ffi::c_void;
-                #[link(name = "user32")]
-                extern "system" {
-                    fn GetForegroundWindow() -> *mut c_void;
-                    fn ShowWindow(hwnd: *mut c_void, ncmdshow: i32) -> i32;
-                }
-                unsafe {
-                    let hwnd = GetForegroundWindow();
-                    if !hwnd.is_null() {
-                        ShowWindow(hwnd, 6); // SW_MINIMIZE = 6
-                    }
-                }
-            }
             if let Err(err) = render_worker::run().await {
                 eprintln!("render worker error: {err:?}");
                 std::process::exit(1);

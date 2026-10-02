@@ -1004,7 +1004,8 @@ impl GameScene {
 
             if !matches!(line.role, LyricRole::Background) {
                 for active in &self.active_lyrics {
-                    if active.line.end_time > line.start_time {
+                    // 只在同 role 之间垂直堆叠，Main(左) 与 Duet(右) 应并排显示
+                    if active.line.role == line.role && active.line.end_time > line.start_time {
                         y_offset += self.text_height * 1.5;
                     }
                 }
@@ -1103,9 +1104,11 @@ impl GameScene {
                 let color = Color::new(1., 1., 1., word_alpha as f32);
 
                 let draw_x = if anchor_x == 0.0 {
+                    // 左对齐：pos 即单词左边缘，anchor=0
                     x_pos as f32 + current_x
                 } else {
-                    x_pos as f32 - total_width + current_x
+                    // 右对齐：pos 即单词右边缘，anchor=1；需加上当前词宽
+                    x_pos as f32 - total_width + current_x + word_width
                 };
 
                 let draw_y = base_y - word_float_offset;
@@ -1701,6 +1704,7 @@ impl Scene for GameScene {
                         if !self.skip_done && !self.track_skipped {
                             self.skip_done = true;
                             self.track_skipped = true;
+                            crate::ui::track_skip_sfx();
                             self.skip_bar_active = false;
                             self.skip_bar_retracting = false;
                             self.skip_bar_from_corners = false;
@@ -1936,6 +1940,7 @@ impl Scene for GameScene {
         {
             self.skip_done = true;
             self.track_skipped = true;
+            crate::ui::track_skip_sfx();
             self.skip_transition_progress = 0.0;
             self.skip_wait_timer = 0.0;
             self.skip_fade_out_progress = 0.0;
@@ -2135,6 +2140,7 @@ impl Scene for GameScene {
                 if self.skip_countdown <= 0.0 {
                     self.skip_done = true;
                     self.track_skipped = true;
+                    crate::ui::track_skip_sfx();
                     self.skip_bar_active = false;
                     self.skip_bar_retracting = false;
                     self.skip_bar_from_corners = false;

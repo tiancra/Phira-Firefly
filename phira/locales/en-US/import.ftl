@@ -7,6 +7,8 @@ import-success = Imported successfully.
 import-failed = Import failed.
 import-respack-success = Imported successfully.
 import-respack-failed = Failed to import respack.
+import-theme-success = Theme imported successfully.
+import-theme-failed = Failed to import theme.
 
 batch-import = Batch Import
 batch-importing = Batch importing... ({ $current }/{ $total })

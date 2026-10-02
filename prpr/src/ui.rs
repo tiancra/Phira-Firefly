@@ -2288,6 +2288,15 @@ thread_local! {
     pub static UI_BTN_HITSOUND_LARGE: RefCell<Option<Sfx>> = const { RefCell::new(None) };
     pub static UI_BTN_HITSOUND: RefCell<Option<Sfx>> = const { RefCell::new(None) };
     pub static UI_SWITCH_SOUND: RefCell<Option<Sfx>> = const { RefCell::new(None) };
+    pub static UI_SFX_ENTER: RefCell<Option<Sfx>> = const { RefCell::new(None) };
+    pub static UI_SFX_ENTER_SPLASH: RefCell<Option<Sfx>> = const { RefCell::new(None) };
+    pub static UI_SFX_ENTER_LIBRARY: RefCell<Option<Sfx>> = const { RefCell::new(None) };
+    pub static UI_SFX_CHART_PREVIEW: RefCell<Option<Sfx>> = const { RefCell::new(None) };
+    pub static UI_SFX_START_PLAYING: RefCell<Option<Sfx>> = const { RefCell::new(None) };
+    pub static UI_SFX_TRACK_SKIP: RefCell<Option<Sfx>> = const { RefCell::new(None) };
+    pub static UI_SFX_TOAST_OK: RefCell<Option<Sfx>> = const { RefCell::new(None) };
+    pub static UI_SFX_TOAST_WARNING: RefCell<Option<Sfx>> = const { RefCell::new(None) };
+    pub static UI_SFX_TOAST_ERROR: RefCell<Option<Sfx>> = const { RefCell::new(None) };
 }
 
 pub fn button_hit() {
@@ -2300,6 +2309,78 @@ pub fn button_hit() {
 
 pub fn button_hit_large() {
     UI_BTN_HITSOUND_LARGE.with(|it| {
+        if let Some(sfx) = it.borrow_mut().as_mut() {
+            let _ = sfx.play(PlaySfxParams::default());
+        }
+    });
+}
+
+pub fn enter_sfx() {
+    UI_SFX_ENTER.with(|it| {
+        if let Some(sfx) = it.borrow_mut().as_mut() {
+            let _ = sfx.play(PlaySfxParams::default());
+        }
+    });
+}
+
+pub fn enter_splash_sfx() {
+    UI_SFX_ENTER_SPLASH.with(|it| {
+        if let Some(sfx) = it.borrow_mut().as_mut() {
+            let _ = sfx.play(PlaySfxParams::default());
+        }
+    });
+}
+
+pub fn enter_library_sfx() {
+    UI_SFX_ENTER_LIBRARY.with(|it| {
+        if let Some(sfx) = it.borrow_mut().as_mut() {
+            let _ = sfx.play(PlaySfxParams::default());
+        }
+    });
+}
+
+pub fn chart_preview_sfx() {
+    UI_SFX_CHART_PREVIEW.with(|it| {
+        if let Some(sfx) = it.borrow_mut().as_mut() {
+            let _ = sfx.play(PlaySfxParams::default());
+        }
+    });
+}
+
+pub fn start_playing_sfx() {
+    UI_SFX_START_PLAYING.with(|it| {
+        if let Some(sfx) = it.borrow_mut().as_mut() {
+            let _ = sfx.play(PlaySfxParams::default());
+        }
+    });
+}
+
+pub fn track_skip_sfx() {
+    UI_SFX_TRACK_SKIP.with(|it| {
+        if let Some(sfx) = it.borrow_mut().as_mut() {
+            let _ = sfx.play(PlaySfxParams::default());
+        }
+    });
+}
+
+pub fn toast_ok_sfx() {
+    UI_SFX_TOAST_OK.with(|it| {
+        if let Some(sfx) = it.borrow_mut().as_mut() {
+            let _ = sfx.play(PlaySfxParams::default());
+        }
+    });
+}
+
+pub fn toast_warning_sfx() {
+    UI_SFX_TOAST_WARNING.with(|it| {
+        if let Some(sfx) = it.borrow_mut().as_mut() {
+            let _ = sfx.play(PlaySfxParams::default());
+        }
+    });
+}
+
+pub fn toast_error_sfx() {
+    UI_SFX_TOAST_ERROR.with(|it| {
         if let Some(sfx) = it.borrow_mut().as_mut() {
             let _ = sfx.play(PlaySfxParams::default());
         }

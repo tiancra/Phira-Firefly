@@ -124,6 +124,12 @@ impl MessageBuilder {
     }
 
     fn show(&mut self) -> MessageHandle {
+        match self.kind {
+            MessageKind::Ok => crate::ui::toast_ok_sfx(),
+            MessageKind::Warn => crate::ui::toast_warning_sfx(),
+            MessageKind::Error => crate::ui::toast_error_sfx(),
+            _ => {}
+        }
         BILLBOARD.with(|it| {
             let mut guard = it.borrow_mut();
             let (msg, handle) = Message::new(std::mem::take(&mut self.content), guard.1.now() as _, self.duration, self.kind.clone());

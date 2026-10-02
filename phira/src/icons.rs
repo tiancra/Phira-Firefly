@@ -40,7 +40,7 @@ pub struct Icons {
 impl Icons {
     pub async fn new() -> Result<Self> {
         Ok(Self {
-            icon: load_texture("icon.png").await?.into(),
+            icon: prpr::theme::load_asset_texture("icon.png").await?.into(),
             play: load_texture("resume.png").await?.into(),
             medal: load_texture("medal.png").await?.into(),
             respack: load_texture("respack.png").await?.into(),
@@ -70,7 +70,7 @@ impl Icons {
             export: load_texture("export.png").await?.into(),
             select: load_texture("select.png").await?.into(),
 
-            r#abstract: load_texture("abstract.jpg").await?.into(),
+            r#abstract: prpr::theme::load_asset_texture("abstract.jpg").await?.into(),
         })
     }
 }

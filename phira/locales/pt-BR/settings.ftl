@@ -6,6 +6,7 @@ audio = Audio
 chart = Beatmap
 debug = Depurar
 about = Informações
+theme = Tema
 
 item-lang = Linguagem
 item-offline = Modo offline

@@ -110,26 +110,26 @@ void main() {
     float wsum = 0.0;
     int count = int(clamp(blob_count, 1.0, 14.0));
 
-    // 慢时间系数：Apple Music 风格运动非常缓慢
-    float slow_time = time * 0.025;
+    // 慢时间系数：Apple Music 风格运动缓慢但可感知
+    float slow_time = time * 0.06;
 
     for (int i = 0; i < 14; ++i) {
         if (i >= count) { break; }
         vec4 col = color_for(i);
         float fi = float(i);
 
-        // 色块中心：由 fBm 噪声驱动，运动缓慢且自然
+        // 色块中心：由 fBm 噪声驱动，映射到 [-0.3, 1.3] 让色块可滑出屏幕边缘
         vec2 center = vec2(
-            fbm(vec2(fi * 0.7 + slow_time * 0.3, fi * 1.3)),
-            fbm(vec2(fi * 1.1 + 50.0, fi * 0.9 + slow_time * 0.3))
+            fbm(vec2(fi * 0.5 + slow_time * 0.5, fi * 0.8)) * 1.6 - 0.3,
+            fbm(vec2(fi * 0.6 + 50.0, fi * 0.7 + slow_time * 0.4)) * 1.6 - 0.3
         );
 
         vec2 diff = uv - center;
         diff.x *= aspect;
 
-        // 大半径：Apple Music 风格是大面积的色彩流动
+        // 大半径：Apple Music 风格是大面积的色彩流动；energy 驱动色块脉动胀缩
         float radius = 0.75 + fbm(vec2(fi * 2.0, slow_time * 0.2)) * 0.35;
-        radius += energy * 0.25;
+        radius *= 1.0 + energy * 0.35;
 
         // 形状扰动：使用大尺度噪声，使色块边缘柔和流动
         float shape_noise = fbm(uv * 1.5 + vec2(slow_time * 0.5 + fi, slow_time * 0.3));

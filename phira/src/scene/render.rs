@@ -1,4 +1,4 @@
-﻿//! Chart-to-video rendering scenes.
+//! Chart-to-video rendering scenes.
 //!
 //! - [`RenderSettingsScene`]: black settings page with resolution/fps/ending/
 //!   codec/hardware-accel controls and a render button.
@@ -147,6 +147,7 @@ pub struct RenderSettingsScene {
     player_name: String,
     player_rks: f32,
     avatar_bytes: Option<Vec<u8>>,
+    res_pack_path: Option<String>,
     dynamic_background: prpr::config::DynamicBackgroundMode,
     particle: bool,
     disable_effect: bool,
@@ -166,6 +167,22 @@ impl RenderSettingsScene {
         // XC-SIM charts live in `data/charts/xcsim`, which is never part of the
         // chart folder name of anything else, so the path is enough to tell.
         let xcsim = chart_path.contains("xcsim");
+        // Use the respack the player currently has selected (recomputed, since
+        // config.res_pack_path may be stale), falling back to the passed config.
+        let res_pack_path = {
+            let id = crate::get_data().respack_id;
+            if id == 0 {
+                cfg.res_pack_path.clone()
+            } else {
+                crate::get_data()
+                    .respacks
+                    .get(id - 1)
+                    .and_then(|name| {
+                        crate::dir::respacks().ok().map(|rp| format!("{}/{}", rp, name))
+                    })
+                    .or_else(|| cfg.res_pack_path.clone())
+            }
+        };
         Self {
             chart_path,
             info,
@@ -201,6 +218,7 @@ impl RenderSettingsScene {
             player_name,
             player_rks,
             avatar_bytes,
+            res_pack_path,
             dynamic_background: cfg.dynamic_background,
             particle: cfg.particle,
             disable_effect: cfg.disable_effect,
@@ -323,6 +341,7 @@ impl Scene for RenderSettingsScene {
                 replay: self.replay.clone(),
                 player_name: self.player_name.clone(),
                 player_rks: self.player_rks,
+                res_pack_path: self.res_pack_path.clone(),
                 avatar_bytes: self.avatar_bytes.clone(),
                 dynamic_background: self.dynamic_background,
                 particle: self.particle,

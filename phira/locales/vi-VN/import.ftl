@@ -7,3 +7,5 @@ import-success = Nhập thành công
 import-failed = Không thể nhập
 import-respack-success = Nhập thành công
 import-respack-failed = Không thể nhập respack này
+import-theme-success = Nhập chủ đề thành công
+import-theme-failed = Nhập chủ đề thất bại

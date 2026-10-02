@@ -7,6 +7,8 @@ import-success = 导入成功
 import-failed = 导入失败
 import-respack-success = 导入流萤的服装成功
 import-respack-failed = 导入流萤的服装失败
+import-theme-success = 主题导入成功
+import-theme-failed = 主题导入失败
 
 batch-import = 批量导入
 batch-importing = 批量导入中 ({ $current }/{ $total })

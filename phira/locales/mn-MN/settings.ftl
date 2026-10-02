@@ -4,6 +4,7 @@ audio = Дуу
 chart = Бийтмап
 debug = Дибаг
 about = Мэдээлэл
+theme = Сэдэв
 item-lang = Хэл
 item-offline = Офлайн горим
 item-offline-sub = Офлайн горимоор тоглоомын рекордыг байршуулах боломжгүй

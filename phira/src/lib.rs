@@ -26,6 +26,7 @@ mod resource;
 mod scene;
 mod tabs;
 mod tags;
+mod theme;
 mod threed;
 mod uml;
 
@@ -204,6 +205,10 @@ mod dir {
     pub fn replays() -> Result<String> {
         ensure("data/replays")
     }
+
+    pub fn themes() -> Result<String> {
+        ensure("data/themes")
+    }
 }
 
 /// 加载崩溃界面字体。优先使用 font.ttf，缺失时回退到随包自带的其他 TTF 字体，
@@ -319,6 +324,10 @@ async fn the_main() -> Result<()> {
 
     #[cfg(feature = "intest")]
     intest::init().await;
+
+    // 应用当前主题：读取主题目录 config.json，将非空资源项注册为覆盖，
+    // 替换默认 assets 资源后，再进入启动场景加载。
+    crate::theme::apply_theme_overrides();
 
     let mut main = Some(Main::new(Box::new(BootScene::new(font.clone()).await?), TimeManager::default(), None).await?);
 
@@ -648,6 +657,10 @@ pub extern "C" fn quad_main() {
 
         let mut conf = build_global_window_conf();
         conf.headless = true;
+        // Never inherit fullscreen: the fullscreen branch in miniquad's window
+        // creation uses WS_VISIBLE, which would show the render window and steal
+        // focus from the game even in headless mode.
+        conf.fullscreen = false;
         conf.window_width = 1920;
         conf.window_height = 1080;
         macroquad::Window::from_config(conf, async {

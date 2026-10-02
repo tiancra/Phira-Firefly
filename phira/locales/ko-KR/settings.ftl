@@ -6,6 +6,7 @@ audio = 오디오
 chart = 비트맵
 debug = 디버그
 about = 정보
+theme = 테마
 
 item-lang = 언어
 item-offline = 오프라인 모드

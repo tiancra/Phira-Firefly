@@ -7,3 +7,5 @@ import-success = Importierung erfolgreich.
 import-failed = Importierung fehlgeschlagen.
 import-respack-success = Importierung erfolgreich.
 import-respack-failed = Fehler beim Importieren des Skins.
+import-theme-success = Theme importiert erfolgreich.
+import-theme-failed = Theme-Import fehlgeschlagen.

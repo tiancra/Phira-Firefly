@@ -6,3 +6,5 @@ importing = インポート中
 import-success = インポートに成功しました
 import-failed = インポートに失敗しました
 import-respack-failed = リソースパックのインポートに失敗しました
+import-theme-success = テーマのインポートに成功しました
+import-theme-failed = テーマのインポートに失敗しました

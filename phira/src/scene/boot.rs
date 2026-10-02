@@ -8,7 +8,7 @@ use prpr::{
     ext::{semi_black, semi_white, SafeTexture, ScaleType},
     scene::{NextScene, Scene},
     time::TimeManager,
-    ui::{FontArc, Ui, UI_AUDIO},
+    ui::{enter_sfx, enter_splash_sfx, FontArc, Ui, UI_AUDIO},
 };
 use sasa::{AudioClip, Music, MusicParams};
 use std::cell::RefCell;
@@ -74,10 +74,10 @@ pub struct BootScene {
 impl BootScene {
     pub async fn new(font: FontArc) -> Result<Self> {
         let main_scene = MainScene::new(font).await?;
-        let splash: SafeTexture = load_texture("splash.png").await?.into();
-        let background: SafeTexture = load_texture("background.jpg").await?.into();
-        let boot: SafeTexture = load_texture("boot.png").await?.into();
-        let splash_music = match AudioClip::new(load_file("splash.mp3").await?) {
+        let splash: SafeTexture = prpr::theme::load_asset_texture("splash.png").await?.into();
+        let background: SafeTexture = prpr::theme::load_asset_texture("background.jpg").await?.into();
+        let boot: SafeTexture = prpr::theme::load_asset_texture("boot.png").await?.into();
+        let splash_music = match AudioClip::new(prpr::theme::load_asset_file("splash.mp3").await?) {
             Ok(clip) => UI_AUDIO
                 .with(|it| {
                     it.borrow_mut().create_music(
@@ -198,6 +198,8 @@ impl BootScene {
         if let Some(m) = self.splash_music.as_mut() {
             let _ = m.fade_out(SPLASH_MUSIC_FADE_OUT);
         }
+        // 鍣ㄩ煶:鐐瑰嚮灞忓箷杩涘叆涓诲睆闈㈡椂鎾斁
+        enter_sfx();
     }
 
     /// 跳过前面的黑屏/splash/警告阶段，直接进入 LOGO（背景 + boot）阶段。
@@ -239,12 +241,13 @@ impl Scene for BootScene {
             self.started_set = true;
             self.started = tm.now();
         }
-        // 背景/boot 渐显时开始播放 splash.mp3
+        // 背景/boot 渐显时开始播放 splash.mp3，同时播放一次 entersplash 音效
         if !self.boot_music_started && self.elapsed(tm) >= BOOT_READY - BOOT_FADE_IN {
             self.boot_music_started = true;
             if let Some(m) = self.splash_music.as_mut() {
                 let _ = m.fade_in(1.0);
             }
+            enter_splash_sfx();
         }
         Ok(())
     }

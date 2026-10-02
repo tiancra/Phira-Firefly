@@ -5,6 +5,7 @@ use crate::{
     fs::FileSystem,
     info::ChartInfo,
     particle::{AtlasConfig, ColorCurve, Emitter, EmitterConfig},
+    theme::load_asset_image,
 };
 use anyhow::{bail, Context, Result};
 use macroquad::prelude::*;
@@ -297,7 +298,10 @@ impl ResourcePack {
             sfx_click: load_clip!("click"),
             sfx_drag: load_clip!("drag"),
             sfx_flick: load_clip!("flick"),
-            ending: load_clip!("ending"),
+            ending: match crate::theme::load_asset_file("ending.ogg").await {
+                Ok(bytes) => AudioClip::new(bytes)?,
+                Err(_) => load_clip!("ending"),
+            },
             hit_fx,
         })
     }
@@ -470,7 +474,7 @@ macro_rules! loads {
     };
 
     (@detail $path:literal) => {
-        Texture2D::from_image(&load_image($path).await?).into()
+        Texture2D::from_image(&load_asset_image($path).await?).into()
     };
 }
 
@@ -516,7 +520,7 @@ impl Resource {
     ) -> Result<Self> {
         macro_rules! load_tex {
             ($path:literal) => {
-                SafeTexture::from(Texture2D::from_image(&load_image($path).await?))
+                SafeTexture::from(Texture2D::from_image(&load_asset_image($path).await?))
             };
         }
         let res_pack = ResourcePack::from_path(config.res_pack_path.as_ref())

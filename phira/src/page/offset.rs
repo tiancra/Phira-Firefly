@@ -45,13 +45,13 @@ impl OffsetPage {
     pub async fn new() -> Result<Self> {
         let mut audio = create_audio_manger(&get_data().config)?;
         let cali = audio.create_music(
-            AudioClip::new(load_file("cali.ogg").await?)?,
+            AudioClip::new(prpr::theme::load_asset_file("cali.ogg").await?)?,
             MusicParams {
                 loop_mix_time: 0.,
                 ..Default::default()
             },
         )?;
-        let cali_hit = audio.create_sfx(AudioClip::new(load_file("cali_hit.ogg").await?)?, None)?;
+        let cali_hit = audio.create_sfx(AudioClip::new(prpr::theme::load_asset_file("cali_hit.ogg").await?)?, None)?;
 
         let mut tm = TimeManager::new(1., true);
         tm.force = 3e-2;

@@ -8,6 +8,7 @@ use crate::{
     scene::{TutorialLoadingScene, BGM_VOLUME_UPDATED},
     sync_data,
     tabs::{Tabs, TitleFn},
+    theme::ThemeView,
 };
 use anyhow::Result;
 use bytesize::ByteSize;
@@ -135,6 +136,7 @@ enum SettingListType {
     Chart,
     Debug,
     About,
+    Theme,
 }
 
 pub struct SettingsPage {
@@ -142,6 +144,7 @@ pub struct SettingsPage {
     list_audio: AudioList,
     list_chart: ChartList,
     list_debug: DebugList,
+    theme_view: ThemeView,
 
     tabs: Tabs<SettingListType>,
 
@@ -153,8 +156,8 @@ pub struct SettingsPage {
     sf: SFader,
     need_back: bool,
 
-    nb1: [DRectButton; 5],
-    tr2: [Rect; 5],
+    nb1: [DRectButton; 6],
+    tr2: [Rect; 6],
 }
 
 impl SettingsPage {
@@ -166,14 +169,16 @@ impl SettingsPage {
             list_audio: AudioList::new(),
             list_chart: ChartList::new(),
             list_debug: DebugList::new(),
+            theme_view: ThemeView::new(),
 
             tabs: Tabs::new([
                 (SettingListType::General, || tl!("general")),
                 (SettingListType::Audio, || tl!("audio")),
                 (SettingListType::Chart, || tl!("chart")),
                 (SettingListType::Debug, || tl!("debug")),
+                (SettingListType::Theme, || tl!("theme")),
                 (SettingListType::About, || tl!("about")),
-            ] as [(SettingListType, TitleFn); 5]),
+            ] as [(SettingListType, TitleFn); 6]),
 
             scroll: Scroll::new(),
             save_time: f32::INFINITY,
@@ -183,13 +188,14 @@ impl SettingsPage {
             sf: SFader::new(),
             need_back: false,
 
-            nb1: [(); 5].map(|_| DRectButton::new()),
-            tr2: [Rect::new(0., 0., 0., 0.); 5],
+            nb1: [(); 6].map(|_| DRectButton::new()),
+            tr2: [Rect::new(0., 0., 0., 0.); 6],
         }
     }
 
     pub fn render_a1(&mut self, ui: &mut Ui, s2: &mut SharedState) -> Result<()> {
         let t = s2.t;
+        self.theme_view.set_import_in_header(true);
         let rt1 = s2.rt;
         let top = ui.top;
         let bar_y = -top;
@@ -213,6 +219,7 @@ impl SettingsPage {
             SettingListType::Chart => tl!("chart"),
             SettingListType::Debug => tl!("debug"),
             SettingListType::About => tl!("about"),
+            SettingListType::Theme => tl!("theme"),
         };
         let section_str = section_name.as_ref();
 
@@ -284,6 +291,11 @@ impl SettingsPage {
                 .pos(panel_x + 0.04, sh_r.center().y)
                 .anchor(0., 0.5).no_baseline().size(0.5)
                 .color(c_cream).draw();
+            // 主题页导入加号：放在顶部标题栏右侧（与"主题"标题同一行）。
+            if let SettingListType::Theme = self.tabs.selected() {
+                let ir = Rect::new(sh_r.right() - 0.075, sh_r.center().y - 0.0375, 0.075, 0.075);
+                self.theme_view.render_import_btn_at(ui, ir, t);
+            }
             ui.fill_path(&Rect::new(panel_x + 0.03, sh_r.bottom() + 0.002, panel_w - 0.06, 0.003).rounded(0.0015), c_sep);
             let list_y = card_top + SECTION_HDR_H + 0.008;
             let list_h = card_h - SECTION_HDR_H - 0.02;
@@ -300,6 +312,7 @@ impl SettingsPage {
                         SettingListType::Chart => self.list_chart.render(ui, render_r, t),
                         SettingListType::Debug => self.list_debug.render(ui, render_r, t),
                         SettingListType::About => render_about(ui, render_r, &self.icon),
+                        SettingListType::Theme => self.theme_view.render(ui, render_r, t),
                     });
                 });
             });
@@ -345,6 +358,7 @@ impl Page for SettingsPage {
             SettingListType::Chart => self.list_chart.top_touch(touch, t),
             SettingListType::Debug => self.list_debug.top_touch(touch, t),
             SettingListType::About => false,
+            SettingListType::Theme => false,
         } {
             return Ok(true);
         }
@@ -356,12 +370,18 @@ impl Page for SettingsPage {
         if self.scroll.touch(touch, t) {
             return Ok(true);
         }
-        if let Some(p) = match self.tabs.selected() {
+        if let SettingListType::Theme = self.tabs.selected() {
+            if self.theme_view.touch(touch, t)? {
+                self.scroll.y_scroller.halt();
+                return Ok(true);
+            }
+        } else if let Some(p) = match self.tabs.selected() {
             SettingListType::General => self.list_general.touch(touch, t)?,
             SettingListType::Audio => self.list_audio.touch(touch, t)?,
             SettingListType::Chart => self.list_chart.touch(touch, t)?,
             SettingListType::Debug => self.list_debug.touch(touch, t)?,
             SettingListType::About => None,
+            SettingListType::Theme => None,
         } {
             if p {
                 self.save_time = t;
@@ -380,6 +400,7 @@ impl Page for SettingsPage {
             SettingListType::Chart => self.list_chart.update(t)?,
             SettingListType::Debug => self.list_debug.update(t)?,
             SettingListType::About => false,
+            SettingListType::Theme => self.theme_view.update(t)?,
         };
         self.scroll.update(t);
         if changed {
@@ -421,6 +442,7 @@ impl Page for SettingsPage {
                         SettingListType::Chart => self.list_chart.render(ui, r, t),
                         SettingListType::Debug => self.list_debug.render(ui, r, t),
                         SettingListType::About => render_about(ui, r, &self.icon),
+                        SettingListType::Theme => self.theme_view.render(ui, r, t),
                     });
                 });
 
@@ -441,7 +463,20 @@ impl Page for SettingsPage {
     }
 
     fn next_scene(&mut self, s: &mut SharedState) -> NextScene {
+        if let Some(scene) = self.theme_view.next_scene() {
+            return scene;
+        }
         self.sf.next_scene(s.t).unwrap_or_default()
+    }
+
+    fn on_result(&mut self, _result: Box<dyn std::any::Any>, s: &mut SharedState) -> Result<()> {
+        self.theme_view.on_result(s.t);
+        Ok(())
+    }
+
+    fn render_top(&mut self, ui: &mut Ui, s: &mut SharedState) -> Result<()> {
+        self.theme_view.render_top(ui, s.t);
+        Ok(())
     }
 }
 

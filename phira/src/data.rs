@@ -116,6 +116,8 @@ pub struct Data {
     pub xcsim_name: Option<String>,
     pub respacks: Vec<String>,
     pub respack_id: usize,
+    #[serde(default)]
+    pub applied_theme: Option<String>,
     
     pub read_tos_and_policy: bool,
     pub terms_modified: Option<String>,

@@ -6,6 +6,7 @@ audio = Audio
 chart = Chart
 debug = Debug
 about = Info
+theme = Theme
 
 item-lang = Language
 item-fullscreen = Fullscreen Mode

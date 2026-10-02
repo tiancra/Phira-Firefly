@@ -144,6 +144,21 @@ fn fade_in_time() -> Option<f32> {
     }
 }
 
+/// 按纹理原始宽高比在矩形内等比缩小（contain），避免 `ScaleType::Fit` 将非方形图拉伸变形。
+fn contain_rect(tex: &Texture2D, r: Rect) -> Rect {
+    let (tw, th) = (tex.width() as f32, tex.height() as f32);
+    if tw <= 0. || th <= 0. {
+        return r;
+    }
+    let ratio = tw / th;
+    let (w, h) = if r.w / r.h > ratio {
+        (r.h * ratio, r.h)
+    } else {
+        (r.w, r.w / ratio)
+    };
+    Rect::new(r.x + (r.w - w) / 2., r.y + (r.h - h) / 2., w, h)
+}
+
 fn edit_transit() -> Option<f32> {
     if get_data().prefer_reduced_motion {
         None
@@ -1881,7 +1896,8 @@ impl SongScene {
                 .draw();
 
             let g_r = Rect::new(rcx, p_r.bottom() + 0.035, 0.11, 0.11);
-            ui.fill_rect(g_r, (*self.rank_icons[grade], g_r, ScaleType::Fit));
+            let g_draw = contain_rect(&self.rank_icons[grade], g_r);
+            ui.fill_rect(g_draw, (*self.rank_icons[grade], g_draw, ScaleType::Fit));
             if self.record.is_some() {
                 ui.text(format!("{:.2}%", accuracy * 100.))
                     .pos(g_r.right() + 0.04, g_r.center().y)
@@ -2478,6 +2494,7 @@ impl Scene for SongScene {
             return Ok(true);
         }
         if self.scene_task.is_none() && self.next_scene.is_none() && self.play_btn.touch(touch, t) {
+            prpr::ui::start_playing_sfx();
             if self.local_path.is_some() {
                 self.launch(GameMode::Normal, false)?;
             } else {
@@ -3599,6 +3616,7 @@ impl Scene for SongScene {
                     icon_index(it.score as _, it.full_combo)
                 }
             });
+            let r_draw = contain_rect(&self.rank_icons[icon], r);
             if xchs {
                 // XCHS 最佳成绩卡片：粉色辉光 + 李子色面板 + 粉边
                 let bp = Rect::new(-0.975, ui.top - 0.50, 0.78, 0.47);
@@ -3606,7 +3624,7 @@ impl Scene for SongScene {
                 ui.fill_path(&bp.rounded(0.028), Color::new(0.145, 0.098, 0.157, 0.98));
                 ui.stroke_path(&bp.rounded(0.028), 0.0035, panel_border);
             }
-            ui.fill_rect(r, (*self.rank_icons[icon], r, ScaleType::Fit));
+            ui.fill_rect(r_draw, (*self.rank_icons[icon], r_draw, ScaleType::Fit));
             let score = self.record.as_ref().map(|it| it.score).unwrap_or_default();
             let accuracy = self.record.as_ref().map(|it| it.accuracy).unwrap_or_default();
             // XC-SIM 分数固定显示 8 位，官方/本地谱面显示 7 位。

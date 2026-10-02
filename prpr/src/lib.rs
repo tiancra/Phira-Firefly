@@ -16,6 +16,7 @@ pub mod replay;
 pub mod smtc;
 pub mod scene;
 pub mod task;
+pub mod theme;
 pub mod time;
 pub mod ui;
 

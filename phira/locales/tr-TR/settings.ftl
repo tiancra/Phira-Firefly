@@ -6,6 +6,7 @@ audio = Ses
 chart = Müzikler
 debug = Hata Ayıklama
 about = Bilgi
+theme = Tema
 
 item-lang = Dil
 item-offline = Çevrimdışı Mod

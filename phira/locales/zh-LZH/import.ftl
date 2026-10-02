@@ -7,6 +7,8 @@ import-success = 導入功矣
 import-failed = 導入敗矣
 import-respack-success = 流螢之衣導入功矣
 import-respack-failed = 流螢之衣導入敗矣
+import-theme-success = 主題導入成功
+import-theme-failed = 主題導入敗矣
 
 batch-import = 批量導入
 batch-importing = 批量導入中 ({ $current }/{ $total })

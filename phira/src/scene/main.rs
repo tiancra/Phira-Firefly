@@ -96,7 +96,7 @@ impl MainScene {
         Self::init().await?;
 
         let bgm = {
-            match AudioClip::new(load_file("bgm.mp3").await?) {
+            match AudioClip::new(prpr::theme::load_asset_file("bgm.mp3").await?) {
                 Ok(clip) => Some(UI_AUDIO.with(|it| {
                     it.borrow_mut().create_music(
                         clip,
@@ -124,7 +124,7 @@ impl MainScene {
         // init button hitsound
         macro_rules! load_sfx {
             ($name:ident, $path:literal) => {{
-                let clip = AudioClip::new(load_file($path).await?)?;
+                let clip = AudioClip::new(prpr::theme::load_asset_file($path).await?)?;
                 let sound = UI_AUDIO.with(|it| it.borrow_mut().create_sfx(clip, None))?;
                 prpr::ui::$name.with(|it| *it.borrow_mut() = Some(sound));
             }};
@@ -133,7 +133,29 @@ impl MainScene {
         load_sfx!(UI_BTN_HITSOUND, "button.ogg");
         load_sfx!(UI_SWITCH_SOUND, "switch.ogg");
 
-        let background: SafeTexture = load_texture("background.jpg").await?.into();
+        // 主题音频挂载点：进入谱面库 / 进入谱面预览 / 开始游玩（文件缺失时静默跳过，不影响启动）
+        macro_rules! load_optional_sfx {
+            ($name:ident, $path:literal) => {{
+                if let Ok(bytes) = prpr::theme::load_asset_file($path).await {
+                    if let Ok(clip) = AudioClip::new(bytes) {
+                        if let Ok(sound) = UI_AUDIO.with(|it| it.borrow_mut().create_sfx(clip, None)) {
+                            prpr::ui::$name.with(|it| *it.borrow_mut() = Some(sound));
+                        }
+                    }
+                }
+            }};
+        }
+        load_optional_sfx!(UI_SFX_ENTER_LIBRARY, "enterlibrary.ogg");
+        load_optional_sfx!(UI_SFX_CHART_PREVIEW, "chartpreview.ogg");
+        load_optional_sfx!(UI_SFX_START_PLAYING, "startplaying.ogg");
+        load_optional_sfx!(UI_SFX_ENTER_SPLASH, "entersplash.ogg");
+        load_optional_sfx!(UI_SFX_TRACK_SKIP, "trackskip.ogg");
+        load_optional_sfx!(UI_SFX_ENTER, "enter.ogg");
+        load_optional_sfx!(UI_SFX_TOAST_OK, "toast_ok.ogg");
+        load_optional_sfx!(UI_SFX_TOAST_WARNING, "toast_warning.ogg");
+        load_optional_sfx!(UI_SFX_TOAST_ERROR, "toast_error.ogg");
+
+        let background: SafeTexture = prpr::theme::load_asset_texture("background.jpg").await?.into();
         let icon_back: SafeTexture = load_texture("back.png").await?.into();
 
         TEX_BACKGROUND.with(|it| *it.borrow_mut() = Some(background));
@@ -541,6 +563,15 @@ impl Scene for MainScene {
                             RESPACK_ITEM.with(|it| *it.borrow_mut() = Some(item));
                             show_message(itl!("import-respack-success"));
                         }
+                    }
+                }
+                "_import_theme" => {
+                    match crate::theme::import_theme_from_zip(file) {
+                        Ok(name) => {
+                            crate::theme::THEME_IMPORTED.store(true, Ordering::Relaxed);
+                            show_message(itl!("import-theme-success", "name" => name)).ok();
+                        }
+                        Err(err) => show_error(err.context(itl!("import-theme-failed"))),
                     }
                 }
                 _ => return_file(id, file),

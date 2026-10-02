@@ -612,6 +612,7 @@ impl Page for HomePage {
             self.btn_play_3d.touch(touch, t);
             if self.btn_play.touch(touch, t) {
                 button_hit_large();
+                prpr::ui::enter_library_sfx();
                 self.next_page = Some(NextPage::Overlay(Box::new(LibraryPage::new(Arc::clone(&self.icons), s.icons.clone())?)));
                 return Ok(true);
             }

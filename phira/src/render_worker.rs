@@ -9,7 +9,7 @@ use anyhow::{anyhow, Context, Result};
 use macroquad::prelude::*;
 use prpr::{
     config::{Config, Mods},
-    core::{internal_id, MSRenderTarget, NoteKind, BOLD_FONT, PGR_FONT},
+    core::{internal_id, MSRenderTarget, NoteKind, ResourcePack, BOLD_FONT, PGR_FONT},
     ext::RectExt,
     fs,
     info::ChartInfo,
@@ -70,6 +70,10 @@ pub struct RenderJob {
     pub player_name: String,
     pub player_rks: f32,
     pub avatar_bytes: Option<Vec<u8>>,
+    /// Current resource pack (skin) directory, if any. Controls note skins,
+    /// hit sounds, hit fx and the ending music used by the render.
+    #[serde(default)]
+    pub res_pack_path: Option<String>,
     pub dynamic_background: prpr::config::DynamicBackgroundMode,
     pub particle: bool,
     pub disable_effect: bool,
@@ -220,6 +224,7 @@ async fn run_inner() -> Result<()> {
     let replay = job.replay;
     let mut config = Config::default();
     config.mods = Mods::AUTOPLAY;
+    config.res_pack_path = job.res_pack_path.clone();
     config.sample_count = 4;
     config.player_name = job.player_name.clone();
     config.player_rks = job.player_rks;
@@ -269,12 +274,19 @@ async fn run_inner() -> Result<()> {
 
     macro_rules! ld {
         ($path:literal) => {
-            AudioClip::new(load_file($path).await?).with_context(|| format!("Failed to load {}", $path))?
+            AudioClip::new(prpr::theme::load_asset_file($path).await?).with_context(|| format!("Failed to load {}", $path))?
         };
     }
     let music_bytes = fs.load_file(&info.music).await?;
     let music = AudioClip::new(music_bytes).context("Failed to load music")?;
-    let ending = ld!("ending.ogg");
+    // Prefer the current resource pack (skin) for hit sounds and the ending
+    // music so the render matches what the player hears/uses in-game; fall
+    // back to the bundled assets when no respack is selected or it fails.
+    let res_pack = match job.res_pack_path.as_deref() {
+        Some(path) => ResourcePack::from_path(Some(path)).await.ok(),
+        None => None,
+    };
+    let ending = res_pack.as_ref().map(|r| r.ending.clone()).unwrap_or(ld!("ending.ogg"));
     // sasa's AudioClip reports a truncated length in headless mode. Use ffprobe
     // to get the real duration of the music file.
     let track_length = {
@@ -296,9 +308,9 @@ async fn run_inner() -> Result<()> {
         }
     };
     eprintln!("[render_worker] track_length computed: {track_length}");
-    let sfx_click = ld!("click.ogg");
-    let sfx_drag = ld!("drag.ogg");
-    let sfx_flick = ld!("flick.ogg");
+    let sfx_click = res_pack.as_ref().map(|r| r.sfx_click.clone()).unwrap_or(ld!("click.ogg"));
+    let sfx_drag = res_pack.as_ref().map(|r| r.sfx_drag.clone()).unwrap_or(ld!("drag.ogg"));
+    let sfx_flick = res_pack.as_ref().map(|r| r.sfx_flick.clone()).unwrap_or(ld!("flick.ogg"));
 
     // Mix at full volume even though config volumes are 0 (to mute live audio)
     let volume_music = 1.0f32;

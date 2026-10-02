@@ -6,6 +6,7 @@ audio = Audio
 chart = Beatmap
 debug = Debug
 about = Info
+theme = ธีม
 
 item-lang = ภาษา
 item-offline = Offline mode

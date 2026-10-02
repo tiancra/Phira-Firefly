@@ -4,6 +4,7 @@ label = 設定
 general = 一般
 audio = オーディオ
 chart = ビートマップ
+theme = テーマ
 
 item-lang = 言語
 item-offline = オフラインモード

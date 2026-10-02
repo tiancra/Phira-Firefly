@@ -1,0 +1,560 @@
+warning: skipping duplicate package `phira-mp-common v0.1.0 (https://github.com/tiancra/phira-mp?branch=main#f2320614)`:
+  C:\Users\Tcwbi\.cargo\git\checkouts\phira-mp-2486c0e812b24550\f232061\server-src\phira-mp-common\Cargo.toml
+in favor of C:\Users\Tcwbi\.cargo\git\checkouts\phira-mp-2486c0e812b24550\f232061\phira-mp-common\Cargo.toml
+
+warning: skipping duplicate package `phira-mp-macros v0.1.0 (https://github.com/tiancra/phira-mp?branch=main#f2320614)`:
+  C:\Users\Tcwbi\.cargo\git\checkouts\phira-mp-2486c0e812b24550\f232061\server-src\phira-mp-macros\Cargo.toml
+in favor of C:\Users\Tcwbi\.cargo\git\checkouts\phira-mp-2486c0e812b24550\f232061\phira-mp-macros\Cargo.toml
+
+warning: unused import: `anyhow::Result`
+ --> prpr-render\src\material.rs:4:5
+  |
+4 | use anyhow::Result;
+  |     ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `std::collections::HashMap`
+ --> prpr-render\src\material.rs:6:5
+  |
+6 | use std::collections::HashMap;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::cell::RefCell`
+ --> prpr-render\src\wgpu_backend\immediate.rs:7:5
+  |
+7 | use std::cell::RefCell;
+  |     ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::num::NonZeroU32`
+ --> prpr-render\src\wgpu_backend\texture.rs:6:5
+  |
+6 | use std::num::NonZeroU32;
+  |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::num::NonZeroU32`
+  --> prpr-render\src\lib.rs:28:5
+   |
+28 | use std::num::NonZeroU32;
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: multiple fields are never read
+  --> prpr-render\src\wgpu_backend\mod.rs:28:16
+   |
+27 | pub struct WgpuBackend {
+   |            ----------- fields in this struct
+28 |     pub(crate) instance: wgpu::Instance,
+   |                ^^^^^^^^
+29 |     pub(crate) adapter: wgpu::Adapter,
+   |                ^^^^^^^
+...
+37 |     pub(crate) model_matrix_stack: Vec<Mat4>,
+   |                ^^^^^^^^^^^^^^^^^^
+38 |     pub(crate) projection_matrix: Mat4,
+   |                ^^^^^^^^^^^^^^^^^
+39 |     pub(crate) current_material: Option<Arc<WgpuMaterial>>,
+   |                ^^^^^^^^^^^^^^^^
+40 |     pub(crate) current_render_target: Option<Arc<WgpuRenderTarget>>,
+   |                ^^^^^^^^^^^^^^^^^^^^^
+41 |     pub(crate) blend_state: Option<BlendState>,
+   |                ^^^^^^^^^^^
+42 |     pub(crate) primitive_type: PrimitiveType,
+   |                ^^^^^^^^^^^^^^
+43 |     pub(crate) frame_encoder: Option<wgpu::CommandEncoder>,
+44 |     pub(crate) texture_cache: HashMap<u64, Arc<WgpuTexture>>,
+   |                ^^^^^^^^^^^^^
+45 |     pub(crate) clear_color: Color,
+   |                ^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `get_or_create_encoder` is never used
+   --> prpr-render\src\wgpu_backend\mod.rs:141:8
+    |
+ 48 | impl WgpuBackend {
+    | ---------------- method in this implementation
+...
+141 |     fn get_or_create_encoder(&mut self) -> &mut wgpu::CommandEncoder {
+    |        ^^^^^^^^^^^^^^^^^^^^^
+
+warning: field `bind_group` is never read
+  --> prpr-render\src\wgpu_backend\immediate.rs:31:5
+   |
+22 | pub struct ImmediateRenderer {
+   |            ----------------- field in this struct
+...
+31 |     bind_group: wgpu::BindGroup,
+   |     ^^^^^^^^^^
+
+warning: multiple fields are never read
+  --> prpr-render\src\wgpu_backend\material.rs:12:16
+   |
+10 | pub struct WgpuMaterial {
+   |            ------------ fields in this struct
+11 |     pub(crate) pipeline: wgpu::RenderPipeline,
+12 |     pub(crate) bind_group_layout: wgpu::BindGroupLayout,
+   |                ^^^^^^^^^^^^^^^^^
+13 |     pub(crate) uniform_buffer: wgpu::Buffer,
+   |                ^^^^^^^^^^^^^^
+14 |     pub(crate) uniform_bind_group: wgpu::BindGroup,
+15 |     pub(crate) uniform_offsets: HashMap<String, (u64, UniformType)>,
+   |                ^^^^^^^^^^^^^^^
+16 |     pub(crate) uniform_data: Vec<u8>,
+   |                ^^^^^^^^^^^^
+17 |     pub(crate) texture_slots: Vec<String>,
+   |                ^^^^^^^^^^^^^
+18 |     pub(crate) device: Arc<wgpu::Device>,
+   |                ^^^^^^
+19 |     pub(crate) queue: Arc<wgpu::Queue>,
+   |                ^^^^^
+
+warning: fields `samples`, `msaa_texture`, `depth_texture`, and `device` are never read
+  --> prpr-render\src\wgpu_backend\render_target.rs:12:16
+   |
+ 9 | pub struct WgpuRenderTarget {
+   |            ---------------- fields in this struct
+...
+12 |     pub(crate) samples: u32,
+   |                ^^^^^^^
+13 |     pub(crate) color_texture: Arc<WgpuTexture>,
+14 |     pub(crate) msaa_texture: Option<wgpu::Texture>,
+   |                ^^^^^^^^^^^^
+15 |     pub(crate) msaa_view: Option<wgpu::TextureView>,
+16 |     pub(crate) depth_texture: Option<wgpu::Texture>,
+   |                ^^^^^^^^^^^^^
+17 |     pub(crate) depth_view: Option<wgpu::TextureView>,
+18 |     pub(crate) device: Arc<wgpu::Device>,
+   |                ^^^^^^
+
+warning: field `device` is never read
+  --> prpr-render\src\wgpu_backend\texture.rs:23:16
+   |
+14 | pub struct WgpuTexture {
+   |            ----------- field in this struct
+...
+23 |     pub(crate) device: Arc<wgpu::Device>,
+   |                ^^^^^^
+
+warning: `prpr-render` (lib) generated 11 warnings (run `cargo fix --lib -p prpr-render` to apply 5 suggestions)
+warning: unused doc comment
+  --> prpr\src\core\resource.rs:26:1
+   |
+26 | /// Override the music track length when running in headless render mode.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ rustdoc does not generate documentation for macro invocations
+   |
+   = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+   = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unnecessary `unsafe` block
+  --> prpr\src\smtc.rs:67:9
+   |
+67 |         unsafe {
+   |         ^^^^^^ unnecessary `unsafe` block
+   |
+   = note: `#[warn(unused_unsafe)]` (part of `#[warn(unused)]`) on by default
+
+warning: unnecessary `unsafe` block
+  --> prpr\src\smtc.rs:81:9
+   |
+81 |         unsafe { smtc.SetPlaybackStatus(status)? };
+   |         ^^^^^^ unnecessary `unsafe` block
+
+warning: unnecessary `unsafe` block
+  --> prpr\src\smtc.rs:91:31
+   |
+91 |                     let btn = unsafe { a.Button() }.unwrap_or_default();
+   |                               ^^^^^^ unnecessary `unsafe` block
+
+warning: unnecessary `unsafe` block
+   --> prpr\src\smtc.rs:106:21
+    |
+106 |         let token = unsafe { smtc.ButtonPressed(&handler)? };
+    |                     ^^^^^^ unnecessary `unsafe` block
+
+warning: unnecessary `unsafe` block
+   --> prpr\src\smtc.rs:122:9
+    |
+122 |         unsafe {
+    |         ^^^^^^ unnecessary `unsafe` block
+
+warning: unnecessary `unsafe` block
+   --> prpr\src\smtc.rs:158:9
+    |
+158 |         unsafe { self.smtc.SetPlaybackStatus(s) }
+    |         ^^^^^^ unnecessary `unsafe` block
+
+warning: unnecessary `unsafe` block
+   --> prpr\src\smtc.rs:172:9
+    |
+172 |         unsafe {
+    |         ^^^^^^ unnecessary `unsafe` block
+
+warning: unnecessary `unsafe` block
+   --> prpr\src\smtc.rs:186:9
+    |
+186 |         unsafe {
+    |         ^^^^^^ unnecessary `unsafe` block
+
+warning: unused variable: `ui`
+   --> prpr\src\scene\ending.rs:395:69
+    |
+395 |         ui.with_gl(Mat4::from_translation(vec3(p * 0.17, 0., 0.)), |ui| {
+    |                                                                     ^^ help: if this is intentional, prefix it with an underscore: `_ui`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `ui`
+   --> prpr\src\scene\ending.rs:388:70
+    |
+388 |         ui.with_gl(Mat4::from_translation(vec3(-p * 0.17, 0., 0.)), |ui| {
+    |                                                                      ^^ help: if this is intentional, prefix it with an underscore: `_ui`
+
+warning: unused variable: `ui`
+    --> prpr\src\scene.rs:1176:9
+     |
+1176 |         ui: &mut Ui,
+     |         ^^ help: if this is intentional, prefix it with an underscore: `_ui`
+
+warning: variable does not need to be mutable
+   --> prpr\src\ui\dialog.rs:352:25
+    |
+352 |                     let mut x = wr.x + wr.w / 2.;
+    |                         ----^
+    |                         |
+    |                         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: associated constant `GPU_DRIVEN_MAX_PARTICLES` is never used
+   --> prpr\src\particle.rs:432:11
+    |
+430 | impl Emitter {
+    | ------------ associated constant in this implementation
+431 |     const MAX_PARTICLES: usize = 12000;
+432 |     const GPU_DRIVEN_MAX_PARTICLES: usize = 512;
+    |           ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `prpr` (lib) generated 14 warnings (run `cargo fix --lib -p prpr` to apply 4 suggestions)
+   Compiling phira v0.9.4-CBT3 (D:\Phira\Phira-Firefly\phira)
+warning: unused import: `Mutex`
+  --> phira\src\charts_view.rs:26:14
+   |
+26 |         Arc, Mutex,
+   |              ^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `coll::CollectionPage`
+ --> phira\src\page.rs:2:9
+  |
+2 | pub use coll::CollectionPage;
+  |         ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ext::RectExt`
+  --> phira\src\render_worker.rs:13:5
+   |
+13 |     ext::RectExt,
+   |     ^^^^^^^^^^^^
+
+warning: unused import: `BufReader`
+  --> phira\src\render_worker.rs:26:19
+   |
+26 |     io::{BufRead, BufReader, BufWriter, Write},
+   |                   ^^^^^^^^^
+
+warning: unused doc comment
+  --> phira\src\scene\boot.rs:17:1
+   |
+17 | / /// 时间（与 `TimeManager::now()` 同基）记录主界面划入动画开始时刻。
+18 | | /// 由 BootScene 在点击“点击屏幕开始”时写入，HomePage 据此计算 1 秒划入进度。
+   | |_----------------------------------------------------------------------------^
+   |   |
+   |   rustdoc does not generate documentation for macro invocations
+   |
+   = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+   = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `engine::general_purpose::STANDARD`
+  --> phira\src\scene\song.rs:28:14
+   |
+28 | use base64::{engine::general_purpose::STANDARD, Engine};
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `open_url`
+  --> phira\src\scene\render.rs:12:11
+   |
+12 |     ext::{open_url, semi_white, RectExt, SafeTexture},
+   |           ^^^^^^^^
+
+warning: unused import: `std::os::windows::process::CommandExt`
+   --> phira\src\scene\render.rs:814:33
+    |
+814 | ...                   use std::os::windows::process::CommandExt;
+    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `RenderProgressScene`
+  --> phira\src\scene.rs:23:18
+   |
+23 | pub use render::{RenderProgressScene, RenderSettingsScene};
+   |                  ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `RectExt`
+  --> phira\src\scene\onboarding.rs:25:90
+   |
+25 |     ext::{create_audio_manger, open_url, poll_future, semi_black, semi_white, LocalTask, RectExt, SafeTexture, ScaleType},
+   |                                                                                          ^^^^^^^
+
+warning: unused import: `Engine`
+  --> phira\src\scene\song.rs:28:49
+   |
+28 | use base64::{engine::general_purpose::STANDARD, Engine};
+   |                                                 ^^^^^^
+
+warning: unused import: `Serialize`
+  --> phira\src\scene\song.rs:58:26
+   |
+58 | use serde::{Deserialize, Serialize};
+   |                          ^^^^^^^^^
+
+warning: unused variable: `err`
+   --> phira\src\page\home.rs:843:25
+    |
+843 |                     Err(err) => {
+    |                         ^^^ help: if this is intentional, prefix it with an underscore: `_err`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `backdrop`
+    --> phira\src\page\library.rs:1711:13
+     |
+1711 |         let backdrop = Color::new(0.15, 0.075, 0.12, 0.7);
+     |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_backdrop`
+
+warning: variable does not need to be mutable
+   --> phira\src\page\offset.rs:135:21
+    |
+135 |                 let mut info = fs::load_info(fs.as_mut()).await?;
+    |                     ----^^^^
+    |                     |
+    |                     help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `total_h`
+   --> phira\src\page\settings.rs:202:13
+    |
+202 |         let total_h = top * 2.;
+    |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_h`
+
+warning: unused variable: `c_hdr_bg`
+   --> phira\src\page\settings.rs:210:13
+    |
+210 |         let c_hdr_bg = Color::new(0.15, 0.075, 0.12, 0.7);
+    |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_c_hdr_bg`
+
+warning: variable does not need to be mutable
+   --> phira\src\scene\song.rs:470:16
+    |
+470 |     pub fn new(mut chart: ChartItem, local_path: Option<String>, icons: Arc<Icons>, rank_icons: [SafeTexture; 8], mods: Mods) -> Se...
+    |                ----^^^^^
+    |                |
+    |                help: remove this `mut`
+
+warning: unused variable: `chart_updated`
+    --> phira\src\scene\song.rs:1188:17
+     |
+1188 |             let chart_updated = info.chart_updated;
+     |                 ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_chart_updated`
+
+warning: method `show_chart_menu_with_lan` is never used
+   --> phira\src\charts_view.rs:415:12
+    |
+122 | impl ChartsView {
+    | --------------- method in this implementation
+...
+415 |     pub fn show_chart_menu_with_lan(&mut self, ui: &mut Ui, t: f32, chart_index: usize) {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `XC_SIM_DOWNLOAD_URL` is never used
+  --> phira\src\client\xcsim.rs:19:11
+   |
+19 | pub const XC_SIM_DOWNLOAD_URL: &str = "http://xcapi-dchk.hotanyan.net:20004";
+   |           ^^^^^^^^^^^^^^^^^^^
+
+warning: field `id` is never read
+   --> phira\src\client\xcsim.rs:134:9
+    |
+133 |     struct Resp {
+    |            ---- field in this struct
+134 |         id: i32,
+    |         ^^
+
+warning: variant `Integrated` is never constructed
+   --> phira\src\page.rs:238:5
+    |
+235 | pub enum ChartType {
+    |          --------- variant in this enum
+...
+238 |     Integrated,
+    |     ^^^^^^^^^^
+    |
+    = note: `ChartType` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: struct `CollectionItem` is never constructed
+  --> phira\src\page\coll.rs:16:8
+   |
+16 | struct CollectionItem {
+   |        ^^^^^^^^^^^^^^
+
+warning: struct `Transit` is never constructed
+  --> phira\src\page\coll.rs:23:8
+   |
+23 | struct Transit {
+   |        ^^^^^^^
+
+warning: struct `CollectionPage` is never constructed
+  --> phira\src\page\coll.rs:30:12
+   |
+30 | pub struct CollectionPage {
+   |            ^^^^^^^^^^^^^^
+
+warning: associated items `WIDTH`, `HEIGHT`, `PAD`, and `new` are never used
+  --> phira\src\page\coll.rs:48:11
+   |
+47 | impl CollectionPage {
+   | ------------------- associated items in this implementation
+48 |     const WIDTH: f32 = 0.5;
+   |           ^^^^^
+49 |     const HEIGHT: f32 = 0.63;
+   |           ^^^^^^
+50 |     const PAD: f32 = 0.06;
+   |           ^^^
+51 |
+52 |     pub async fn new(icons: Arc<Icons>) -> Result<Self> {
+   |                  ^^^
+
+warning: methods `with_bottom`, `set_options`, and `set_selected` are never used
+   --> phira\src\popup.rs:349:12
+    |
+309 | impl ChooseButton {
+    | ----------------- methods in this implementation
+...
+349 |     pub fn with_bottom(mut self, bottom: bool) -> Self {
+    |            ^^^^^^^^^^^
+...
+364 |     pub fn set_options(&mut self, options: Vec<String>) {
+    |            ^^^^^^^^^^^
+...
+368 |     pub fn set_selected(&mut self, selected: usize) {
+    |            ^^^^^^^^^^^^
+
+warning: enum `Difficulty` is never used
+  --> phira\src\scene\chapter.rs:31:6
+   |
+31 | enum Difficulty {
+   |      ^^^^^^^^^^
+
+warning: methods `name` and `color` are never used
+  --> phira\src\scene\chapter.rs:37:12
+   |
+36 | impl Difficulty {
+   | --------------- methods in this implementation
+37 |     pub fn name(&self) -> Cow<'static, str> {
+   |            ^^^^
+...
+45 |     pub fn color(&self) -> Color {
+   |            ^^^^^
+
+warning: struct `LevelInfo` is never constructed
+  --> phira\src\scene\chapter.rs:55:8
+   |
+55 | struct LevelInfo {
+   |        ^^^^^^^^^
+
+warning: struct `SongInfo` is never constructed
+  --> phira\src\scene\chapter.rs:62:8
+   |
+62 | struct SongInfo {
+   |        ^^^^^^^^
+
+warning: struct `ChartInstance` is never constructed
+  --> phira\src\scene\chapter.rs:70:8
+   |
+70 | struct ChartInstance {
+   |        ^^^^^^^^^^^^^
+
+warning: struct `ChapterScene` is never constructed
+  --> phira\src\scene\chapter.rs:77:12
+   |
+77 | pub struct ChapterScene {
+   |            ^^^^^^^^^^^^
+
+warning: associated items `WIDTH`, `HEIGHT`, `PAD`, and `new` are never used
+   --> phira\src\scene\chapter.rs:101:11
+    |
+100 | impl ChapterScene {
+    | ----------------- associated items in this implementation
+101 |     const WIDTH: f32 = 0.5;
+    |           ^^^^^
+102 |     const HEIGHT: f32 = 0.3;
+    |           ^^^^^^
+103 |     const PAD: f32 = 0.05;
+    |           ^^^
+104 |
+105 |     pub async fn new(id: String, icons: Arc<Icons>, rank_icons: [SafeTexture; 8], cover: SafeTexture) -> Result<Self> {
+    |                  ^^^
+
+warning: method `render_a1` is never used
+   --> phira\src\scene\chapter.rs:381:8
+    |
+379 | impl ChapterScene {
+    | ----------------- method in this implementation
+380 |     /// XCHS 皮肤：暗梅色面板 + 粉色描边，页眉沿用各页统一的 XCHS 配方。
+381 |     fn render_a1(&mut self, tm: &mut TimeManager, ui: &mut Ui) -> Result<()> {
+    |        ^^^^^^^^^
+
+warning: field `duration_secs` is never read
+   --> phira\src\scene\render.rs:654:28
+    |
+654 |                     Done { duration_secs: f64 },
+    |                     ----   ^^^^^^^^^^^^^
+    |                     |
+    |                     field in this variant
+
+warning: function `audio_step` is never used
+  --> phira\src\scene\onboarding.rs:68:4
+   |
+68 | fn audio_step() -> usize {
+   |    ^^^^^^^^^^
+
+warning: variants `Login` and `Register` are never constructed
+  --> phira\src\scene\onboarding.rs:89:5
+   |
+88 | enum NextAction {
+   |      ---------- variants in this enum
+89 |     Login,
+   |     ^^^^^
+90 |     Register,
+   |     ^^^^^^^^
+   |
+   = note: `NextAction` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: methods `transiting` and `reset_scroll` are never used
+   --> phira\src\theme.rs:330:12
+    |
+312 | impl ThemeView {
+    | -------------- methods in this implementation
+...
+330 |     pub fn transiting(&self) -> bool {
+    |            ^^^^^^^^^^
+...
+334 |     pub fn reset_scroll(&mut self) {
+    |            ^^^^^^^^^^^^
+
+warning: `phira` (lib) generated 40 warnings (run `cargo fix --lib -p phira` to apply 16 suggestions)
+   Compiling phira-main v0.9.4-CBT3 (D:\Phira\Phira-Firefly\phira-main)
+    Finished `release` profile [optimized] target(s) in 2m 59s

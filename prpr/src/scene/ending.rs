@@ -180,6 +180,21 @@ fn illustration_rect(x: f32, y: f32, w: f32, h: f32) -> Rect {
     Rect::new(x - w / 2., y - h / 2., w, h)
 }
 
+/// 按纹理原始宽高比在矩形内等比缩小（contain），避免 `ScaleType::Fit` 将非方形图拉伸变形。
+fn contain_rect(tex: &Texture2D, r: Rect) -> Rect {
+    let (tw, th) = (tex.width() as f32, tex.height() as f32);
+    if tw <= 0. || th <= 0. {
+        return r;
+    }
+    let ratio = tw / th;
+    let (w, h) = if r.w / r.h > ratio {
+        (r.h * ratio, r.h)
+    } else {
+        (r.w, r.w / ratio)
+    };
+    Rect::new(r.x + (r.w - w) / 2., r.y + (r.h - h) / 2., w, h)
+}
+
 impl EndingScene {
     /// 结算页：布局照抄 Phira-Vrenxz/prpr/src/scene/ending.rs，
     /// 并补回 Firefly 的特性（Mod 图标、RKS/新 RKS、详情展开、上传状态、退场过渡）。
@@ -284,13 +299,22 @@ impl EndingScene {
             // 评级图标：相对 Vrenxz 原位置往左上挪一点
             let ct = (main.right() - main.h * slope - s / 2. - 0.03, r2.bottom() + 0.02 - s / 2. - 0.02);
             let s = s + s * (1. - ps) * 0.3;
+            let g_icon = &self.icons[grade];
+            let (tw, th) = (g_icon.width() as f32, g_icon.height() as f32);
+            let (dw, dh) = if tw > 0. && th > 0. && tw / th > 1. {
+                (s, s * th / tw)
+            } else if tw > 0. && th > 0. {
+                (s * tw / th, s)
+            } else {
+                (s, s)
+            };
             draw_texture_ex(
-                *self.icons[grade],
-                ct.0 - s / 2.,
-                ct.1 - s / 2.,
+                **g_icon,
+                ct.0 - dw / 2.,
+                ct.1 - dh / 2.,
                 Color::new(1., 1., 1., ps),
                 DrawTextureParams {
-                    dest_size: Some(vec2(s, s)),
+                    dest_size: Some(vec2(dw, dh)),
                     ..Default::default()
                 },
             );
@@ -625,6 +649,7 @@ impl Scene for EndingScene {
             }];
             let p = ran(t, 1.7, 2.4).powi(2);
             let r = Rect::new(0.75, br.center().y, 0., 0.).feather(0.13 + (1. - p) * 0.05);
+            let r = contain_rect(icon, r);
             ui.fill_rect(r, (**icon, r, ScaleType::Fit, semi_white(p)));
 
             let y = y + 0.16;

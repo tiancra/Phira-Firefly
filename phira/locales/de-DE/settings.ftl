@@ -6,6 +6,7 @@ audio = Audio
 chart = Level
 debug = Debug
 about = Info
+theme = Design
 
 item-lang = Sprache
 item-offline = Offline Modus

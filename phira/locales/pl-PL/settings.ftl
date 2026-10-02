@@ -4,6 +4,7 @@ label = Ustawienia
 general = Ogólne
 audio = Dźwięk
 chart = Beatmapa
+theme = Motyw
 
 item-lang = Język
 item-offline = Tryb offline

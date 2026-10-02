@@ -6,6 +6,7 @@ audio = Audio
 chart = Partition
 debug = Déboguage
 about = Informations
+theme = Thème
 
 item-lang = Langue
 item-offline = Mode hors-ligne

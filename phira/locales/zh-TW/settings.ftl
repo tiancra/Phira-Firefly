@@ -4,6 +4,7 @@ audio = 音訊
 chart = 譜面
 debug = 除錯
 about = 關於
+theme = 主題
 item-lang = 語言
 item-fullscreen = 全螢幕模式
 item-offline = 離線模式

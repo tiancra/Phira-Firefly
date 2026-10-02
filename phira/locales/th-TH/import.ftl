@@ -4,4 +4,6 @@ importing = กำลังเพิ่ม
 import-success = เพิ่มเสร็จเรียบร้อย
 import-failed = ไม่สามารถเพิ่มได้
 import-respack-failed = ไม่สามารถเพิ่ม Skin ได้
+import-theme-success = นำเข้าธีมสำเร็จ
+import-theme-failed = นำเข้าธีมล้มเหลว
 import-respack-success = นำเพิ่มเข้ามาสำเร็จ

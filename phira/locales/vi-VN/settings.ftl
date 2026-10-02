@@ -6,6 +6,7 @@ audio = Âm thanh
 chart = Chart
 debug = Gỡ lỗi
 about = Giới thiệu
+theme = Chủ đề
 
 item-lang = Ngôn ngữ
 item-offline = Chế độ Offline

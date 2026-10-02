@@ -4,6 +4,7 @@ audio = Аудио
 chart = Игра
 debug = Отладка
 about = О игре
+theme = Тема
 item-lang = Язык
 item-offline = Оффлайн-режим
 item-offline-sub = Весь онлайн-доступ будет отключён.

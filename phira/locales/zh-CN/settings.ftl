@@ -6,6 +6,7 @@ audio = 音频
 chart = 谱面
 debug = 调试
 about = 关于
+theme = 主题
 
 item-lang = 语言
 item-fullscreen = 全屏模式

@@ -9,7 +9,7 @@ pub struct LyricWord {
     pub end_time: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LyricRole {
     Main,
     Duet,
@@ -30,6 +30,11 @@ pub type Lyrics = Vec<LyricLine>;
 fn parse_time(s: &str) -> Result<f64> {
     let parts: Vec<&str> = s.split(':').collect();
     match parts.len() {
+        1 => {
+            // 纯秒数格式：SS.xxx（Apple Music TTML 不足一分钟时省略分:）
+            let seconds: f64 = parts[0].parse()?;
+            Ok(seconds)
+        }
         2 => {
             let minutes: f64 = parts[0].parse()?;
             let seconds: f64 = parts[1].parse()?;
@@ -55,6 +60,15 @@ fn extract_attr<'a>(s: &'a str, name: &str) -> Option<&'a str> {
         .flatten()
 }
 
+/// 解码 TTML/HTML 常见字符实体。
+fn decode_entities(text: &str) -> String {
+    text.replace("&apos;", "'")
+        .replace("&quot;", "\"")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+}
+
 fn parse_ttml_span(s: &str, default_time: Option<(f64, f64)>) -> Result<LyricWord> {
     let text: &str = {
         let content_start = s.find('>').context("span has no content")? + 1;
@@ -68,7 +82,7 @@ fn parse_ttml_span(s: &str, default_time: Option<(f64, f64)>) -> Result<LyricWor
 
     if let (Some(start_time), Some(end_time)) = (start_time, end_time) {
         Ok(LyricWord {
-            text: text.to_string(),
+            text: decode_entities(text),
             start_time,
             end_time,
         })

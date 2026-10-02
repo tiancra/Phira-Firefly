@@ -6,6 +6,7 @@ audio = Suara
 chart = Chart
 debug = Debug
 about = Tentang
+theme = Tema
 
 item-lang = Bahasa
 item-offline = Mode Offline

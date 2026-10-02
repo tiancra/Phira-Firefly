@@ -356,6 +356,7 @@ impl ChartsView {
                                     .unwrap_or_default(),
                             )
                         };
+                        prpr::ui::chart_preview_sfx();
                         self.transit = Some(TransitState {
                             id: id as _,
                             rect: None,

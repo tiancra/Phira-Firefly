@@ -5,4 +5,6 @@ import-success = Амжилттай импорт хийгдэв
 import-failed = Импорт хийхэд амжилтгүй боллоо
 import-respack-success = Амжилттай импорт хийгдэв
 import-respack-failed = Скинийг импорт хийхэд амжилтгүй боллоо
+import-theme-success = Сэдвийг амжилттай импортлов
+import-theme-failed = Сэдвийг импортлоход алдаа гарлаа
 batch-import-success = { $count } chart(-ууд) амжилттай импортлогдов.

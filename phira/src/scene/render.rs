@@ -112,7 +112,10 @@ thread_local! {
 }
 
 /// File dialog result from a background thread (None = no dialog open).
+/// 桌面端才需要系统文件对话框（ohos 上走 ArkTS 外壳的 request_export）。
+#[cfg(not(target_env = "ohos"))]
 static FILE_DIALOG_RESULT: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+#[cfg(not(target_env = "ohos"))]
 static FILE_DIALOG_OPEN: AtomicBool = AtomicBool::new(false);
 
 pub struct RenderSettingsScene {
@@ -288,7 +291,8 @@ impl Scene for RenderSettingsScene {
         if self.btn_codec.changed() {
             self.codec_idx = self.btn_codec.selected();
         }
-        // Pick up file dialog result from background thread
+        // Pick up file dialog result from background thread (desktop only)
+        #[cfg(not(target_env = "ohos"))]
         if let Ok(mut guard) = FILE_DIALOG_RESULT.lock() {
             if let Some(path) = guard.take() {
                 let confirmed = Arc::new(AtomicBool::new(false));
@@ -548,6 +552,7 @@ impl Scene for RenderSettingsScene {
             self.ending = (self.ending + ENDING_STEP).min(ENDING_MAX);
             return Ok(true);
         }
+        #[cfg(not(target_env = "ohos"))]
         if self.btn_render.touch(touch, t) && !FILE_DIALOG_OPEN.load(Ordering::SeqCst) {
             let default_name = format!("{}.mp4", self.info.name.replace('/', "_"));
             FILE_DIALOG_OPEN.store(true, Ordering::SeqCst);

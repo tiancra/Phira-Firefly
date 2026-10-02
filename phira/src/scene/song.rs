@@ -975,7 +975,7 @@ impl SongScene {
         }
         if self.local_path.as_ref().is_some_and(|it| !it.starts_with(':')) {
             self.menu_options.push("export");
-            #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+            #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32", target_env = "ohos")))]
             self.menu_options.push("render");
             #[cfg(feature = "testing")]
             // 局域网联机（仅已下载的本地谱面）
@@ -2953,7 +2953,7 @@ impl Scene for SongScene {
                 "export" => {
                     request_export(format!("{}.zip", sanitize(&self.info.name)));
                 }
-                #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+                #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32", target_env = "ohos")))]
                 "render" => {
                     use crate::scene::RenderSettingsScene;
                     let local_path = self.local_path.clone().unwrap();

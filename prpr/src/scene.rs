@@ -638,9 +638,39 @@ pub fn request_input(id: impl Into<String>, mut config: InputBox) {
     if config.ok_label.is_none() {
         config = config.ok_label(ttl!("confirm"));
     }
-    INPUT_DIALOG.with(|it| *it.borrow_mut() = Some(InputDialog::new(id, config)));
-    set_ime_enabled(true);
-    android_show_keyboard(true);
+    // OHOS: 内核不渲染输入框，改由 ArkTS 外壳弹输入对话框（show_input_window），
+    // 结果经 set_input_text 回填；取消经 input_cancelled 回填。
+    #[cfg(target_env = "ohos")]
+    {
+        use serde_json::json;
+        let password = matches!(config.mode, InputMode::Password);
+        let multiline = matches!(config.mode, InputMode::Multiline);
+        let mode = if multiline {
+            "multiline"
+        } else if password {
+            "password"
+        } else {
+            "text"
+        };
+        let cmd = json!({
+            "action": "show_input_window",
+            "isPassword": password,
+            "title": config.title,
+            "prompt": config.prompt,
+            "defaultValue": config.default,
+            "mode": mode,
+            "okLabel": config.ok_label,
+            "cancelLabel": config.cancel_label,
+        })
+        .to_string();
+        miniquad::native::call_request_callback(cmd);
+    }
+    #[cfg(not(target_env = "ohos"))]
+    {
+        INPUT_DIALOG.with(|it| *it.borrow_mut() = Some(InputDialog::new(id, config)));
+        set_ime_enabled(true);
+        android_show_keyboard(true);
+    }
 }
 
 /// 原位输入（不弹对话框）：在刚点击的控件位置就地编辑。登录/注册字段、搜索框、
@@ -652,10 +682,38 @@ pub fn request_input_inline(id: impl Into<String>, config: InputBox) {
     *INPUT_TEXT.lock().unwrap() = (Some(id.clone()), None);
     *INPUT_CANCELLED.lock().unwrap() = None;
     let password = matches!(config.mode, InputMode::Password);
-    // 优先使用最后点击的按钮位置（原位显示），没有则屏幕中间
-    let rect = crate::ui::take_last_clicked_rect().unwrap_or(Rect { x: -0.4, y: -0.08, w: 0.8, h: 0.1 });
-    crate::ui::activate_inline_input(id, Some(rect), config.default.to_string(), password);
-    set_ime_enabled(true);
+    // OHOS: 内核不渲染原位输入框，改由 ArkTS 外壳弹输入对话框。
+    #[cfg(target_env = "ohos")]
+    {
+        use serde_json::json;
+        let multiline = matches!(config.mode, InputMode::Multiline);
+        let mode = if multiline {
+            "multiline"
+        } else if password {
+            "password"
+        } else {
+            "text"
+        };
+        let cmd = json!({
+            "action": "show_input_window",
+            "isPassword": password,
+            "title": config.title,
+            "prompt": config.prompt,
+            "defaultValue": config.default,
+            "mode": mode,
+            "okLabel": config.ok_label,
+            "cancelLabel": config.cancel_label,
+        })
+        .to_string();
+        miniquad::native::call_request_callback(cmd);
+    }
+    #[cfg(not(target_env = "ohos"))]
+    {
+        // 优先使用最后点击的按钮位置（原位显示），没有则屏幕中间
+        let rect = crate::ui::take_last_clicked_rect().unwrap_or(Rect { x: -0.4, y: -0.08, w: 0.8, h: 0.1 });
+        crate::ui::activate_inline_input(id, Some(rect), config.default.to_string(), password);
+        set_ime_enabled(true);
+    }
 }
 
 pub fn take_input() -> Option<(String, String)> {

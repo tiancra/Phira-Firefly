@@ -1,4 +1,4 @@
-﻿prpr_l10n::tl_file!("common" ttl crate::);
+prpr_l10n::tl_file!("common" ttl crate::);
 
 #[rustfmt::skip]
 #[cfg(closed)]
@@ -20,7 +20,7 @@ mod mp;
 mod page;
 mod popup;
 mod rate;
-#[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+#[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32", target_env = "ohos")))]
 pub mod render_worker;
 mod resource;
 mod scene;
@@ -645,7 +645,7 @@ fn build_global_window_conf() -> Conf {
 pub extern "C" fn quad_main() {
     crash::set_panic_hook();
     // Render child-process mode: headless, reads job from stdin, writes progress to stdout.
-    #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+    #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32", target_env = "ohos")))]
     if std::env::args().nth(1).as_deref() == Some("render") {
         // Initialize tokio runtime for spawn_blocking used by file system
         // Use current-thread to avoid thread-local (PGR_FONT/BOLD_FONT) migration
@@ -931,4 +931,12 @@ pub fn set_chosen_file(file: String) {
 pub fn mark_auto_import() {
     use prpr::scene::CHOSEN_FILE;
     CHOSEN_FILE.lock().unwrap().0 = Some("_import_auto".to_owned());
+}
+
+#[cfg(target_env = "ohos")]
+#[napi]
+pub fn input_cancelled() {
+    use prpr::scene::{INPUT_CANCELLED, INPUT_TEXT};
+    let id = INPUT_TEXT.lock().unwrap().0.clone().unwrap_or_default();
+    *INPUT_CANCELLED.lock().unwrap() = Some(id);
 }

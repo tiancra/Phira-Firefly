@@ -38,7 +38,7 @@ pub struct ReplayListPage {
     play_btns: Vec<DRectButton>,
     favorite_btns: Vec<DRectButton>,
     /// Opens the render settings page for the replay (non-mobile only).
-    #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+    #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32", target_env = "ohos")))]
     render_btns: Vec<DRectButton>,
     rename_btns: Vec<DRectButton>,
     delete_btns: Vec<DRectButton>,
@@ -86,7 +86,7 @@ impl ReplayListPage {
             folder_btns: Vec::new(),
             play_btns: Vec::new(),
             favorite_btns: Vec::new(),
-            #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+            #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32", target_env = "ohos")))]
             render_btns: Vec::new(),
             rename_btns: Vec::new(),
             delete_btns: Vec::new(),
@@ -107,7 +107,7 @@ impl ReplayListPage {
             self.entries.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
             self.play_btns = (0..self.entries.len()).map(|_| DRectButton::new()).collect();
             self.favorite_btns = (0..self.entries.len()).map(|_| DRectButton::new()).collect();
-            #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+            #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32", target_env = "ohos")))]
             {
                 self.render_btns = (0..self.entries.len()).map(|_| DRectButton::new()).collect();
             }
@@ -216,7 +216,7 @@ impl ReplayListPage {
     /// Open the render settings page for `file_name`'s replay. The resulting
     /// video plays the replay back, so it shows the recorded judgements and the
     /// final score instead of an autoplay preview.
-    #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+    #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32", target_env = "ohos")))]
     fn launch_replay_render_async(&mut self, file_name: String) -> Result<()> {
         use crate::scene::RenderSettingsScene;
 
@@ -450,7 +450,7 @@ impl Page for ReplayListPage {
                     self.toggle_favorite(&file_name);
                     return Ok(true);
                 }
-                #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+                #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32", target_env = "ohos")))]
                 if self.render_btns[i].touch(touch, t) {
                     button_hit();
                     let file_name = self.entries[i].file_name.clone();
@@ -664,7 +664,7 @@ impl Page for ReplayListPage {
                             self.favorite_btns[i].inner.set(ui, fav_r);
 
                             // Render button, on the same row just left of the favorite star.
-                            #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32")))]
+                            #[cfg(not(any(target_os = "android", target_os = "ios", target_arch = "wasm32", target_env = "ohos")))]
                             {
                                 let render_r = Rect::new(icon_x - icon_size - 0.012, item_r.y + 0.018, icon_size, icon_size);
                                 ui.fill_rect(render_r, (*self.icons.export, render_r, ScaleType::Fit));

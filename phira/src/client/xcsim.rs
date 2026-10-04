@@ -1,4 +1,4 @@
-//! Http client for the XC-SIM chart server (csvr).
+﻿//! Http client for the XC-SIM chart server (csvr).
 //! The server protocol is documented in `Document/read.md`, `Document/login.md` and
 //! `Document/token.md`. It is a separate account/login system from Phira, so it keeps its own
 //! client and access token and is unaffected by the Phira account.
@@ -156,13 +156,19 @@ pub async fn get_me() -> Result<super::User> {
 
 /// `GET /chart` — fetch a page of XC-SIM charts. Mirrors Phira's `/chart` query shape
 /// (`{ count, results }`).
-pub async fn query_charts(search: &str, order: &str, division: &str, page: u64) -> Result<(Vec<super::Chart>, u64)> {
+/// `ty` mirrors the official list type: 0 = stable, 2 = unstable; `-1` = all reviewed charts
+/// (stable + unstable). `page_num` sets the page size (1-100) so pagination matches the client.
+pub async fn query_charts(search: &str, order: &str, division: &str, ty: i32, page: u64, page_num: u64) -> Result<(Vec<super::Chart>, u64)> {
     #[derive(Deserialize)]
     struct PagedResult<T> {
         count: u64,
         results: Vec<T>,
     }
-    let mut queries: Vec<(&str, String)> = vec![("page", (page + 1).to_string())];
+    let mut queries: Vec<(&str, String)> = vec![
+        ("page", (page + 1).to_string()),
+        ("pageNum", page_num.to_string()),
+        ("type", ty.to_string()),
+    ];
     if !search.is_empty() {
         queries.push(("search", search.to_owned()));
     }

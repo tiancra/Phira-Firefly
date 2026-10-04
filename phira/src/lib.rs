@@ -472,6 +472,9 @@ async fn the_main() -> Result<()> {
 
         let frame_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<()> {
             let m = main.as_mut().unwrap();
+            // 每帧同步日志叠加层开关（log.rs 的 render_overlay 读取该原子量）
+            prpr::log::LOG_OVERLAY_ENABLED
+                .store(get_data().config.log_overlay, std::sync::atomic::Ordering::Relaxed);
             m.update()?;
             m.render(&mut painter)?;
             if let Ok(paused) = rx.try_recv() {

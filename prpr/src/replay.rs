@@ -1,4 +1,4 @@
-//! Replay recording and playback data.
+﻿//! Replay recording and playback data.
 //!
 //! A replay captures, in time order, every per-note judgement made during a
 //! play. During playback the engine consumes these records and applies the
@@ -97,7 +97,7 @@ pub struct ReplayData {
     /// Final score (0..=1_000_000).
     #[serde(default)]
     pub score: i32,
-    /// Final accuracy (0.0..=1.0).
+    /// Final accuracy (0.0..=1.0; XC-SIM charts may reach 1.01 with all Perfect+).
     #[serde(default)]
     pub accuracy: f32,
     /// Max combo reached.

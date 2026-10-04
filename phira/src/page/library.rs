@@ -1,4 +1,4 @@
-prpr_l10n::tl_file!("library");
+﻿prpr_l10n::tl_file!("library");
 
 use super::{FavoritesPage, NextPage, Page, SharedState};
 use crate::{
@@ -317,7 +317,9 @@ impl LibraryPage {
         let division = self.tags.division;
         if chosen == ChartListType::XcSim {
             self.online_task = Some(Task::new(async move {
-                let (remote_charts, count) = crate::client::xcsim::query_charts(&search, &order, &division, page).await?;
+                // type=-1：拉取全部已审核谱面（stable + unstable），pageNum 与官方列表一致，
+                // 避免服务器默认 20/页与 PAGE_NUM 计算总页数不一致导致翻页丢失。
+                let (remote_charts, count) = crate::client::xcsim::query_charts(&search, &order, &division, -1, page, PAGE_NUM).await?;
                 let total_page = if count == 0 { 0 } else { (count - 1) / PAGE_NUM + 1 };
                 let charts: Vec<_> = remote_charts.iter().map(ChartDisplayItem::from_remote).collect();
                 Ok((charts, remote_charts, total_page))

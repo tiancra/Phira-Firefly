@@ -140,6 +140,18 @@ pub struct Config {
     /// Whether to automatically record a replay file for each play.
     pub auto_record: bool,
 
+    /// Whether to show the console window at startup. Windows only.
+    #[serde(default)]
+    pub debug_console: bool,
+
+    /// Whether to show an in-game overlay of recent log messages.
+    #[serde(default)]
+    pub log_overlay: bool,
+
+    /// Whether to run the arcade-style hardware/file self test before boot.
+    #[serde(default)]
+    pub startup_post: bool,
+
     // for compatibility
     autoplay: Option<bool>,
 }
@@ -192,6 +204,10 @@ impl Default for Config {
             xcsim_server: String::new(),
 
             auto_record: true,
+
+            debug_console: false,
+            log_overlay: false,
+            startup_post: false,
 
             autoplay: None,
         }

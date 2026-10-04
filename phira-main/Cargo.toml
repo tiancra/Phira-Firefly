@@ -12,6 +12,7 @@ intest = ["phira/intest"]
 
 [dependencies]
 phira = { workspace = true, default-features = false }
+serde_json = { workspace = true }
 
 [build-dependencies]
 winres = "0.1"

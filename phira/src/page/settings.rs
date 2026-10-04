@@ -1252,6 +1252,10 @@ impl ChartList {
 struct DebugList {
     chart_debug_btn: DRectButton,
     touch_debug_btn: DRectButton,
+    #[cfg(target_os = "windows")]
+    debug_console_btn: DRectButton,
+    log_overlay_btn: DRectButton,
+    startup_post_btn: DRectButton,
     crash_btn: DRectButton,
 }
 
@@ -1260,6 +1264,10 @@ impl DebugList {
         Self {
             chart_debug_btn: DRectButton::new(),
             touch_debug_btn: DRectButton::new(),
+            #[cfg(target_os = "windows")]
+            debug_console_btn: DRectButton::new(),
+            log_overlay_btn: DRectButton::new(),
+            startup_post_btn: DRectButton::new(),
             crash_btn: DRectButton::new(),
         }
     }
@@ -1277,6 +1285,19 @@ impl DebugList {
         }
         if self.touch_debug_btn.touch(touch, t) {
             config.touch_debug ^= true;
+            return Ok(Some(true));
+        }
+        #[cfg(target_os = "windows")]
+        if self.debug_console_btn.touch(touch, t) {
+            config.debug_console ^= true;
+            return Ok(Some(true));
+        }
+        if self.log_overlay_btn.touch(touch, t) {
+            config.log_overlay ^= true;
+            return Ok(Some(true));
+        }
+        if self.startup_post_btn.touch(touch, t) {
+            config.startup_post ^= true;
             return Ok(Some(true));
         }
         if self.crash_btn.touch(touch, t) {
@@ -1319,6 +1340,19 @@ impl DebugList {
         item! {
             render_title(ui, tl!("item-touch-debug"), Some(tl!("item-touch-debug-sub")));
             render_switch(ui, rr, t, &mut self.touch_debug_btn, config.touch_debug);
+        }
+        #[cfg(target_os = "windows")]
+        item! {
+            render_title(ui, "启动命令框", Some(std::borrow::Cow::Borrowed("仅 Windows：启用后启动时显示命令框")));
+            render_switch(ui, rr, t, &mut self.debug_console_btn, config.debug_console);
+        }
+        item! {
+            render_title(ui, "游戏内日志叠加层", Some(std::borrow::Cow::Borrowed("全平台：启用后在游戏内显示日志叠加层")));
+            render_switch(ui, rr, t, &mut self.log_overlay_btn, config.log_overlay);
+        }
+        item! {
+            render_title(ui, "启动时校验游戏文件", Some(std::borrow::Cow::Borrowed("注意：该功能会严重拖慢启动速度")));
+            render_switch(ui, rr, t, &mut self.startup_post_btn, config.startup_post);
         }
         item! {
             render_title(ui, "立即崩溃", Some(std::borrow::Cow::Borrowed("点击以随机理由触发崩溃")));

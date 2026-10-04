@@ -3656,6 +3656,7 @@ name = "phira-main"
 version = "0.9.4-CBT3"
 dependencies = [
  "phira",
+ "serde_json",
  "winres",
 ]
 

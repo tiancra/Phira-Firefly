@@ -233,7 +233,18 @@ impl JudgeInner {
     }
 
     pub fn accuracy(&self) -> f64 {
-        (self.counts[0] as f64 + self.counts[1] as f64 * 0.65) / self.num_of_notes as f64
+        if self.xcsim {
+            // XC-SIM: Shiny Pure (Perfect+, |diff|<=50ms) = 1.01, Pure (Perfect) = 1.00,
+            // Far (Good) = 0.65. 全 Perfect+ = 101%, 全 Perfect = 100%.
+            if self.num_of_notes == 0 {
+                return 0.;
+            }
+            let shiny = self.shiny_perfect as f64;
+            let perfect = (self.counts[0] - self.shiny_perfect) as f64;
+            (shiny * 1.01 + perfect * 1.00 + self.counts[1] as f64 * 0.65) / self.num_of_notes as f64
+        } else {
+            (self.counts[0] as f64 + self.counts[1] as f64 * 0.65) / self.num_of_notes as f64
+        }
     }
 
     pub fn real_time_accuracy(&self) -> f64 {
@@ -241,7 +252,13 @@ impl JudgeInner {
         if cnt == 0 {
             return 1.;
         }
-        (self.counts[0] as f64 + self.counts[1] as f64 * 0.65) / cnt as f64
+        if self.xcsim {
+            let shiny = self.shiny_perfect as f64;
+            let perfect = (self.counts[0] - self.shiny_perfect) as f64;
+            (shiny * 1.01 + perfect * 1.00 + self.counts[1] as f64 * 0.65) / cnt as f64
+        } else {
+            (self.counts[0] as f64 + self.counts[1] as f64 * 0.65) / cnt as f64
+        }
     }
 
     pub fn score(&self) -> u32 {

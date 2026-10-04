@@ -1207,6 +1207,8 @@ impl Main {
             if let Some(f) = *EXTRA_TOP_RENDER.lock().unwrap() {
                 f();
             }
+            // 游戏内叠加日志（全平台）：在所有场景与全局 UI 之上绘制
+            crate::log::render_overlay(&mut ui);
             pop_camera_state();
         }
         Ok(())

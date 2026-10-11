@@ -140,6 +140,38 @@ struct ExtVideo {
     attach: Option<crate::core::VideoAttach>,
 }
 
+/// extra.json 中 autoplay/media 的时间：节拍数（如 240）或三元组 `[i, n, d]`（i + n/d 拍）
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum AutoPlayTime {
+    /// 节拍数
+    Beats(f64),
+    /// 三元组拍子 `[i, n, d]`
+    Triple(Triple),
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExtAutoPlay {
+    start: AutoPlayTime,
+    end: AutoPlayTime,
+}
+
+/// autoplay 支持单个对象或数组（多个窗口）
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum AutoPlayList {
+    Single(ExtAutoPlay),
+    Multiple(Vec<ExtAutoPlay>),
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExtMedia {
+    time: AutoPlayTime,
+    path: String,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Extra {
@@ -148,6 +180,12 @@ struct Extra {
     effects: Vec<ExtEffect>,
     #[serde(default)]
     videos: Vec<ExtVideo>,
+    /// 自动游玩窗口：t ∈ [start, end) 期间强制 Autoplay，结束后恢复手动；可写单个对象或多个窗口数组
+    #[serde(default)]
+    autoplay: Option<AutoPlayList>,
+    /// 定点音频：(时间, 音频文件路径)，到时间即播放一次
+    #[serde(default)]
+    media: Vec<ExtMedia>,
 }
 
 async fn parse_effect(r: &mut BpmList, rpe: ExtEffect, fs: &mut dyn FileSystem) -> Result<Effect> {
@@ -211,11 +249,65 @@ pub async fn parse_extra(source: &str, fs: &mut dyn FileSystem) -> Result<ChartE
     if !ext.videos.is_empty() {
         tracing::warn!("video is disabled in this build");
     }
+    // 节拍统一换算成秒
+    let to_sec = |t: AutoPlayTime, r: &mut BpmList| match t {
+        AutoPlayTime::Beats(b) => r.time_beats(b),
+        AutoPlayTime::Triple(tri) => r.time(&tri),
+    };
+    // 自动游玩窗口（支持单个对象或多个窗口数组）
+    let autoplay_window = match ext.autoplay {
+        Some(AutoPlayList::Single(ap)) => vec![(to_sec(ap.start, &mut r), to_sec(ap.end, &mut r))],
+        Some(AutoPlayList::Multiple(list)) => list
+            .into_iter()
+            .map(|ap| (to_sec(ap.start, &mut r), to_sec(ap.end, &mut r)))
+            .collect::<Vec<_>>(),
+        None => Vec::new(),
+    };
+    // 定点音频
+    let media = ext
+        .media
+        .into_iter()
+        .map(|m| (to_sec(m.time, &mut r), m.path))
+        .collect::<Vec<_>>();
     Ok(ChartExtra {
         effects,
         global_effects,
         lyrics: Vec::new(),
+        autoplay_window,
+        media,
         #[cfg(feature = "video")]
         videos,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_user_autoplay_json() {
+        let src = r#"{
+            "bpm": [
+              { "time": [0, 0, 1], "bpm" : 140.0 }
+            ],
+            "autoplay": [
+                {
+                    "start": [33, 0, 1],
+                    "end": [89, 0, 1]
+                }
+            ]
+        }"#;
+        let ext: Extra = serde_json::from_str(src).expect("user json should parse");
+        let mut r: BpmList = ext.bpm.into();
+        match ext.autoplay {
+            Some(AutoPlayList::Multiple(list)) => {
+                assert_eq!(list.len(), 1);
+                let (start, end) = (r.time(&list[0].start), r.time(&list[0].end));
+                // BPM 140: 33 拍 = 14.14s, 89 拍 = 38.14s
+                assert!((start - 14.142857).abs() < 1e-3);
+                assert!((end - 38.142857).abs() < 1e-3);
+            }
+            other => panic!("expected Multiple, got {other:?}"),
+        }
+    }
 }

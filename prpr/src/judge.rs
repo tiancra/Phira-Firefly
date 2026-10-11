@@ -357,6 +357,9 @@ pub struct Judge {
     /// Sorted list of replay events to play back, plus our read index.
     replay_playback: Option<Vec<crate::replay::NoteRecord>>,
     replay_playback_idx: usize,
+
+    /// 定点音频（media）已播放的条数
+    pub media_played: usize,
 }
 
 #[derive(Default)]
@@ -418,6 +421,7 @@ impl Judge {
             replay_record: None,
             replay_playback: None,
             replay_playback_idx: 0,
+            media_played: 0,
         }
     }
 
@@ -478,6 +482,7 @@ impl Judge {
             rec.records.clear();
         }
         self.replay_playback_idx = 0;
+        self.media_played = 0;
     }
 
     /// Advance note pointers past notes before time `t`, marking them as judged.
@@ -682,11 +687,27 @@ impl Judge {
     }
 
     pub fn update(&mut self, res: &mut Resource, chart: &mut Chart, bad_notes: &mut Vec<BadNote>) {
+        // 定点音频（media）：到达时间点即用音乐通道播放一次（回放模式下同样生效）
+        while self.media_played < chart.extra.media.len() {
+            let (time, ref path) = chart.extra.media[self.media_played];
+            if time > res.time {
+                break;
+            }
+            match res.media_musics.get_mut(self.media_played) {
+                Some(Some(music)) => {
+                    let _ = music.play();
+                    tracing::debug!("media: play {path} at {time:.3}s");
+                }
+                Some(None) => tracing::warn!("media: music missing for {path} (load/create failed)"),
+                None => tracing::warn!("media: no music slot for {path}"),
+            }
+            self.media_played += 1;
+        }
         if self.is_replaying() {
             self.replay_update(res, chart, bad_notes);
             return;
         }
-        if res.config.autoplay() {
+        if res.config.autoplay() || self.in_autoplay_window(chart, res.time) {
             self.auto_play_update(res, chart);
             return;
         }
@@ -1177,6 +1198,12 @@ impl Judge {
             }
         }
         self.last_time = t / spd;
+    }
+
+    /// 当前时间是否处于谱面 extra.json 声明的任一 Autoplay 窗口内（[start, end)）
+    #[inline]
+    pub fn in_autoplay_window(&self, chart: &Chart, t: f64) -> bool {
+        chart.extra.autoplay_window.iter().any(|&(start, end)| t >= start && t < end)
     }
 
     /// Drive note state from a recorded replay. Replaces both `update` and

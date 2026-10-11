@@ -18,6 +18,10 @@ pub struct ChartExtra {
     pub effects: Vec<Effect>,
     pub global_effects: Vec<Effect>,
     pub lyrics: Lyrics,
+    /// 自动游玩窗口列表（秒）：当前时间落在任一 [start, end) 内时强制 Autoplay，结束后恢复手动
+    pub autoplay_window: Vec<(f64, f64)>,
+    /// 定点音频事件：(时间秒, 音频文件路径)，到时间即播放一次
+    pub media: Vec<(f64, String)>,
     #[cfg(feature = "video")]
     pub videos: Vec<(super::Video, Option<super::VideoAttach>)>,
 }

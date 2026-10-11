@@ -13,7 +13,7 @@ use miniquad::{
     gl::{GLuint, GL_LINEAR},
     Texture, TextureWrap,
 };
-use sasa::{AudioClip, AudioManager, Sfx};
+use sasa::{AudioClip, AudioManager, Music, MusicParams, Sfx};
 use serde::Deserialize;
 use std::{
     cell::RefCell,
@@ -460,6 +460,9 @@ pub struct Resource {
 
     pub extra_sfxs: SfxMap,
 
+    /// 定点音频（media）用音乐通道播放，索引与 chart.extra.media 对应
+    pub media_musics: Vec<Option<Music>>,
+
     pub chart_target: Option<MSRenderTarget>,
     pub no_effect: bool,
 
@@ -593,6 +596,7 @@ impl Resource {
             sfx_drag,
             sfx_flick,
             extra_sfxs: SfxMap::new(),
+            media_musics: Vec::new(),
 
             chart_target: None,
             no_effect,

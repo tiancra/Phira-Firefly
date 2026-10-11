@@ -36,6 +36,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     any::Any,
     cell::RefCell,
+    collections::HashMap,
     fs::File,
     io::{Cursor, ErrorKind},
     ops::{Deref, DerefMut, Range},
@@ -293,6 +294,10 @@ macro_rules! reset {
         $res.judge_line_color = $res.res_pack.info.color_perfect();
         $self.music.pause()?;
         $self.music.seek_to(0.)?;
+        for m in $res.media_musics.iter_mut().flatten() {
+            let _ = m.pause();
+            let _ = m.seek_to(0.);
+        }
         $tm.speed = $res.config.speed as _;
         $tm.reset();
         $self.last_update_time = $tm.now();
@@ -378,6 +383,23 @@ impl GameScene {
         }?;
         chart.load_textures(fs).await?;
         chart.settings.hold_partial_cover = info.hold_partial_cover;
+        // 定点音频（media）：把音频文件注册进 hitsounds，由后续统一 create_sfx 进 extra_sfxs
+        let media_events = chart.extra.media.clone();
+        for (_, path) in media_events {
+            if chart.hitsounds.contains_key(&path) {
+                continue;
+            }
+            match fs.load_file(&path).await {
+                Ok(data) => match sasa::AudioClip::new(data) {
+                    Ok(clip) => {
+                        chart.hitsounds.insert(path.clone(), clip);
+                        tracing::debug!("media: loaded {path}");
+                    }
+                    Err(e) => tracing::warn!("media: failed to decode {path}: {e}"),
+                },
+                Err(e) => tracing::warn!("media: failed to load file {path}: {e}"),
+            }
+        }
         Ok((chart, bytes, format))
     }
 
@@ -469,12 +491,37 @@ impl GameScene {
         .await
         .context("Failed to load resources")?;
 
-        // Prepare extra sfx from chart.hitsounds
-        chart.hitsounds.drain().for_each(|(name, clip)| {
-            if let Ok(clip) = res.create_sfx(clip) {
-                res.extra_sfxs.insert(name, clip);
+        // media 音频改走音乐通道（Music）：按 media 事件索引存储；其余 hitsound 仍走音效
+        {
+            let media_paths: Vec<String> = chart.extra.media.iter().map(|(_, p)| p.clone()).collect();
+            let mut media_musics: Vec<Option<Music>> = Vec::with_capacity(media_paths.len());
+            for path in &media_paths {
+                match chart.hitsounds.get(path).cloned() {
+                    Some(clip) => match res.audio.create_music(clip, MusicParams { amplifier: res.config.volume_music as _, ..Default::default() }) {
+                        Ok(music) => {
+                            media_musics.push(Some(music));
+                            tracing::debug!("media: music ready {path}");
+                        }
+                        Err(e) => {
+                            media_musics.push(None);
+                            tracing::warn!("media: create_music failed for {path}: {e}");
+                        }
+                    },
+                    None => {
+                        media_musics.push(None);
+                        tracing::warn!("media: clip not loaded for {path}");
+                    }
+                }
             }
-        });
+            chart.hitsounds.drain().for_each(|(name, clip)| {
+                if !media_paths.contains(&name) {
+                    if let Ok(clip) = res.create_sfx(clip) {
+                        res.extra_sfxs.insert(name, clip);
+                    }
+                }
+            });
+            res.media_musics = media_musics;
+        }
 
         let exercise_range = (chart.offset + info_offset + res.config.offset) as f64..res.track_length;
 
@@ -603,6 +650,24 @@ impl GameScene {
                 ..Default::default()
             },
         )
+    }
+
+    /// 鏆傚仠鎵€鏈夊凡鍒涘缓鐨?media 闊充箰锛堣窡闅忔父鎴忔殏鍋滐級
+    fn pause_media_musics(&mut self) {
+        for m in self.res.media_musics.iter_mut().flatten() {
+            let _ = m.pause();
+        }
+    }
+
+    /// 鎭㈠宸茶Е鍙戣繃鐨?media 闊充箰锛涙湭瑙﹀彂鐨勪繚鎸佸垵濮嬫殏鍋滐紝鐢?judge 鍒扮偣鍐?play
+    fn resume_media_musics(&mut self) {
+        for (i, m) in self.res.media_musics.iter_mut().enumerate() {
+            if i < self.judge.media_played {
+                if let Some(m) = m {
+                    let _ = m.play();
+                }
+            }
+        }
     }
 
     fn touch_scale(&self) -> f32 {
@@ -762,6 +827,7 @@ impl GameScene {
             let margin = 0.03;
 
             // Health bar mod (top-left, aligned with pause button height)
+            // test-eol
             if res.config.mods.contains(Mods::HEALTH_BAR) {
                 let hb_h = pause_h;
                 let hb_y = pause_center.y - pause_h / 2.;
@@ -829,6 +895,8 @@ impl GameScene {
                 },
             );
             if self.judge.combo() >= 3 {
+                // 手动开 Autoplay，或当前处于谱面 extra.json 声明的自动游玩窗口内
+                let autoplay = res.config.autoplay() || self.judge.in_autoplay_window(&self.chart, res.time);
                 if legacy_aui {
                     let combo_top = top + eps * 2. - (1. - p) * 0.4 + ui_shift_y;
                     let btm = self
@@ -844,7 +912,7 @@ impl GameScene {
                     let combo_top = btm + 0.01;
                     self.chart
                         .with_element(ui, res, UIElement::Combo, None, (0., combo_top + unit_h * 0.2), |ui, c| {
-                            ui.text(if res.config.autoplay() { "AUTOPLAY" } else { "COMBO" })
+                            ui.text(if autoplay { "AUTOPLAY" } else { "COMBO" })
                                 .pos(0., combo_top)
                                 .anchor(0.5, 0.)
                                 .size(0.4)
@@ -867,7 +935,7 @@ impl GameScene {
                     let ct = ui.text("COMBO").size(0.4).measure().center();
                     let combo_top = btm + 0.01 + ct.y;
                     self.chart.with_element(ui, res, UIElement::Combo, None, (0., combo_top), |ui, c| {
-                        ui.text(if res.config.autoplay() { "AUTOPLAY" } else { "COMBO" })
+                        ui.text(if autoplay { "AUTOPLAY" } else { "COMBO" })
                             .pos(0., combo_top)
                             .anchor(0.5, 0.5)
                             .size(0.4)
@@ -1643,6 +1711,7 @@ impl Scene for GameScene {
         if !tm.paused() {
             self.pause_rewind = None;
             self.music.pause()?;
+            self.pause_media_musics();
             tm.pause();
             self.game_paused = true;
             #[cfg(target_os = "windows")]
@@ -1663,6 +1732,7 @@ impl Scene for GameScene {
             tm.resume();
         }
         self.game_paused = false;
+        self.resume_media_musics();
         #[cfg(target_os = "windows")]
         if let Some(s) = &self.smtc {
             let _ = s.set_paused(false);
@@ -1689,6 +1759,7 @@ impl Scene for GameScene {
                         if tm.paused() {
                             self.music.play()?;
                             tm.resume();
+                            self.resume_media_musics();
                             self.game_paused = false;
                             if let Some(s) = &self.smtc {
                                 let _ = s.set_paused(false);
@@ -1741,6 +1812,7 @@ impl Scene for GameScene {
             tm.seek_to(self.exercise_range.start);
             tm.pause();
             self.music.pause()?;
+            self.pause_media_musics();
             #[cfg(target_env = "ohos")]
             miniquad::native::set_interceptor_state(false);
         }
@@ -1994,31 +2066,32 @@ impl Scene for GameScene {
             GamepadFrame::default()
         };
 
-        let res = &mut self.res;
         if !self.skip_done {
-            if res.config.interactive && (is_key_pressed(KeyCode::Space) || gamepad_frame.menu_pressed) {
+            if self.res.config.interactive && (is_key_pressed(KeyCode::Space) || gamepad_frame.menu_pressed) {
                 if tm.paused() {
                     if matches!(self.state, State::Playing) {
                         self.music.play()?;
                         tm.resume();
+                        self.resume_media_musics();
                     }
                 } else if matches!(self.state, State::Playing | State::BeforeMusic) {
                     if !self.music.paused() {
                         self.music.pause()?;
                     }
+                    self.pause_media_musics();
                     tm.pause();
                 }
             }
-            if Self::interactive(res, &self.state) {
-                if is_key_pressed(KeyCode::Left) && res.config.use_keyboard {
-                    res.time -= 1.;
+            if Self::interactive(&self.res, &self.state) {
+                if is_key_pressed(KeyCode::Left) && self.res.config.use_keyboard {
+                    self.res.time -= 1.;
                     let dst = (self.music.position() - 1.).max(0.);
                     self.music.seek_to(dst)?;
                     tm.seek_to(dst);
                 }
-                if is_key_pressed(KeyCode::Right) && res.config.use_keyboard {
-                    res.time += 5.;
-                    let dst = (self.music.position() + 5.).min(res.track_length);
+                if is_key_pressed(KeyCode::Right) && self.res.config.use_keyboard {
+                    self.res.time += 5.;
+                    let dst = (self.music.position() + 5.).min(self.res.track_length);
                     self.music.seek_to(dst)?;
                     tm.seek_to(dst);
                 }

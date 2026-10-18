@@ -408,6 +408,36 @@ pub async fn load_info(fs: &mut dyn FileSystem) -> Result<ChartInfo> {
     Ok(info)
 }
 
+/// 按文件名前缀读取 info（如 `info_pc` → `info_pc` / `info_pc.yml` / `info_pc.txt` / `info_pc.csv`）。
+/// 找不到任何候选文件时返回 `None`，由调用方决定回退策略。
+pub async fn load_info_with_prefix(fs: &mut dyn FileSystem, base: &str) -> Result<Option<ChartInfo>> {
+    for suffix in ["", ".yml", ".txt", ".csv"] {
+        let name = format!("{base}{suffix}");
+        let Ok(bytes) = fs.load_file(&name).await else {
+            continue;
+        };
+        let text = bytes_to_text_auto(&bytes);
+        let info = if suffix == "" || suffix == ".yml" {
+            match serde_yaml::from_str(&text) {
+                Ok(info) => info,
+                Err(_) => continue,
+            }
+        } else if suffix == ".txt" {
+            match info_from_txt(&text) {
+                Ok(info) => info,
+                Err(_) => continue,
+            }
+        } else {
+            match info_from_csv(&text) {
+                Ok(info) => info,
+                Err(_) => continue,
+            }
+        };
+        return Ok(Some(info));
+    }
+    Ok(None)
+}
+
 pub fn fs_from_file(path: &Path) -> Result<Box<dyn FileSystem + Send + Sync + 'static>> {
     let meta = fs::metadata(path)?;
     Ok(if meta.is_file() {

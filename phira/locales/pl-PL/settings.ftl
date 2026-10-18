@@ -39,6 +39,9 @@ item-adjust = Automatyczne ustawienie opóźnienia
 item-adjust-sub = Ustaw opóźnienie automatycznie, aby zsynchronizować muzykę i beatmapę
 item-music = Głośność muzyki
 item-sfx = Głośność SFX
+item-use-system-inputbox = Użyj systemowego pola wprowadzania
+item-use-system-inputbox-sub = Po włączeniu gra nie przejmuje już pola wprowadzania; całe wprowadzanie tekstu zapewnia system
+
 item-cali = Ustaw opóźnienie
 
 item-dc-pause = Kliknij podwójnie, aby zatrzymać

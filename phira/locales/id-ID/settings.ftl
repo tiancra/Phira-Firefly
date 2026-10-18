@@ -44,6 +44,9 @@ item-adjust-sub = Menyesuaikan waktu secara dinamis untuk menyinkronkan musik da
 item-music = Volume musik
 item-sfx = Volume efek suara
 item-bgm = Volume BGM
+item-use-system-inputbox = Gunakan Kotak Input Sistem
+item-use-system-inputbox-sub = Saat diaktifkan, game tidak lagi mengambil alih kotak input; semua input teks disediakan oleh sistem
+
 item-cali = Penyesuaian offset
 
 item-show-acc = Tunjukkan akurasi waktu nyata

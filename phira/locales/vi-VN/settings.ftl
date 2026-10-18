@@ -57,6 +57,9 @@ item-adjust-sub = Điều chỉnh độ lệch âm thanh và chart một cách t
 item-music = Âm lượng nhạc
 item-sfx = Âm lượng Note
 item-bgm = Âm lượng nhạc nền
+item-use-system-inputbox = Dùng hộp nhập hệ thống
+item-use-system-inputbox-sub = Khi bật, trò chơi sẽ không còn tiếp quản hộp nhập; mọi nhập văn bản đều do hệ thống cung cấp
+
 item-cali = Hiệu chỉnh
 
 item-show-acc = Hiển thị độ chính xác theo thời gian thực

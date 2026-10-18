@@ -102,6 +102,8 @@ fn main() {
         // 必须在 quad_main 之前执行，尽早隐藏命令框以减少闪烁
         console::apply_visibility();
         set_high_performance();
+        // 禁用全屏优化：全屏下 Win32 输入框子窗口可直接显示，无需切换全屏模式
+        prpr::windows_input::disable_fullscreen_optimization();
     }
     phira::quad_main();
 }

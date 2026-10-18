@@ -154,6 +154,7 @@ pub struct Data {
 
 impl Data {
     pub async fn init(&mut self) -> Result<()> {
+        prpr::scene::USE_SYSTEM_INPUTBOX.store(self.config.use_system_inputbox, Ordering::Relaxed);
         fn persist_retry_state(data: &Data) {
             let res = (|| -> Result<()> {
                 let root = dir::root().with_context(|| "failed to get root directory")?;

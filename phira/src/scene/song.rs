@@ -1318,6 +1318,10 @@ impl SongScene {
             self.try_save_with_autocomplete();
         }
 
+        // Scroll::update already took the matrix this frame (for wheel), so contains() would
+        // see None and filter out ALL Started touches, making every control in the edit
+        // panel unclickable. Restore the current-frame matrix (same as render below).
+        self.edit_scroll.set_matrix(Some(ui.transform.try_inverse().unwrap()));
         ui.ensure_touches()
             .retain(|it| !matches!(it.phase, TouchPhase::Started) || self.edit_scroll.contains(it));
 

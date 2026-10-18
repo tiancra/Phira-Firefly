@@ -422,31 +422,41 @@ impl OnboardingScene {
     }
 
     fn render_page(&mut self, ui: &mut Ui, t: f32, step: usize) {
-        let title = match step {
-            0 => obtl!("welcome"),
-            1 => obtl!("choose-language"),
-            2 => obtl!("verify-intest"),
-            3 => obtl!("set-offset"),
-            4 => obtl!("audio-setup"),
-            5 => obtl!("pref-setup"),
-            6 => obtl!("login-phira"),
-            7 => Cow::Owned(ttl!("tos-and-policy").into_owned()),
-            8 => obtl!("tutorial"),
-            9 => obtl!("setup-done"),
-            _ => Cow::Borrowed(""),
+        let title = if step == 0 {
+            obtl!("welcome")
+        } else if step == 1 {
+            obtl!("choose-language")
+        } else if cfg!(feature = "intest") && step == 2 {
+            obtl!("verify-intest")
+        } else if step == offset_step() {
+            obtl!("set-offset")
+        } else if step == audio_step() {
+            obtl!("audio-setup")
+        } else if step == pref_step() {
+            obtl!("pref-setup")
+        } else if step == login_step() {
+            obtl!("login-phira")
+        } else if step == tos_step() {
+            Cow::Owned(ttl!("tos-and-policy").into_owned())
+        } else if step == tutorial_step() {
+            obtl!("tutorial")
+        } else if step == step_count() - 1 {
+            obtl!("setup-done")
+        } else {
+            Cow::Borrowed("")
         };
         self.render_title(ui, &title);
         match step {
-            0 => self.render_welcome(ui, t),
-            1 => self.render_lang(ui, t),
-            2 => self.render_intest(ui, t),
-            3 => self.render_offset(ui, t),
-            4 => self.render_audio(ui, t),
-            5 => self.render_pref(ui, t),
-            6 => self.render_login(ui, t),
-            7 => self.render_tos(ui, t),
-            8 => self.render_tutorial(ui, t),
-            9 => self.render_done(ui, t),
+            s if s == 0 => self.render_welcome(ui, t),
+            s if s == 1 => self.render_lang(ui, t),
+            s if cfg!(feature = "intest") && s == 2 => self.render_intest(ui, t),
+            s if s == offset_step() => self.render_offset(ui, t),
+            s if s == audio_step() => self.render_audio(ui, t),
+            s if s == pref_step() => self.render_pref(ui, t),
+            s if s == login_step() => self.render_login(ui, t),
+            s if s == tos_step() => self.render_tos(ui, t),
+            s if s == tutorial_step() => self.render_tutorial(ui, t),
+            s if s == step_count() - 1 => self.render_done(ui, t),
             _ => {}
         }
     }
@@ -726,13 +736,13 @@ impl OnboardingScene {
 
     fn touch_page(&mut self, touch: &Touch, t: f32) -> Result<bool> {
         match self.step {
-            0 => {
+            s if s == 0 => {
                 if self.btn_start.touch(touch, t) {
                     button_hit();
                     self.begin_trans(t);
                 }
             }
-            1 => {
+            s if s == 1 => {
                 if self.lang_scroll.touch(touch, t) {
                     return Ok(true);
                 }
@@ -755,7 +765,7 @@ impl OnboardingScene {
                     self.begin_trans(t);
                 }
             }
-            2 => {
+            s if cfg!(feature = "intest") && s == 2 => {
                 if self.input_qq.touch(touch, t) {
                     request_input_inline("ob_qq", InputBox::new().default_text(&self.t_qq));
                     return Ok(true);
@@ -775,7 +785,7 @@ impl OnboardingScene {
                     return Ok(true);
                 }
             }
-            3 => {
+            s if s == offset_step() => {
                 if let Some(o) = &mut self.offset {
                     if o.touch(touch, t) {
                         return Ok(true);
@@ -786,7 +796,7 @@ impl OnboardingScene {
                     self.begin_trans(t);
                 }
             }
-            4 => {
+            s if s == audio_step() => {
                 let data = get_data_mut();
                 let config = &mut data.config;
                 if self.music_slider.touch(touch, t, &mut config.volume_music).is_some() {
@@ -807,7 +817,7 @@ impl OnboardingScene {
                     self.begin_trans(t);
                 }
             }
-            5 => {
+            s if s == pref_step() => {
                 if self.pref_scroll.touch(touch, t) {
                     return Ok(true);
                 }
@@ -850,7 +860,7 @@ impl OnboardingScene {
                     self.begin_trans(t);
                 }
             }
-            6 => {
+            s if s == login_step() => {
                 if self.in_reg {
                     if self.input_reg_email.touch(touch, t) {
                         request_input_inline("ob_reg_email", InputBox::new().default_text(&self.t_reg_email));
@@ -897,7 +907,7 @@ impl OnboardingScene {
                     }
                 }
             }
-            7 => {
+            s if s == tos_step() => {
                 if self.tos_scroll.touch(touch, t) {
                     return Ok(true);
                 }
@@ -939,7 +949,7 @@ impl OnboardingScene {
                     return Ok(true);
                 }
             }
-            8 => {
+            s if s == tutorial_step() => {
                 if self.btn_skip.touch(touch, t) {
                     button_hit();
                     self.begin_trans(t);
@@ -957,7 +967,7 @@ impl OnboardingScene {
                     return Ok(true);
                 }
             }
-            9 => {
+            s if s == step_count() - 1 => {
                 if self.btn_enter.touch(touch, t) {
                     button_hit();
                     get_data_mut().onboarding_done = true;

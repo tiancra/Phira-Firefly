@@ -58,6 +58,9 @@ item-adjust-sub = Adjust the audio and chart offset dynamically.
 item-music = Music Volume
 item-sfx = SFX Volume
 item-bgm = BGM Volume
+item-use-system-inputbox = Use System Input Box
+item-use-system-inputbox-sub = When enabled, the game will no longer take over the input box; all text input is provided by the system
+
 item-cali = Adjust Offset
 item-preferred-sample-rate = Preferred Sample Rate
 preferred-sample-rate-default = System Default

@@ -54,6 +54,9 @@ item-adjust-sub = 自動調整延遲以同步音樂和譜面
 item-music = 音樂音量
 item-sfx = 音效音量
 item-bgm = BGM 音量
+item-use-system-inputbox = 使用系統輸入框
+item-use-system-inputbox-sub = 啟用後遊戲將不再接管輸入框，所有文字輸入均由系統提供
+
 item-cali = 調整延遲
 item-preferred-sample-rate = 偏好取樣率
 preferred-sample-rate-default = 系統預設

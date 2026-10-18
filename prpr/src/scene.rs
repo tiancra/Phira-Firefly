@@ -30,7 +30,7 @@ use std::{
     any::Any,
     borrow::Cow,
     cell::RefCell,
-    sync::{Arc, Mutex},
+    sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex},
 };
 use tracing::warn;
 
@@ -158,6 +158,9 @@ pub fn show_message(msg: impl Into<String>) -> MessageBuilder {
 }
 
 pub static INPUT_TEXT: Mutex<(Option<String>, Option<String>)> = Mutex::new((None, None));
+/// Whether to use the system-provided input box (settings -> General -> Use System Input Box).
+/// Synced from the app layer (phira) config; when on, the game stops owning the input box.
+pub static USE_SYSTEM_INPUTBOX: AtomicBool = AtomicBool::new(false);
 /// 用户取消输入（点“取消”或按 Esc）时记录的输入框 id，供 [`take_input_cancelled`]
 /// 取走。与 [`INPUT_TEXT`] 区分：取消时 [`take_input`] 永远返回 `None`，调用方借此
 /// 知道用户是取消了而不是还没提交。
@@ -638,6 +641,38 @@ pub fn request_input(id: impl Into<String>, mut config: InputBox) {
     if config.ok_label.is_none() {
         config = config.ok_label(ttl!("confirm"));
     }
+    // 启用“使用系统输入框”时（OHOS 除外，OHOS 一直走系统输入窗口），把输入交给系统：
+    // Windows 用 PowerShell+WinForms、Android/macOS/iOS/Linux 用对应系统后端，
+    // 游戏不再自绘输入对话框。结果经 INPUT_TEXT / INPUT_CANCELLED 回填。
+    #[cfg(not(target_env = "ohos"))]
+    if USE_SYSTEM_INPUTBOX.load(Ordering::Relaxed) {
+        #[cfg(target_os = "windows")]
+        {
+            // Windows：进程内 Win32 模态对话框（系统控件，瞬时弹出，无 PowerShell 黑窗）
+            let text = crate::windows_input::show_system_input_dialog(&config);
+            match text {
+                Some(text) => *INPUT_TEXT.lock().unwrap() = (Some(id.clone()), Some(text)),
+                None => *INPUT_CANCELLED.lock().unwrap() = Some(id.clone()),
+            }
+            return;
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let id2 = id.clone();
+            if let Err(err) = config.show_async(move |res| {
+                match res {
+                    Ok(Some(text)) => *INPUT_TEXT.lock().unwrap() = (Some(id2.clone()), Some(text)),
+                    _ => *INPUT_CANCELLED.lock().unwrap() = Some(id2.clone()),
+                }
+            }) {
+                warn!(?err, "system input box failed; fall back to builtin dialog");
+                INPUT_DIALOG.with(|it| *it.borrow_mut() = Some(InputDialog::new(id, config)));
+                set_ime_enabled(true);
+                android_show_keyboard(true);
+            }
+            return;
+        }
+    }
     // OHOS: 内核不渲染输入框，改由 ArkTS 外壳弹输入对话框（show_input_window），
     // 结果经 set_input_text 回填；取消经 input_cancelled 回填。
     #[cfg(target_env = "ohos")]
@@ -706,6 +741,35 @@ pub fn request_input_inline(id: impl Into<String>, config: InputBox) {
         })
         .to_string();
         miniquad::native::call_request_callback(cmd);
+    }
+    // 启用“使用系统输入框”时，原位输入也交给系统输入框，不再激活游戏内自绘输入框。
+    #[cfg(not(target_env = "ohos"))]
+    if USE_SYSTEM_INPUTBOX.load(Ordering::Relaxed) {
+        #[cfg(target_os = "windows")]
+        {
+            let text = crate::windows_input::show_system_input_dialog(&config);
+            match text {
+                Some(text) => *INPUT_TEXT.lock().unwrap() = (Some(id.clone()), Some(text)),
+                None => *INPUT_CANCELLED.lock().unwrap() = Some(id.clone()),
+            }
+            return;
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let id2 = id.clone();
+            if let Err(err) = config.show_async(move |res| {
+                match res {
+                    Ok(Some(text)) => *INPUT_TEXT.lock().unwrap() = (Some(id2.clone()), Some(text)),
+                    _ => *INPUT_CANCELLED.lock().unwrap() = Some(id2.clone()),
+                }
+            }) {
+                warn!(?err, "system input box failed; fall back to inline input");
+                let rect = crate::ui::take_last_clicked_rect().unwrap_or(Rect { x: -0.4, y: -0.08, w: 0.8, h: 0.1 });
+                crate::ui::activate_inline_input(id, Some(rect), config.default.to_string(), password);
+                set_ime_enabled(true);
+            }
+            return;
+        }
     }
     #[cfg(not(target_env = "ohos"))]
     {

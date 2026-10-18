@@ -601,6 +601,7 @@ struct GeneralList {
     enable_anys_btn: DRectButton,
     anys_gateway_btn: DRectButton,
     watch_tutorial_btn: DRectButton,
+    system_inputbox_btn: DRectButton,
 
     cache_size: Option<u64>,
     cache_task: Option<Task<Result<u64>>>,
@@ -641,6 +642,7 @@ impl GeneralList {
             enable_anys_btn: DRectButton::new(),
             anys_gateway_btn: DRectButton::new(),
             watch_tutorial_btn: DRectButton::new(),
+            system_inputbox_btn: DRectButton::new(),
 
             cache_size: None,
             cache_task: None,
@@ -724,6 +726,11 @@ impl GeneralList {
         if self.mp_server_btn.touch(touch, t) {
             self.next_page = Some(NextPage::Overlay(Box::new(MpServerPage::new())));
             return Ok(Some(false));
+        }
+        if self.system_inputbox_btn.touch(touch, t) {
+            config.use_system_inputbox ^= true;
+            prpr::scene::USE_SYSTEM_INPUTBOX.store(config.use_system_inputbox, Ordering::Relaxed);
+            return Ok(Some(true));
         }
         #[cfg(not(target_env = "ohos"))]
         if self.lowq_btn.touch(touch, t) {
@@ -850,6 +857,10 @@ impl GeneralList {
                 .map(|server| format!("{} - {}", server.name, server.address))
                 .unwrap_or_else(|| tl!("mp-server-none").into_owned());
             self.mp_server_btn.render_text(ui, rr, t, text, 0.32, false);
+        }
+        item! {
+            render_title(ui, tl!("item-use-system-inputbox"), Some(tl!("item-use-system-inputbox-sub")));
+            render_switch(ui, rr, t, &mut self.system_inputbox_btn, config.use_system_inputbox);
         }
         item! {
             render_title(ui, tl!("item-prefer-reduced-motion"), Some(tl!("item-prefer-reduced-motion-sub")));

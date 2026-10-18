@@ -57,6 +57,9 @@ item-adjust-sub = ปรับเพลงให้ตรงกับ Chart โ�
 item-music = เสียงเพลง
 item-sfx = เสียง Sound effect
 item-bgm = เสียง BGM
+item-use-system-inputbox = ใช้กล่องป้อนข้อความของระบบ
+item-use-system-inputbox-sub = เมื่อเปิดใช้งาน เกมจะไม่ควบคุมกล่องป้อนข้อความ ข้อมูลทั้งหมดจะถูกป้อนโดยระบบ
+
 item-cali = ปรับ Offset
 
 item-show-acc = โชว์ค่า Accuracy

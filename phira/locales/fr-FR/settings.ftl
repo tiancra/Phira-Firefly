@@ -57,6 +57,9 @@ item-adjust-sub = Cela ajuste le temps dynamiquement pour synchroniser la musiqu
 item-music = Volume de la musique
 item-sfx = Volume des effets sonores
 item-bgm = Volume de la musique de fond
+item-use-system-inputbox = Utiliser la boîte de saisie système
+item-use-system-inputbox-sub = Une fois activé, le jeu ne contrôle plus la saisie ; toute saisie de texte est fournie par le système
+
 item-cali = Ajuster le décalage
 
 item-show-acc = Afficher la précision en temps réel

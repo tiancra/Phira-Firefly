@@ -39,6 +39,9 @@ item-adjust = 自動調整
 item-adjust-sub = 音楽とビートマップを同期させるために、動的に時間を調整します
 item-music = BGM音量
 item-sfx = SE音量
+item-use-system-inputbox = システムの入力框を使用
+item-use-system-inputbox-sub = 有効にするとゲームは入力框を掲管しなくなり、すべてのテキスト入力はシステムが提供します
+
 item-cali = 判定調整
 item-insecure = 安全でないモード
 item-insecure-sub = オンラインの機能がうまく動作しない場合にオンにしてください。これをオンにすると、接続の安全性が低下します。

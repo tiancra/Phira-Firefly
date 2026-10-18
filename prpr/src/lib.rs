@@ -17,6 +17,8 @@ pub mod smtc;
 pub mod scene;
 pub mod task;
 pub mod theme;
+#[cfg(target_os = "windows")]
+pub mod windows_input;
 pub mod time;
 pub mod ui;
 

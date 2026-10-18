@@ -44,6 +44,9 @@ item-adjust-sub = Müzikle ritim haritasını senkronize etmek içim zamanı din
 item-music = Müzik sesi
 item-sfx = Ses efektleri
 item-bgm = Arkaplan müziği
+item-use-system-inputbox = Sistem Giriş Kutusunu Kullan
+item-use-system-inputbox-sub = Etkinleştirildiğinde oyun giriş kutusunu devralmaz; tüm metin girişi sistem tarafından sağlanır
+
 item-cali = Dengeyi ayarla
 
 item-show-acc = Doğruluğu gerçek zamanlı göster

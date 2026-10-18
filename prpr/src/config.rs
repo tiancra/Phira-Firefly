@@ -128,6 +128,12 @@ pub struct Config {
     pub speed: f32,
     pub touch_debug: bool,
     pub use_keyboard: bool,
+
+    /// Whether to use the system-provided input dialog instead of the built-in one.
+    /// When enabled, the game stops owning the input box; all text input is provided
+    /// by the system (Windows PowerShell WinForms / Android native / OHOS ArkTS).
+    #[serde(default)]
+    pub use_system_inputbox: bool,
     pub volume_bgm: f32,
     pub volume_music: f32,
     pub volume_sfx: f32,
@@ -196,6 +202,7 @@ impl Default for Config {
             speed: 1.,
             touch_debug: false,
             use_keyboard: false,
+            use_system_inputbox: false,
             volume_music: 1.,
             volume_sfx: 1.,
             volume_bgm: 1.,

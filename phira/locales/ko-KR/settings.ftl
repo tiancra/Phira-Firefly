@@ -52,6 +52,9 @@ item-adjust-sub = 음악과 비트맵을 동기화하기 위해 시간을 동적
 item-music = 음악 볼륨
 item-sfx = 효과음 볼륨
 item-bgm = BGM 볼륨
+item-use-system-inputbox = 시스템 입력 창 사용
+item-use-system-inputbox-sub = 활성화하면 게임이 입력 창을 관리하지 않습니다. 모든 문자 입력은 시스템이 제공합니다
+
 item-cali = 오프셋 조정
 
 item-show-acc = 실시간 정확도 표시

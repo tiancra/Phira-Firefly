@@ -57,6 +57,9 @@ item-adjust-sub = Audio- und Level-Offset dynamisch anpassen.
 item-music = Musiklautstärke
 item-sfx = SFX-Lautstärke
 item-bgm = Hintergrundmusik-Lautstärke
+item-use-system-inputbox = Systemeingabefeld verwenden
+item-use-system-inputbox-sub = Wenn aktiviert, übernimmt das Spiel das Eingabefeld nicht mehr; die gesamte Texteingabe erfolgt über das System
+
 item-cali = Offset anpassen
 
 item-show-acc = Genauigkeit in Echtzeit

@@ -1,6 +1,6 @@
 //! 首次启动引导场景。
 //! 首次启动点击“点击屏幕开始”后，不直接进入主界面，而是进入本场景：
-//! 黑色遮罩上从右侧滑入引导内容（欢迎 → 选择语言 → [内测验证] → 设置延迟 → 登录 → 新手教程 → 设置完成），
+//! 黑色遮罩上从右侧滑入引导内容（欢迎 → 选择语言 → 导入数据 → [内测验证] → 设置延迟 → 登录 → 新手教程 → 设置完成），
 //! 完成后 Replace 为预加载好的 MainScene，并重新触发主界面入场动画。
 
 prpr_l10n::tl_file!("onboarding" obtl);
@@ -8,6 +8,7 @@ prpr_l10n::tl_file!("onboarding" obtl);
 use super::MainScene;
 use crate::{
     client::{Client, LoginParams, User, UserManager},
+    data_transfer,
     get_data, get_data_mut, save_data,
     popup::ChooseButton,
     scene::{
@@ -23,7 +24,7 @@ use prpr::{
     config::DynamicBackgroundMode,
     core::{ParticleEmitter, ResourcePack, NOTE_WIDTH_RATIO_BASE, BOLD_FONT},
     ext::{create_audio_manger, open_url, poll_future, semi_black, semi_white, LocalTask, RectExt, SafeTexture, ScaleType},
-    scene::{request_input_inline, return_input, show_error, show_message, take_input, NextScene, Scene},
+    scene::{request_file, request_input, request_input_inline, return_file, return_input, show_error, show_message, take_file, take_input, NextScene, Scene},
     task::Task,
     time::TimeManager,
     ui::{button_hit, DRectButton, Dialog, Slider, Scroll, Ui},
@@ -33,8 +34,11 @@ use sasa::{AudioClip, AudioManager, Music, MusicParams, PlaySfxParams, Sfx};
 use std::{
     borrow::Cow,
     cell::RefCell,
-    net::ToSocketAddrs,
-    sync::atomic::Ordering,
+    net::{SocketAddr, ToSocketAddrs},
+    sync::{
+        atomic::Ordering,
+        mpsc, Arc,
+    },
 };
 
 /// 内测资格验证服务地址（exam 后端，正式环境）。
@@ -55,34 +59,42 @@ fn ease_out_cubic(p: f32) -> f32 {
     1. - (1. - p).powi(3)
 }
 
-/// 含 intest feature 时共有 10 页，否则 9 页（跳过内测验证）。
+/// 含 intest feature 时共有 11 页，否则 10 页（跳过内测验证）。
 #[inline]
 fn step_count() -> usize {
-    if cfg!(feature = "intest") { 10 } else { 9 }
+    if cfg!(feature = "intest") { 11 } else { 10 }
+}
+#[inline]
+fn import_step() -> usize {
+    2
+}
+#[inline]
+fn intest_step() -> usize {
+    3
 }
 #[inline]
 fn offset_step() -> usize {
-    if cfg!(feature = "intest") { 3 } else { 2 }
-}
-#[inline]
-fn audio_step() -> usize {
     if cfg!(feature = "intest") { 4 } else { 3 }
 }
 #[inline]
-fn pref_step() -> usize {
+fn audio_step() -> usize {
     if cfg!(feature = "intest") { 5 } else { 4 }
 }
 #[inline]
-fn login_step() -> usize {
+fn pref_step() -> usize {
     if cfg!(feature = "intest") { 6 } else { 5 }
 }
 #[inline]
-fn tos_step() -> usize {
+fn login_step() -> usize {
     if cfg!(feature = "intest") { 7 } else { 6 }
 }
 #[inline]
-fn tutorial_step() -> usize {
+fn tos_step() -> usize {
     if cfg!(feature = "intest") { 8 } else { 7 }
+}
+#[inline]
+fn tutorial_step() -> usize {
+    if cfg!(feature = "intest") { 9 } else { 8 }
 }
 #[derive(Clone, Copy)]
 enum NextAction {
@@ -114,6 +126,21 @@ pub struct OnboardingScene {
     lang_selected: usize,
     btn_lang_next: DRectButton,
 
+    /// step 2 导入数据
+    import_local_btn: DRectButton,
+    import_device_btn: DRectButton,
+    btn_import_skip: DRectButton,
+    import_progress: Arc<data_transfer::Progress>,
+    import_rx: Option<mpsc::Receiver<Result<()>>>,
+    import_pending_data: Option<Vec<u8>>,
+
+    /// step 2 从其它设备导入（局域网）
+    lan_recv: Option<data_transfer::lan::ReceiveSession>,
+    lan_device_btns: Vec<DRectButton>,
+    lan_scroll: Scroll,
+    lan_pair_target: Option<SocketAddr>,
+    lan_restart_shown: bool,
+
     /// step 2（intest）内测验证
     input_qq: DRectButton,
     input_key: DRectButton,
@@ -128,13 +155,13 @@ pub struct OnboardingScene {
     offset_task: LocalTask<Result<OffsetCali>>,
     btn_offset_next: DRectButton,
 
-    /// step 4 音频设置（音乐/音效/BGM 音量，立即应用）
+    /// step 5 音频设置（音乐/音效/BGM 音量，立即应用）
     music_slider: Slider,
     sfx_slider: Slider,
     bgm_slider: Slider,
     btn_audio_next: DRectButton,
 
-    /// step 5 偏好设置（全屏/多人/服务器/动态背景/低画质，立即应用）
+    /// step 6 偏好设置（全屏/多人/服务器/动态背景/低画质，立即应用）
     pref_scroll: Scroll,
     fullscreen_btn: DRectButton,
     mp_btn: DRectButton,
@@ -143,13 +170,14 @@ pub struct OnboardingScene {
     lowq_btn: DRectButton,
     btn_pref_next: DRectButton,
 
-    /// step 6 登录
+    /// step 7 登录
     t_email: String,
     t_pwd: String,
     input_email: DRectButton,
     input_pwd: DRectButton,
     btn_to_reg: DRectButton,
     btn_login: DRectButton,
+    btn_skip_login: DRectButton,
     in_reg: bool,
     t_reg_email: String,
     t_reg_name: String,
@@ -163,7 +191,7 @@ pub struct OnboardingScene {
     after_accept_tos: Option<NextAction>,
     skip_login: bool,
 
-    /// step 5 服务条款与隐私政策（登录成功后的独立页）
+    /// step 8 服务条款与隐私政策（登录成功后的独立页）
     tos_scroll: Scroll,
     tos_page: usize,
     tos_pages: Option<Vec<String>>,
@@ -172,12 +200,12 @@ pub struct OnboardingScene {
     btn_tos_prev: DRectButton,
     btn_tos_next: DRectButton,
 
-    /// step 8 新手教程
+    /// step 9 新手教程
     btn_skip: DRectButton,
     btn_tutorial: DRectButton,
     tutorial_started: bool,
 
-    /// step 9 设置完成
+    /// step 10 设置完成
     btn_enter: DRectButton,
 }
 
@@ -209,6 +237,19 @@ impl OnboardingScene {
             lang_btns: (0..LANGS.len()).map(|_| DRectButton::new()).collect(),
             lang_selected,
             btn_lang_next: DRectButton::new(),
+
+            import_local_btn: DRectButton::new(),
+            import_device_btn: DRectButton::new(),
+            btn_import_skip: DRectButton::new(),
+            import_progress: Arc::new(data_transfer::Progress::default()),
+            import_rx: None,
+            import_pending_data: None,
+
+            lan_recv: None,
+            lan_device_btns: Vec::new(),
+            lan_scroll: Scroll::new(),
+            lan_pair_target: None,
+            lan_restart_shown: false,
 
             input_qq: DRectButton::new().with_delta(-0.002),
             input_key: DRectButton::new().with_delta(-0.002),
@@ -247,6 +288,7 @@ impl OnboardingScene {
             input_pwd: DRectButton::new().with_delta(-0.002),
             btn_to_reg: DRectButton::new(),
             btn_login: DRectButton::new(),
+            btn_skip_login: DRectButton::new(),
             in_reg: false,
             t_reg_email: String::new(),
             t_reg_name: String::new(),
@@ -285,7 +327,7 @@ impl OnboardingScene {
         });
     }
 
-    /// 开始向右滑动画并切换到下一页；自动跳过登录页（已登录）与服务条款页（已同意）。
+    /// 开始向右滑动画并切换到下一页；自动跳过登录页（已登录/跳过登录）与服务条款页（已同意或跳过登录）。
     fn begin_trans(&mut self, t: f32) {
         // 离开当前页的清理
         if self.step == offset_step() {
@@ -300,7 +342,8 @@ impl OnboardingScene {
                 target += 1;
                 continue;
             }
-            if target == tos_step() && get_data().terms_modified.is_some() {
+            // 跳过登录时无需再弹用户协议；已同意过（terms_modified 存在）同样跳过
+            if target == tos_step() && (self.skip_login || get_data().terms_modified.is_some()) {
                 target += 1;
                 continue;
             }
@@ -321,6 +364,55 @@ impl OnboardingScene {
         self.trans_from = self.step;
         self.pending_step = target;
         self.trans_time = Some(t);
+    }
+
+    /// 解析数据包并在后台线程导入；进度通过 `import_progress` 反馈。
+    fn start_import(&mut self, file: String) {
+        if self.import_rx.is_some() {
+            return;
+        }
+        match data_transfer::prepare_import(&file) {
+            Ok(plan) => {
+                let progress = Arc::new(data_transfer::Progress::new(plan.total));
+                let thread_progress = Arc::clone(&progress);
+                let (tx, rx) = mpsc::sync_channel(1);
+                self.import_pending_data = plan.data_json.clone();
+                self.import_progress = progress;
+                self.import_rx = Some(rx);
+                std::thread::spawn(move || {
+                    let res = data_transfer::run_import(file, plan, &thread_progress);
+                    let _ = tx.send(res);
+                });
+            }
+            Err(err) => show_error(err.context(obtl!("import-invalid"))),
+        }
+    }
+
+    /// 导入完成：同步到内存并提示重启（不进入下一页）。
+    fn finish_import(&mut self) {
+        self.import_rx = None;
+        if let Some(bytes) = self.import_pending_data.take() {
+            if let Err(err) = data_transfer::apply_imported_data(&bytes) {
+                tracing::warn!(?err, "failed to apply imported data in memory");
+            }
+        }
+        self.skip_login = get_data().me.is_some();
+        let _ = save_data();
+        Dialog::plain(obtl!("import-done"), obtl!("import-restart-content"))
+            .buttons(vec![obtl!("import-done-ok").into_owned()])
+            .listener(|_, _| {
+                // 立即重启：先落盘再拉起新进程，避免导入的内存数据丢失
+                let _ = save_data();
+                match std::env::current_exe().and_then(|exe| std::process::Command::new(exe).spawn()) {
+                    Ok(_) => std::process::exit(0),
+                    Err(err) => {
+                        tracing::warn!(?err, "failed to restart the game");
+                        show_message(obtl!("import-restart-failed")).error();
+                        false
+                    }
+                }
+            })
+            .show();
     }
 
     fn start_verify(&mut self) {
@@ -376,6 +468,15 @@ impl OnboardingScene {
             match id.as_str() {
                 "ob_qq" => self.t_qq = text,
                 "ob_key" => self.t_key = text,
+                "ob_pair_code" => {
+                    if let Some(addr) = self.lan_pair_target.take() {
+                        if let Some(recv) = &mut self.lan_recv {
+                            if let Err(err) = recv.pair(addr, text) {
+                                show_error(err.context(obtl!("import-pair-failed")));
+                            }
+                        }
+                    }
+                }
                 "ob_email" => self.t_email = text,
                 "ob_pwd" => self.t_pwd = text,
                 "ob_reg_email" => self.t_reg_email = text,
@@ -426,7 +527,9 @@ impl OnboardingScene {
             obtl!("welcome")
         } else if step == 1 {
             obtl!("choose-language")
-        } else if cfg!(feature = "intest") && step == 2 {
+        } else if step == import_step() {
+            obtl!("import-data")
+        } else if cfg!(feature = "intest") && step == intest_step() {
             obtl!("verify-intest")
         } else if step == offset_step() {
             obtl!("set-offset")
@@ -449,7 +552,8 @@ impl OnboardingScene {
         match step {
             s if s == 0 => self.render_welcome(ui, t),
             s if s == 1 => self.render_lang(ui, t),
-            s if cfg!(feature = "intest") && s == 2 => self.render_intest(ui, t),
+            s if s == import_step() => self.render_import(ui, t),
+            s if cfg!(feature = "intest") && s == intest_step() => self.render_intest(ui, t),
             s if s == offset_step() => self.render_offset(ui, t),
             s if s == audio_step() => self.render_audio(ui, t),
             s if s == pref_step() => self.render_pref(ui, t),
@@ -501,6 +605,123 @@ impl OnboardingScene {
         self.btn_lang_next.render_text(ui, Rect::new(0.25, y, 0.6, 0.12), t, obtl!("next"), 0.6, true);
     }
 
+    /// step 2 导入数据：从本地 .pfd 文件导入，或从局域网内的其它设备导入。
+    fn render_import(&mut self, ui: &mut Ui, t: f32) {
+        let y = self.bottom_button(ui);
+        let lan = self
+            .lan_recv
+            .as_ref()
+            .map(|it| (it.phase, it.progress.fraction(), it.devices.clone()));
+
+        if let Some((phase, frac, devices)) = lan {
+            match phase {
+                data_transfer::lan::RecvPhase::Discovering => {
+                    let top = ui.top;
+                    if devices.is_empty() {
+                        ui.text(obtl!("import-device-searching"))
+                            .pos(0.55, -top + 0.5)
+                            .anchor(0.5, 0.5)
+                            .no_baseline()
+                            .size(0.42)
+                            .color(semi_white(0.65))
+                            .draw();
+                    } else {
+                        let r = Rect::new(0.15, -top + 0.32, 0.8, top * 2. - 0.54);
+                        while self.lan_device_btns.len() < devices.len() {
+                            self.lan_device_btns.push(DRectButton::new());
+                        }
+                        self.lan_scroll.size((r.w, r.h));
+                        ui.scissor(r, |ui| {
+                            ui.scope(|ui| {
+                                ui.dx(r.x);
+                                ui.dy(r.y);
+                                let w = r.w;
+                                self.lan_scroll.render(ui, |ui| {
+                                    let mut h = 0.;
+                                    for (device, btn) in devices.iter().zip(self.lan_device_btns.iter_mut()) {
+                                        let row = Rect::new(0., h, w, 0.11);
+                                        btn.render_text(ui, row, t, format!("{} ({})", device.name, device.ip()), 0.5, false);
+                                        h += 0.12;
+                                    }
+                                    (w, h)
+                                });
+                            });
+                        });
+                    }
+                    let y = self.bottom_button(ui);
+                    self.btn_import_skip.render_text(ui, Rect::new(0.25, y, 0.6, 0.12), t, obtl!("skip"), 0.6, false);
+                }
+                data_transfer::lan::RecvPhase::WaitingStart => {
+                    ui.text(obtl!("import-waiting-sender"))
+                        .pos(0.55, -0.1)
+                        .anchor(0.5, 0.5)
+                        .no_baseline()
+                        .size(0.46)
+                        .color(semi_white(0.8))
+                        .draw();
+                }
+                _ => {
+                    let bar = Rect::new(0.25, y - 0.07, 0.6, 0.02);
+                    ui.fill_path(&bar.rounded(0.01), semi_white(0.2));
+                    if frac > 0. {
+                        ui.fill_path(&Rect::new(bar.x, bar.y, (bar.w * frac).max(0.02), bar.h).rounded(0.01), WHITE);
+                    }
+                    ui.text(obtl!("import-progress", "percent" => format!("{:.0}", frac * 100.)))
+                        .pos(0.55, y - 0.12)
+                        .anchor(0.5, 0.5)
+                        .size(0.4)
+                        .color(semi_white(0.75))
+                        .draw();
+                }
+            }
+            return;
+        }
+
+        let r1 = Rect::new(0.25, -0.30, 0.6, 0.26);
+        let r2 = Rect::new(0.25, 0.04, 0.6, 0.26);
+        let importing = self.import_rx.is_some();
+
+        self.import_local_btn.render_shadow(ui, r1, t, |ui, path| {
+            ui.fill_path(&path, semi_black(if importing { 0.3 } else { 0.55 }));
+            ui.text(obtl!("import-from-local"))
+                .pos(r1.center().x, r1.center().y)
+                .anchor(0.5, 0.5)
+                .size(0.6)
+                .color(semi_white(if importing { 0.45 } else { 1. }))
+                .draw();
+        });
+        self.import_device_btn.render_shadow(ui, r2, t, |ui, path| {
+            ui.fill_path(&path, semi_black(0.55));
+            ui.text(obtl!("import-from-device"))
+                .pos(r2.center().x, r2.center().y)
+                .anchor(0.5, 0.5)
+                .multiline()
+                .max_width(r2.w - 0.1)
+                .h_center()
+                .size(0.42)
+                .color(semi_white(1.))
+                .draw();
+        });
+
+        let y = self.bottom_button(ui);
+        if importing {
+            let p = self.import_progress.fraction();
+            let bar = Rect::new(0.2, y - 0.07, 0.7, 0.02);
+            ui.fill_path(&bar.rounded(0.01), semi_white(0.2));
+            if p > 0. {
+                ui.fill_path(&Rect::new(bar.x, bar.y, (bar.w * p).max(0.02), bar.h).rounded(0.01), WHITE);
+            }
+            ui.text(obtl!("import-progress", "percent" => format!("{:.0}", p * 100.)))
+                .pos(0.55, y - 0.12)
+                .anchor(0.5, 0.5)
+                .size(0.4)
+                .color(semi_white(0.75))
+                .draw();
+        } else {
+            self.btn_import_skip.render_text(ui, Rect::new(0.25, y, 0.6, 0.12), t, obtl!("skip"), 0.6, false);
+        }
+    }
+
     fn render_intest(&mut self, ui: &mut Ui, t: f32) {
         let h = 0.1;
         let mut r = Rect::new(0.15, -0.15, 0.8, h);
@@ -531,7 +752,7 @@ impl OnboardingScene {
             .render_text(ui, Rect::new(0.25, y, 0.6, 0.12), t, obtl!("next"), 0.6, true);
     }
 
-    /// step 4 音频设置：音乐/音效/BGM 音量（与设置界面一致，立即应用）
+    /// step 5 音频设置：音乐/音效/BGM 音量（与设置界面一致，立即应用）
     fn render_audio(&mut self, ui: &mut Ui, t: f32) {
         let data = get_data();
         let config = &data.config;
@@ -557,7 +778,7 @@ impl OnboardingScene {
             .render_text(ui, Rect::new(0.25, yb, 0.6, 0.12), t, obtl!("next"), 0.6, true);
     }
 
-    /// step 5 偏好设置：全屏/多人/服务器/动态背景/低画质（与设置界面一致，立即应用，可滚动）
+    /// step 6 偏好设置：全屏/多人/服务器/动态背景/低画质（与设置界面一致，立即应用，可滚动）
     fn render_pref(&mut self, ui: &mut Ui, t: f32) {
         let top = ui.top;
         let r = Rect::new(0.15, -top + 0.32, 0.8, top * 2. - 0.54);
@@ -635,8 +856,16 @@ impl OnboardingScene {
             self.input_email.render_input(ui, r, t, &self.t_email, obtl!("account"), 0.6);
             r.y += h + 0.05;
             self.input_pwd.render_input(ui, r, t, "*".repeat(self.t_pwd.len()), obtl!("password"), 0.6);
-            self.btn_to_reg.render_text(ui, Rect::new(x0, y, bw, bh), t, obtl!("register"), 0.6, false);
-            self.btn_login.render_text(ui, Rect::new(x0 + bw + pad, y, bw, bh), t, obtl!("next"), 0.6, true);
+            // 三个按钮：跳过 / 注册 / 下一步
+            let bw = 0.25;
+            let pad = 0.035;
+            let x0 = 0.14;
+            self.btn_skip_login
+                .render_text(ui, Rect::new(x0, y, bw, bh), t, obtl!("skip"), 0.6, false);
+            self.btn_to_reg
+                .render_text(ui, Rect::new(x0 + bw + pad, y, bw, bh), t, obtl!("register"), 0.6, false);
+            self.btn_login
+                .render_text(ui, Rect::new(x0 + bw * 2. + pad * 2., y, bw, bh), t, obtl!("next"), 0.6, true);
         }
         if self.login_task.is_some() {
             ui.full_loading_simple(t);
@@ -765,7 +994,62 @@ impl OnboardingScene {
                     self.begin_trans(t);
                 }
             }
-            s if cfg!(feature = "intest") && s == 2 => {
+            s if s == import_step() => {
+                if self.import_rx.is_some() {
+                    return Ok(true);
+                }
+                // 局域网导入模式
+                if let Some(recv) = &self.lan_recv {
+                    let discovering = recv.phase == data_transfer::lan::RecvPhase::Discovering;
+                    let devices = recv.devices.clone();
+                    if discovering {
+                        if self.lan_scroll.touch(touch, t) {
+                            return Ok(true);
+                        }
+                        for (i, btn) in self.lan_device_btns.iter_mut().enumerate() {
+                            if btn.touch(touch, t) {
+                                if let Some(device) = devices.get(i) {
+                                    self.lan_pair_target = Some(device.addr);
+                                    request_input(
+                                        "ob_pair_code",
+                                        InputBox::new().title(obtl!("import-pair-title")).prompt(obtl!("import-pair-prompt")),
+                                    );
+                                }
+                                return Ok(true);
+                            }
+                        }
+                    }
+                    if self.btn_import_skip.touch(touch, t) {
+                        button_hit();
+                        self.lan_recv = None;
+                        self.lan_restart_shown = false;
+                        self.begin_trans(t);
+                    }
+                    return Ok(true);
+                }
+                if self.import_local_btn.touch(touch, t) {
+                    button_hit();
+                    request_file("_import_data");
+                    return Ok(true);
+                }
+                if self.import_device_btn.touch(touch, t) {
+                    button_hit();
+                    match data_transfer::lan::ReceiveSession::new() {
+                        Ok(session) => {
+                            self.lan_recv = Some(session);
+                            self.lan_device_btns.clear();
+                            self.lan_restart_shown = false;
+                        }
+                        Err(err) => show_error(err.context(obtl!("import-failed"))),
+                    }
+                    return Ok(true);
+                }
+                if self.btn_import_skip.touch(touch, t) {
+                    button_hit();
+                    self.begin_trans(t);
+                }
+            }
+            s if cfg!(feature = "intest") && s == intest_step() => {
                 if self.input_qq.touch(touch, t) {
                     request_input_inline("ob_qq", InputBox::new().default_text(&self.t_qq));
                     return Ok(true);
@@ -892,6 +1176,12 @@ impl OnboardingScene {
                     }
                     if self.input_pwd.touch(touch, t) {
                         request_input_inline("ob_pwd", InputBox::new().default_text(&self.t_pwd).mode(InputMode::Password));
+                        return Ok(true);
+                    }
+                    if self.btn_skip_login.touch(touch, t) {
+                        button_hit();
+                        self.skip_login = true;
+                        self.begin_trans(t);
                         return Ok(true);
                     }
                     if self.btn_to_reg.touch(touch, t) {
@@ -1041,6 +1331,49 @@ impl Scene for OnboardingScene {
         }
 
         self.handle_input()?;
+
+        // 本地数据包导入
+        if let Some((id, file)) = take_file() {
+            if id == "_import_data" {
+                self.start_import(file);
+            } else {
+                return_file(id, file);
+            }
+        }
+        if let Some(rx) = &self.import_rx {
+            let recv = rx.try_recv();
+            match recv {
+                Ok(Ok(())) => self.finish_import(),
+                Ok(Err(err)) => {
+                    self.import_rx = None;
+                    self.import_pending_data = None;
+                    show_error(err.context(obtl!("import-failed")));
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.import_rx = None;
+                    self.import_pending_data = None;
+                    show_error(anyhow::anyhow!("import thread panicked"));
+                }
+            }
+        }
+        // 局域网导入（从其它设备）
+        let mut lan_done = false;
+        if let Some(recv) = &mut self.lan_recv {
+            recv.update();
+            if let Some(err) = recv.take_error() {
+                show_message(err).error();
+            }
+            lan_done = recv.phase == data_transfer::lan::RecvPhase::Done;
+        }
+        if lan_done && !self.lan_restart_shown {
+            self.lan_restart_shown = true;
+            self.lan_recv = None;
+            self.finish_import();
+        }
+        if self.lan_recv.is_some() && self.step == import_step() {
+            self.lan_scroll.update(t);
+        }
 
         // 内测验证结果
         if let Some(task) = &mut self.verify_task {

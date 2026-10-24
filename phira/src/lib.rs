@@ -9,6 +9,7 @@ mod charts_view;
 mod client;
 mod crash;
 mod data;
+mod data_transfer;
 mod icons;
 mod images;
 #[cfg(feature = "intest")]

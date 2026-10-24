@@ -338,7 +338,7 @@ impl Scene for MainScene {
         if self.pages.last_mut().unwrap().touch(touch, s)? {
             return Ok(true);
         }
-        if self.btn_back.touch(touch) && self.pages.len() > 1 {
+        if self.btn_back.touch(touch) && self.pages.len() > 1 && !self.pages.last().unwrap().hide_back() {
             button_hit();
             if !self.pages.last_mut().unwrap().on_back_pressed(&mut self.state) {
                 if self.pages.len() == 2 {
@@ -787,16 +787,21 @@ impl Scene for MainScene {
         if self.pages.len() >= 2 {
             let xchs = PREFER_ALT_UI.load(Ordering::Relaxed);
             let mut r = ui.back_rect();
-            self.btn_back.set(ui, r);
-            if !xchs {
-                ui.scissor(r, |ui| {
-                    r.y += match self.pages.len() {
-                        1 => 1.,
-                        2 => s.fader.for_sub(|f| f.progress(s.t)),
-                        _ => 0.,
-                    } * r.h;
-                    ui.fill_rect(r, (*self.icon_back, r));
-                });
+            if self.pages.last().unwrap().hide_back() {
+                // 不可返回的页面：清空按钮命中区域，避免误触
+                self.btn_back = RectButton::new();
+            } else {
+                self.btn_back.set(ui, r);
+                if !xchs {
+                    ui.scissor(r, |ui| {
+                        r.y += match self.pages.len() {
+                            1 => 1.,
+                            2 => s.fader.for_sub(|f| f.progress(s.t)),
+                            _ => 0.,
+                        } * r.h;
+                        ui.fill_rect(r, (*self.icon_back, r));
+                    });
+                }
             }
         }
 

@@ -1,6 +1,6 @@
 prpr_l10n::tl_file!("settings");
 
-use super::{MpServerPage, NextPage, OffsetPage, Page, SFader, SharedState};
+use super::{DataManagePage, MpServerPage, NextPage, OffsetPage, Page, SFader, SharedState};
 use crate::{
     dir, get_data, get_data_mut,
     popup::ChooseButton,
@@ -591,6 +591,7 @@ struct GeneralList {
     fullscreen_btn: DRectButton,
 
     cache_btn: DRectButton,
+    data_manage_btn: DRectButton,
     offline_btn: DRectButton,
     server_status_btn: DRectButton,
     mp_btn: DRectButton,
@@ -632,6 +633,7 @@ impl GeneralList {
             fullscreen_btn: DRectButton::new(),
 
             cache_btn: DRectButton::new(),
+            data_manage_btn: DRectButton::new(),
             offline_btn: DRectButton::new(),
             server_status_btn: DRectButton::new(),
             mp_btn: DRectButton::new(),
@@ -709,6 +711,10 @@ impl GeneralList {
             fs::remove_dir_all(dir::cache()?)?;
             self.update_cache_size()?;
             show_message(tl!("item-cache-cleared")).ok();
+            return Ok(Some(false));
+        }
+        if self.data_manage_btn.touch(touch, t) {
+            self.next_page = Some(NextPage::Overlay(Box::new(DataManagePage::new())));
             return Ok(Some(false));
         }
         if self.offline_btn.touch(touch, t) {
@@ -879,6 +885,10 @@ impl GeneralList {
             };
             render_title(ui, tl!("item-clear-cache"), Some(cache_size));
             self.cache_btn.render_text(ui, rr, t, tl!("item-clear-cache-btn"), 0.5, true);
+        }
+        item! {
+            render_title(ui, tl!("item-data-manage"), Some(tl!("item-data-manage-sub")));
+            self.data_manage_btn.render_text(ui, rr, t, tl!("item-data-manage-btn"), 0.5, true);
         }
         ui.dy(0.04);
         h += 0.04;

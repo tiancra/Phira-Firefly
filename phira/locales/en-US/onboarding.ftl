@@ -55,3 +55,21 @@ dynamic-bg-dynamic = Dynamic Brightness
 mp-addr-invalid = Invalid server address
 
 tutorial-enter = Enter
+
+import-data = Import Data
+import-from-local = Import from a local file
+import-from-device = Import from Phira-Firefly or Phira Launcher on another device
+import-from-device-soon = Importing from another device is not available yet
+import-progress = Importing data { $percent }%
+import-invalid = Invalid data file
+import-failed = Import failed
+import-done = Import Complete
+import-done-ok = OK
+import-restart-content = Data has been imported. Restart the game to apply the changes.
+import-restart-failed = Failed to restart automatically. Please restart the game manually.
+
+import-device-searching = Searching for devices on the local network…
+import-pair-title = Pairing Code
+import-pair-prompt = Enter the code shown on the sending device.
+import-pair-failed = Pairing failed. Check the code.
+import-waiting-sender = Connected, waiting for the sender to start…

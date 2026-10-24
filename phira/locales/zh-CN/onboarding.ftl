@@ -55,3 +55,21 @@ dynamic-bg-dynamic = 动态亮度
 mp-addr-invalid = 无效的服务器地址
 
 tutorial-enter = 进入
+
+import-data = 导入数据
+import-from-local = 从本地文件导入
+import-from-device = 从其它设备上的 Phira-Firefly 或 Phira Launcher 导入
+import-from-device-soon = 从其它设备导入暂未开放
+import-progress = 正在导入数据 { $percent }%
+import-invalid = 无效的数据文件
+import-failed = 导入失败
+import-done = 导入完成
+import-done-ok = 确定
+import-restart-content = 数据已导入，请重启游戏以应用更改。
+import-restart-failed = 无法自动重启，请手动重启游戏
+
+import-device-searching = 正在搜索局域网内的设备…
+import-pair-title = 输入配对码
+import-pair-prompt = 请输入发送设备上显示的配对码
+import-pair-failed = 配对失败，请检查配对码
+import-waiting-sender = 已连接，等待发送端开始传输…

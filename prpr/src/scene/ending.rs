@@ -1,4 +1,4 @@
-﻿prpr_l10n::tl_file!("ending");
+prpr_l10n::tl_file!("ending");
 
 use super::{draw_background, game::SimpleRecord, loading::UploadFn, NextScene, Scene};
 use crate::{
@@ -372,12 +372,14 @@ impl EndingScene {
 
         // ---- 左下重试 / 右下继续（斜切板 + 触摸检测，与 Phira-Vrenxz 一致） ----
         fn touched(rect: Rect) -> bool {
-            Judge::get_touches().iter().any(|touch| touch.phase == TouchPhase::Ended && rect.contains(touch.position))
+            Judge::get_touches().iter().any(|touch| {
+                matches!(touch.phase, TouchPhase::Started | TouchPhase::Ended) && rect.contains(touch.position)
+            })
         }
         let dy3 = 0.006;
         let bw = 0.17;
         let bh = 0.1;
-        let p = (1. - ran(t, 2., 2.7)).powi(2);
+        let p = (1. - ran(t, 0.5, 1.)).powi(2);
         let s3 = 0.05;
         let hs = bh * 0.3;
         let params = DrawTextureParams {
@@ -385,6 +387,8 @@ impl EndingScene {
             ..Default::default()
         };
         let r_retry = Rect::new(-1. - bh * slope, -top + dy3, bw, bh);
+        // 补设按钮矩形（XCHS 路径下 render() 被跳过，否则 touch() 通道矩形为空）
+        self.btn_retry.inner.set(ui, r_retry);
         ui.with_gl(Mat4::from_translation(vec3(-p * 0.17, 0., 0.)), |ui| {
             draw_parallelogram(r_retry, None, cb, true);
             draw_parallelogram(Rect::new(r_retry.x + r_retry.w * (1. - s3), r_retry.y, r_retry.w * s3, r_retry.h), None, WHITE, false);
@@ -392,30 +396,29 @@ impl EndingScene {
             draw_texture_ex(*self.icon_retry, ct.x - hs, ct.y - hs, WHITE, params.clone());
         });
         let r_proceed = Rect::new(1. + bh * slope - bw, top - dy3 - bh, bw, bh);
+        self.btn_proceed.inner.set(ui, r_proceed);
         ui.with_gl(Mat4::from_translation(vec3(p * 0.17, 0., 0.)), |ui| {
             draw_parallelogram(r_proceed, None, cb, true);
             draw_parallelogram(Rect::new(r_proceed.x, r_proceed.y, r_proceed.w * s3, r_proceed.h), None, WHITE, false);
             let ct = r_proceed.center();
             draw_texture_ex(*self.icon_proceed, ct.x - hs, ct.y - hs, WHITE, params);
         });
-        // 进场动画结束后才能点，避免动画过程中误触
-        if p <= 0. {
-            if touched(r_retry) {
-                button_hit();
-                if self.upload_task.is_some() {
-                    show_message(tl!("still-uploading"));
-                } else {
-                    self.tr_start = t;
-                    self.next = 1;
-                }
-            } else if touched(r_proceed) {
-                button_hit();
-                if self.upload_task.is_some() {
-                    show_message(tl!("still-uploading"));
-                } else {
-                    self.tr_start = t;
-                    self.next = 2;
-                }
+        // 按下（Started）即触发，无需等待进场动画结束；动画已缩短到 1 秒内完成。
+        if touched(r_retry) {
+            button_hit();
+            if self.upload_task.is_some() {
+                show_message(tl!("still-uploading"));
+            } else {
+                self.tr_start = t;
+                self.next = 1;
+            }
+        } else if touched(r_proceed) {
+            button_hit();
+            if self.upload_task.is_some() {
+                show_message(tl!("still-uploading"));
+            } else {
+                self.tr_start = t;
+                self.next = 2;
             }
         }
 

@@ -1,6 +1,9 @@
 pub mod coll;
 pub use coll::CollectionPage;
 
+mod data_manage;
+pub use data_manage::DataManagePage;
+
 mod event;
 pub use event::EventPage;
 
@@ -11,7 +14,7 @@ mod home;
 pub use home::HomePage;
 
 mod library;
-pub use library::{request_export, resolve_export, take_export, ExportInfo, LibraryPage, CHOOSE_COVER, CHOSEN_COVER, FAV_UPDATED};
+pub use library::{request_export, resolve_export, take_export, ExportConfig, ExportInfo, LibraryPage, CHOOSE_COVER, CHOSEN_COVER, FAV_UPDATED};
 
 mod message;
 pub use message::MessagePage;
@@ -522,6 +525,10 @@ pub trait Page {
 
     fn can_play_bgm(&self) -> bool {
         true
+    }
+    /// 是否隐藏左上角返回按钮（不可返回的页面，如导入过程中）。
+    fn hide_back(&self) -> bool {
+        false
     }
     fn on_result(&mut self, _result: Box<dyn Any>, _s: &mut SharedState) -> Result<()> {
         Ok(())

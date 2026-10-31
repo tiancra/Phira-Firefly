@@ -11,7 +11,7 @@ use super::{
 use crate::{
     bin::BinaryReader,
     config::{Config, Mods},
-    core::{copy_fbo, BadNote, BOLD_FONT, Chart, ChartExtra, DynamicBackground, Effect, Point, Resource, UIElement, Vector, PGR_FONT},
+    core::{copy_fbo, BadNote, BOLD_FONT, Chart, ChartExtra, DynamicBackground, Effect, Point, RealtimePlaylist, Resource, UIElement, Vector, PGR_FONT},
     ext::{get_viewport, parse_time, screen_aspect, semi_white, RectExt, SafeTexture, ScaleType},
     fs::FileSystem,
     gamepad::GamepadFrame,
@@ -413,6 +413,7 @@ impl GameScene {
         background: SafeTexture,
         illustration: SafeTexture,
         mut dynamic_bg: Option<DynamicBackground>,
+        realtime_bg: Option<RealtimePlaylist>,
         upload_fn: Option<UploadFn>,
         update_fn: Option<UpdateFn>,
         save_fn: Option<SaveFn>,
@@ -486,6 +487,7 @@ impl GameScene {
             background,
             illustration,
             dynamic_bg,
+            realtime_bg,
             chart.extra.effects.is_empty() && effects.is_empty(),
         )
         .await
@@ -2303,6 +2305,39 @@ impl Scene for GameScene {
             self.fps_last_frame_time = current_time;
         }
 
+        // 拍点基准：优先用音频实际播放位置（music.position()），它能吸收音频设备启动/缓冲延迟；
+        // 时间轴 tm.now() 从调用 play() 那一刻起算，音频真正出声往往要晚几十到几百毫秒，
+        // 直接用时间轴会让动画相对听到的音乐「提前」。
+        // 之后减去谱面文件与 info.yml 的延迟，得到谱面时间。
+        let audio_pos = if matches!(self.state, State::Playing | State::Ending) {
+            let pos = self.music.position();
+            if pos > 0. && (pos - tm.now()).abs() < 3. {
+                pos
+            } else if tm.now() < 1. {
+                // 音频尚未真正开始输出，先停在 0 等待
+                0.
+            } else {
+                // 后端不上报 position 时退回时间轴，避免卡死
+                tm.now()
+            }
+        } else {
+            tm.now()
+        };
+        let sync = self.res.realtime_bg.as_ref().map_or(0., |it| it.sync_offset());
+        // Starting 是进入场景的淡入阶段，此时时间轴会被重置，不计拍；
+        // 之后若仍处于前置空白（时间 < 0），也保持静态不发拍。
+        // 需要在借用 self.res 之前算好，避免同时可变/不可变借用 self。
+        let fx_chart_time = if matches!(self.state, State::Starting) {
+            -1.
+        } else {
+            audio_pos - self.offset() as f64 + sync
+        };
+        let fx_beat = if fx_chart_time >= 0. {
+            self.chart.bpm_list.borrow_mut().beat(fx_chart_time)
+        } else {
+            -1.
+        };
+
         let res = &mut self.res;
         let asp = ui.viewport.2 as f32 / ui.viewport.3 as f32;
         if res.update_size(ui.viewport) || self.mode == GameMode::View {
@@ -2321,6 +2356,11 @@ impl Scene for GameScene {
             dbg.update(tm.now() as f32, vp, Some(tm.now() as f32));
             // 同步 Resource 持有的背景纹理句柄，因为 DynamicBackground 的 Clone 会创建独立的输出纹理
             res.background = dbg.texture();
+        }
+        if let Some(rbg) = &mut res.realtime_bg {
+            rbg.update(fx_chart_time as f32, ui.viewport, fx_beat);
+            // 视口变化时渲染目标会重建，因此每帧同步纹理句柄
+            res.background = rbg.texture();
         }
 
         push_camera_state();

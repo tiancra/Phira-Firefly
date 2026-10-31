@@ -119,6 +119,7 @@ impl TutorialLoadingScene {
                 None,
                 None,
                 None,
+                None,
                 false,
                 None,
                 None,

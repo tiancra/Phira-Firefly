@@ -1,7 +1,7 @@
 use super::{draw_background, ending::RecordUpdateState, game::GameMode, GameScene, NextScene, Scene};
 use crate::{
     config::{Config, DynamicBackgroundMode},
-    core::{DynamicBackground, Resource, BOLD_FONT},
+    core::{find_cfg_file, find_effect_file, DynamicBackground, PlaylistCfg, RealtimeFx, RealtimePlaylist, Resource, BOLD_FONT},
     ext::{draw_parallelogram, draw_text_aligned, get_viewport, poll_future, semi_black, semi_white, LocalTask, RectExt, SafeTexture},
     fs::FileSystem,
     info::ChartInfo,
@@ -138,12 +138,45 @@ impl LoadingScene {
             Self::load(fs.as_mut(), &info.illustration).await?
         };
 
+        // 谱面内存在 .cfg 播放列表时优先使用；否则用单个 .pbfx
+        let roots = fs.list_root().unwrap_or_default();
+        let realtime_bg = if let Some(cfg_name) = find_cfg_file(&roots) {
+            match Self::load_playlist(fs.as_mut(), &cfg_name).await {
+                Ok(playlist) => Some(playlist),
+                Err(err) => {
+                    warn!("failed to load realtime playlist: {err:?}");
+                    match find_effect_file(&roots) {
+                        Some(name) => match Self::load_realtime(fs.as_mut(), &name).await {
+                            Ok(playlist) => Some(playlist),
+                            Err(err) => {
+                                warn!("failed to load realtime background: {err:?}");
+                                None
+                            }
+                        },
+                        None => None,
+                    }
+                }
+            }
+        } else if let Some(name) = find_effect_file(&roots) {
+            match Self::load_realtime(fs.as_mut(), &name).await {
+                Ok(playlist) => Some(playlist),
+                Err(err) => {
+                    warn!("failed to load realtime background: {err:?}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         // 设置项强制覆盖谱面的动态背景模式
         if config.dynamic_background != DynamicBackgroundMode::Off {
             info.dynamic_background = config.dynamic_background.as_u8();
         }
 
-        let dynamic_bg = if info.dynamic_background > 0 {
+        let dynamic_bg = if realtime_bg.is_some() {
+            None
+        } else if info.dynamic_background > 0 {
             match Self::load_dynamic(fs.as_mut(), &info).await {
                 Ok(dbg) => Some(dbg),
                 Err(err) => {
@@ -167,6 +200,7 @@ impl LoadingScene {
             background.clone(),
             illustration.clone(),
             dynamic_bg,
+            realtime_bg,
             upload_fn,
             update_fn,
             save_fn,
@@ -196,6 +230,30 @@ impl LoadingScene {
         let image = image::load_from_memory(&fs.load_file(&info.illustration).await?).context("Failed to decode image")?;
         let vp = get_viewport();
         DynamicBackground::new(info.dynamic_background, &image, info.background_dim, vp)
+    }
+
+    /// 读取谱面内的 `.pbfx` 实时演算效果并创建（单效果）播放列表。
+    async fn load_realtime(fs: &mut dyn FileSystem, name: &str) -> Result<RealtimePlaylist> {
+        let data = fs.load_file(name).await.with_context(|| format!("failed to load {name}"))?;
+        RealtimePlaylist::load_single(&data, get_viewport())
+    }
+
+    /// 读取 `.cfg` 播放列表，并加载其引用的全部 `.pbfx`。
+    async fn load_playlist(fs: &mut dyn FileSystem, name: &str) -> Result<RealtimePlaylist> {
+        let bytes = fs.load_file(name).await.with_context(|| format!("failed to load {name}"))?;
+        let cfg = PlaylistCfg::parse(&String::from_utf8_lossy(&bytes))?;
+        let mut effects = Vec::new();
+        for file in &cfg.files {
+            match fs.load_file(file).await {
+                Ok(data) => match serde_json::from_slice::<RealtimeFx>(&data) {
+                    Ok(fx) => effects.push(fx),
+                    Err(err) => warn!("failed to parse {file}: {err:?}"),
+                },
+                Err(err) => warn!("failed to load {file}: {err:?}"),
+            }
+        }
+        anyhow::ensure!(!effects.is_empty(), "no valid .pbfx referenced by {name}");
+        RealtimePlaylist::new(cfg, effects, get_viewport())
     }
 }
 

@@ -1,4 +1,4 @@
-use super::{DynamicBackground, MSRenderTarget, Matrix, Point, NOTE_WIDTH_RATIO_BASE};
+use super::{DynamicBackground, MSRenderTarget, Matrix, Point, RealtimePlaylist, NOTE_WIDTH_RATIO_BASE};
 use crate::{
     config::Config,
     ext::{create_audio_manger, nalgebra_to_glm, SafeTexture},
@@ -440,6 +440,7 @@ pub struct Resource {
     pub background: SafeTexture,
     pub illustration: SafeTexture,
     pub dynamic_bg: Option<DynamicBackground>,
+    pub realtime_bg: Option<RealtimePlaylist>,
     pub icons: [SafeTexture; 8],
     pub mod_icons: [SafeTexture; 7],
     pub res_pack: ResourcePack,
@@ -519,6 +520,7 @@ impl Resource {
         background: SafeTexture,
         illustration: SafeTexture,
         mut dynamic_bg: Option<DynamicBackground>,
+        realtime_bg: Option<RealtimePlaylist>,
         has_no_effect: bool,
     ) -> Result<Self> {
         macro_rules! load_tex {
@@ -578,6 +580,7 @@ impl Resource {
             background,
             illustration,
             dynamic_bg,
+            realtime_bg,
             icons: Self::load_icons().await?,
             mod_icons: Self::load_mod_icons().await?,
             res_pack,
